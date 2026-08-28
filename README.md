@@ -130,3 +130,39 @@ src/
     auth/throttle.ts    login rate limiting and lockout
     tenant.ts           hostname → school
 ```
+
+---
+
+## Verification
+
+```bash
+npm run db:verify
+```
+
+Needs two connections, because RLS does not apply to owners or superusers —
+running these checks as the owner would pass while proving nothing:
+
+```
+DATABASE_URL_UNPOOLED=postgres://owner@...     # fixtures
+DATABASE_URL_APP=postgres://educbt_app@...     # the role RLS applies to
+```
+
+Twelve checks, all verified against live Postgres 16:
+
+```
+PASS  app role is not a superuser
+PASS  app role does not own the tables
+PASS  unscoped read returns nothing (fails closed)
+PASS  scoped read returns only that school
+PASS  a second school cannot see the first
+PASS  unknown tenant returns nothing
+PASS  cross-tenant write is rejected
+PASS  audit log cannot be updated
+PASS  audit log cannot be deleted
+PASS  all passwords are argon2id
+PASS  RLS enabled on every core table
+PASS  RLS is FORCEd (applies to the table owner too)
+```
+
+Run it after every migration and before every deploy. Seed a **second** school
+first — isolation cannot be tested with only one tenant.
