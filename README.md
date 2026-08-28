@@ -203,3 +203,62 @@ PASS  school-wide roles see the whole school
 
 `/portal/staff` refuses on the server for anyone not school-wide. Hiding the nav
 link is convenience; the route protects itself.
+
+---
+
+## Phase 3 — question bank (schema and paper boundary)
+
+`exam_series`, `passages`, `question_sets`, `questions`, `question_options`.
+
+### The scope key
+
+A question set is identified by:
+
+```
+school, session, term, subject, level, department,
+exam_type, series_id, waec_mode          NULLS NOT DISTINCT
+```
+
+Every column is load-bearing. Dropping any one merges two different papers into
+one row — which is how, in the WordPress system, writing practice questions
+silently filled the examination paper and creating a second set failed with
+"could not start a question set".
+
+Two NULL traps, both real, both caught by the tests:
+
+- `series_id` is `NOT NULL DEFAULT 0`. Nullable would let duplicate terminal
+  sets through, because Postgres treats NULLs as distinct.
+- `department_id` **carries a foreign key** so it cannot use that trick — hence
+  `NULLS NOT DISTINCT` on the index. Every junior subject has a NULL department,
+  so without this the constraint allowed duplicates for most of the school.
+
+### Answers never reach the browser
+
+```bash
+npm run test:leak
+```
+
+`src/lib/exam/paper.ts` is the only sanctioned path from question storage to a
+candidate's screen. It returns `PublicQuestion`, a type with no field for
+correctness, so an answer cannot ride along inside a `select *`.
+
+```
+PASS  payload has no isCorrect field
+PASS  payload has no marking guide or explanation
+PASS  payload has no approval state
+PASS  control: a select-* WOULD leak (test can detect a leak)
+PASS  a duplicate set is rejected even with a NULL department
+PASS  scope index declares NULLS NOT DISTINCT
+```
+
+The **control** check matters: it proves a naive query *would* leak, so the
+other assertions are known to be capable of failing. A test that cannot fail
+proves nothing.
+
+### All suites
+
+```bash
+npm run db:verify    # 12 — tenancy, audit, credentials
+npm run test:scope   #  6 — role scoping within a tenant
+npm run test:leak    # 11 — answer exposure, scope key
+```

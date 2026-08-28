@@ -23,8 +23,9 @@ import postgres from 'postgres';
 import { sql as dsql } from 'drizzle-orm';
 import * as core from './schema/core';
 import * as people from './schema/people';
+import * as questionBank from './schema/questions';
 
-export const schema = { ...core, ...people };
+export const schema = { ...core, ...people, ...questionBank };
 
 const connectionString = process.env.DATABASE_URL;
 
