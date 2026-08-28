@@ -166,3 +166,40 @@ PASS  RLS is FORCEd (applies to the table owner too)
 
 Run it after every migration and before every deploy. Seed a **second** school
 first — isolation cannot be tested with only one tenant.
+
+---
+
+## Phase 2 — read-only mirror
+
+Students (search, status and class filters), student profile, classes with
+headcounts, subjects grouped by level, staff.
+
+Everything is read-only by design. This phase runs beside WordPress so scoping
+bugs surface where they cost an afternoon, not a term.
+
+### Role scoping
+
+```bash
+npm run test:scope
+```
+
+RLS guards the tenant boundary. It does **not** guard the boundary within a
+tenant — a teacher must not see students they do not teach, and that lives in
+`src/lib/queries.ts`.
+
+The failure mode there is silent and generous: a missing condition returns MORE
+rows and nothing errors. So it is tested explicitly:
+
+```
+PASS  teacher has at least one assignment
+PASS  the outsider class is NOT reachable by the teacher
+PASS  teacher sees fewer students than the school holds  — 5 of 6
+PASS  the outsider student is NOT in the teacher's result set
+PASS  a teacher with no assignments reaches no classes
+PASS  school-wide roles see the whole school
+```
+
+**A teacher with no assignments sees nothing, not everything.** Fail closed.
+
+`/portal/staff` refuses on the server for anyone not school-wide. Hiding the nav
+link is convenience; the route protects itself.

@@ -1,42 +1,12 @@
-import { requireSchoolSession, SCHOOL_WIDE } from '@/lib/session';
-import { forSchool, schema } from '@/db';
-import { eq, and, count } from 'drizzle-orm';
+import { requireSchoolSession } from '@/lib/session';
+import { schoolStats } from '@/lib/queries';
 
 export const dynamic = 'force-dynamic';
 
 export default async function PortalHome() {
   const actor = await requireSchoolSession();
 
-  const stats = await forSchool(actor.schoolId, async (tx) => {
-    // School-wide roles see the whole school. A teacher does not — and that is
-    // enforced by what we query, not by what we render.
-    if (!SCHOOL_WIDE.includes(actor.role as never)) return null;
-
-    const [students] = await tx.select({ n: count() }).from(schema.students)
-      .where(and(
-        eq(schema.students.schoolId, actor.schoolId),
-        eq(schema.students.status, 'active'),
-      ));
-
-    const [staff] = await tx.select({ n: count() }).from(schema.staff)
-      .where(and(
-        eq(schema.staff.schoolId, actor.schoolId),
-        eq(schema.staff.status, 'active'),
-      ));
-
-    const [subjects] = await tx.select({ n: count() }).from(schema.subjects)
-      .where(eq(schema.subjects.schoolId, actor.schoolId));
-
-    const [classes] = await tx.select({ n: count() }).from(schema.classes)
-      .where(eq(schema.classes.schoolId, actor.schoolId));
-
-    return {
-      students: students?.n ?? 0,
-      staff: staff?.n ?? 0,
-      subjects: subjects?.n ?? 0,
-      classes: classes?.n ?? 0,
-    };
-  });
+  const stats = await schoolStats(actor);
 
   return (
     <>
