@@ -1,0 +1,42 @@
+{
+  "name": "educbt",
+  "version": "0.1.0",
+  "private": true,
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "typecheck": "tsc --noEmit",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "tsx src/db/migrate.ts",
+    "db:studio": "drizzle-kit studio",
+    "db:rls": "tsx src/db/apply-rls.ts",
+    "db:seed": "tsx src/db/seed.ts"
+  },
+  "dependencies": {
+    "next": "15.1.0",
+    "react": "19.0.0",
+    "react-dom": "19.0.0",
+    "next-auth": "5.0.0-beta.25",
+    "drizzle-orm": "^0.38.0",
+    "postgres": "^3.4.5",
+    "@node-rs/argon2": "^2.0.2",
+    "zod": "^3.24.1",
+    "@upstash/ratelimit": "^2.0.5",
+    "@upstash/redis": "^1.34.3"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.2",
+    "@types/node": "^22.10.2",
+    "@types/react": "^19.0.2",
+    "@types/react-dom": "^19.0.2",
+    "drizzle-kit": "^0.30.1",
+    "tsx": "^4.19.2",
+    "eslint": "^9.17.0",
+    "eslint-config-next": "15.1.0"
+  }
+}
