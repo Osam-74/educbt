@@ -562,3 +562,76 @@ npm run test:results    # 19  composition, marking, compilation
 ```
 
 **75 checks, all against live Postgres 16.**
+
+---
+
+## The domain layer
+
+`src/domain/academic.ts` — **no database imports, and none belongs there.**
+
+```bash
+npm run test:domain    # 44 checks, no Postgres, under a second
+```
+
+Totals, grading, ranking and the result lifecycle are the rules a school will
+argue about. They should be provable on a laptop with no environment, because
+that is exactly what a school will ask you to demonstrate.
+
+### Grading context is preserved
+
+A result stores `gradingScaleId` and `gradingScaleVersion` alongside the grade.
+Without them a grade cannot be explained a year later, and a school that revises
+its bands has no way to show last year's B3 was correct under the rules then in
+force. Scales supplied out of order still grade correctly — an admin screen will
+not sort bands for you.
+
+### Ranking is policy, not algorithm
+
+```ts
+type RankingPolicy = {
+  tiePolicy: 'competition' | 'dense' | 'ordinal';
+  tiebreakers: Array<'exam' | 'ca' | 'none'>;
+  rankIncomplete: boolean;
+};
+```
+
+- **competition** — 1, 2, 2, 4. The Nigerian default.
+- **dense** — 1, 2, 2, 3.
+- **ordinal** — every position distinct, for prize lists.
+
+Tiebreakers apply in order; `exam` ranks the better examination ahead where
+totals match. **Incomplete results are excluded by default** — ranking a student
+missing four subjects against a full cohort produces a position that means
+nothing.
+
+The policy in force is stored on the result, so a school switching mid-year does
+not leave last term's positions unexplainable.
+
+### Result lifecycle
+
+```
+DRAFT → COMPILED → REVIEWED → PUBLISHED → LOCKED
+```
+
+- **COMPILED** is staff-only and freely recompilable.
+- **PUBLISHED** is what a family has seen. Taking a result back from it, or
+  unlocking a closed term, **requires a written reason** that goes to the audit
+  log.
+- Compiled **cannot skip review** and publish directly.
+- Score entry is **refused** once a term is published — changing a mark beneath
+  a result a family has already read is what this prevents.
+
+### All suites
+
+```bash
+npm run test:domain     # 44  pure rules, NO database
+npm run db:verify       # 12  tenancy, audit, credentials
+npm run test:scope      #  6  role scoping
+npm run test:leak       # 11  answer exposure, scope key
+npm run test:vault      #  8  snapshot and recovery
+npm run test:engine     # 10  attempt lifecycle
+npm run test:authoring  #  9  authoring and review
+npm run test:results    # 23  composition, marking, compilation
+```
+
+**123 checks. 44 of them need no database at all.**

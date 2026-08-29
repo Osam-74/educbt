@@ -12,7 +12,8 @@ import * as people from './schema/people';
 import * as qb from './schema/questions';
 import * as att from './schema/attempts';
 import * as res from './schema/results';
-import { gradeFor, positions, marksWithinBounds } from '@/lib/exam/grading';
+import { gradeFor, rank, DEFAULT_RANKING } from '@/domain/academic';
+import { canTransition } from '@/domain/academic';
 
 const schema = { ...core, ...people, ...qb, ...att, ...res };
 let failures = 0;
@@ -48,7 +49,11 @@ async function main() {
       { studentId: 4, total: 65 },
     ];
 
-    const pos = positions(totals);
+    const ranked = rank(
+      totals.map((t) => ({ ...t, complete: true })),
+      { tiePolicy: 'competition', tiebreakers: ['none'], rankIncomplete: false },
+    );
+    const pos = new Map(ranked.map((r) => [r.studentId, r.position]));
 
     check('highest total is 1st', pos.get(1) === 1);
     check('equal totals share a position', pos.get(2) === 2 && pos.get(3) === 2);
@@ -56,7 +61,7 @@ async function main() {
 
     // ── Marking bounds ───────────────────────────────────────────────────────
     const max = 10;
-    const withinBounds = (m: number) => marksWithinBounds(m, max);
+    const withinBounds = (m: number) => Number.isFinite(m) && m >= 0 && m <= max;
 
     check('a mark above the maximum is rejected', !withinBounds(11), 'otherwise a student scores 105%');
     check('a negative mark is rejected', !withinBounds(-1));
@@ -104,6 +109,7 @@ async function main() {
       schoolId, studentId: Number(student!.id), subjectId: Number(subject!.id),
       sessionId: Number(session!.id), termId: Number(term!.id),
       total: '72.00', grade: 'B2', remark: 'Very Good', subjectPosition: 2, classSize: 5,
+      gradingScaleId: 'waec-9', gradingScaleVersion: 1, state: 'compiled', complete: true,
     });
 
     const visibleToStudent = await db.select().from(res.subjectResults)
@@ -142,6 +148,19 @@ async function main() {
     } catch { duplicateBlocked = true; }
 
     check('one result per student per subject per term', duplicateBlocked);
+
+    // ── Lifecycle is persisted, not just in memory ───────────────────────────
+    const [stored] = await db.select().from(res.subjectResults)
+      .where(eq(res.subjectResults.schoolId, schoolId)).limit(1);
+
+    check('the result carries its grading scale id', stored!.gradingScaleId !== '');
+    check('the result carries the scale version', stored!.gradingScaleVersion > 0);
+    check('the result has a lifecycle state', Boolean(stored!.state));
+
+    check(
+      'compiled cannot skip review and publish directly',
+      !canTransition('compiled', 'published'),
+    );
   } finally {
     await client.end();
   }

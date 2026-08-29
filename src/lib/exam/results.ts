@@ -16,7 +16,11 @@
 import { and, eq, sql, asc, desc, inArray, isNull } from 'drizzle-orm';
 import { forSchool, schema } from '@/db';
 import { subjectResults } from '@/db/schema/results';
-import { gradeFor, positions } from './grading';
+import {
+  gradeFor, rank, computeTotal, canTransition, requiresReason,
+  WAEC_NINE_POINT, DEFAULT_RANKING,
+  type GradingScale, type RankingPolicy, type ResultState,
+} from '@/domain/academic';
 
 export { gradeFor };
 import type { Actor } from '@/lib/session';
@@ -130,8 +134,19 @@ export { subjectResults };
  */
 export async function compileSubject(
   actor: Actor,
-  args: { subjectId: number; classId: number; sessionId: number; termId: number },
+  args: {
+    subjectId: number; classId: number; sessionId: number; termId: number;
+    /**
+     * Supplied by the caller so a school's own scale and tie policy apply.
+     * Defaults exist so a school that has configured neither still compiles.
+     */
+    scale?: GradingScale;
+    policy?: RankingPolicy;
+  },
 ): Promise<{ compiled: number }> {
+  const scale = args.scale ?? WAEC_NINE_POINT;
+  const policy = args.policy ?? DEFAULT_RANKING;
+
   return forSchool(actor.schoolId, async (tx) => {
     const students = await tx
       .select({ id: schema.students.id })
@@ -146,7 +161,9 @@ export async function compileSubject(
 
     if (students.length === 0) return { compiled: 0 };
 
-    const totals: Array<{ studentId: number; ca: number; exam: number; total: number }> = [];
+    const totals: Array<{
+      studentId: number; ca: number; exam: number; total: number; complete: boolean;
+    }> = [];
 
     for (const student of students) {
       // Everything the candidate scored on papers for this subject this term,
@@ -168,17 +185,44 @@ export async function compileSubject(
         ));
 
       const exam = Number(examRow?.scored ?? 0);
-      const ca = 0; // CA components land here once score entry is built.
 
-      totals.push({ studentId: Number(student.id), ca, exam, total: ca + exam });
+      // Continuous assessment, entered by the subject teacher.
+      const caRows = await tx
+        .select({ score: schema.assessmentScores.score })
+        .from(schema.assessmentScores)
+        .where(and(
+          eq(schema.assessmentScores.studentId, Number(student.id)),
+          eq(schema.assessmentScores.subjectId, args.subjectId),
+          eq(schema.assessmentScores.termId, args.termId),
+        ));
+
+      const ca = caRows.reduce((sum, r) => sum + Number(r.score), 0);
+
+      // A student with no marks at all has not been assessed — recording 0%
+      // and a Fail for them is worse than recording nothing.
+      const complete = caRows.length > 0 || exam > 0;
+
+      totals.push({ studentId: Number(student.id), ca, exam, total: ca + exam, complete });
     }
 
     // Rank once, across the whole cohort.
-    // Ranked in one pass, after every total is known.
-    const positionOf = positions(totals);
+    // Ranked ONCE, with every total known. See src/domain/academic.ts.
+    const ranked = rank(
+      totals.map((t) => ({
+        studentId: t.studentId,
+        total: t.total,
+        examTotal: t.exam,
+        caTotal: t.ca,
+        complete: t.complete,
+      })),
+      policy,
+    );
+
+    const positionOf = new Map(ranked.map((r) => [r.studentId, r.position ?? 0]));
 
     for (const row of totals) {
-      const { grade, remark } = gradeFor(row.total);
+      const graded = gradeFor(row.total, scale);
+      const { grade, remark } = graded;
 
       await tx.insert(subjectResults).values({
         schoolId: actor.schoolId,
@@ -193,6 +237,12 @@ export async function compileSubject(
         remark,
         subjectPosition: positionOf.get(row.studentId) ?? 0,
         classSize: totals.length,
+        // The context that makes this grade and position explainable later.
+        gradingScaleId: graded.scaleId,
+        gradingScaleVersion: graded.scaleVersion,
+        rankingPolicy: policy as unknown as Record<string, unknown>,
+        complete: row.complete,
+        state: 'compiled',
       }).onConflictDoUpdate({
         target: [
           subjectResults.studentId, subjectResults.subjectId,
@@ -206,6 +256,11 @@ export async function compileSubject(
           remark,
           subjectPosition: positionOf.get(row.studentId) ?? 0,
           classSize: totals.length,
+          gradingScaleId: graded.scaleId,
+          gradingScaleVersion: graded.scaleVersion,
+          rankingPolicy: policy as unknown as Record<string, unknown>,
+          complete: row.complete,
+          state: 'compiled',
           compiledAt: new Date(),
         },
       });
@@ -257,31 +312,142 @@ export async function resultsForStudent(
   });
 }
 
-/** Publishing is deliberate and audited — it is what parents will see. */
-export async function publishResults(
+/**
+ * Move a term's results through the lifecycle.
+ *
+ * The permitted transitions live in the domain layer, so the rule is the same
+ * whether it is applied here, in a screen, or in a future API. Moves that take
+ * a result back from something a family has seen require a written reason, and
+ * that reason goes to the audit log.
+ */
+export async function transitionResults(
   actor: Actor,
   sessionId: number,
   termId: number,
-): Promise<number> {
+  to: ResultState,
+  reason = '',
+): Promise<{ ok: boolean; moved: number; error?: string }> {
   return forSchool(actor.schoolId, async (tx) => {
-    const rows = await tx.update(subjectResults)
-      .set({ published: true })
+    const rows = await tx
+      .select({ id: subjectResults.id, state: subjectResults.state })
+      .from(subjectResults)
       .where(and(
         eq(subjectResults.schoolId, actor.schoolId),
         eq(subjectResults.sessionId, sessionId),
         eq(subjectResults.termId, termId),
-      ))
-      .returning({ id: subjectResults.id });
+      ));
+
+    if (rows.length === 0) return { ok: false, moved: 0, error: 'Nothing compiled for that term.' };
+
+    // Every row must be able to make the move. A partial transition would leave
+    // one class published and another not, under the same term.
+    const blocked = rows.filter((r) => !canTransition(r.state, to));
+
+    if (blocked.length > 0) {
+      return {
+        ok: false,
+        moved: 0,
+        error: `${blocked.length} result(s) cannot move from ${blocked[0]!.state} to ${to}.`,
+      };
+    }
+
+    const needsReason = rows.some((r) => requiresReason(r.state, to));
+
+    if (needsReason && reason.trim().length < 10) {
+      return {
+        ok: false,
+        moved: 0,
+        error: 'Taking results back from a state families have seen requires a written reason.',
+      };
+    }
+
+    const now = new Date();
+
+    await tx.update(subjectResults)
+      .set({
+        state: to,
+        published: to === 'published' || to === 'locked',
+        ...(to === 'reviewed' ? { reviewedAt: now } : {}),
+        ...(to === 'published' ? { publishedAt: now } : {}),
+        ...(to === 'locked' ? { lockedAt: now } : {}),
+      })
+      .where(and(
+        eq(subjectResults.schoolId, actor.schoolId),
+        eq(subjectResults.sessionId, sessionId),
+        eq(subjectResults.termId, termId),
+      ));
 
     await tx.insert(schema.auditLog).values({
       schoolId: actor.schoolId,
       actorUserId: actor.userId,
       actorRole: actor.role,
-      action: 'results.published',
+      action: `results.${to}`,
       entityType: 'subject_results',
-      after: { sessionId, termId, count: rows.length },
+      before: { states: [...new Set(rows.map((r) => r.state))] },
+      after: { state: to, count: rows.length, sessionId, termId },
+      reason: reason || null,
     });
 
-    return rows.length;
+    return { ok: true, moved: rows.length };
+  });
+}
+
+/** Enter or update a continuous assessment score. */
+export async function enterScore(
+  actor: Actor,
+  args: {
+    studentId: number; subjectId: number; sessionId: number; termId: number;
+    componentKey: string; score: number; maxScore: number;
+  },
+): Promise<{ ok: boolean; error?: string }> {
+  if (args.score < 0 || args.score > args.maxScore) {
+    return { ok: false, error: `Score must be between 0 and ${args.maxScore}.` };
+  }
+
+  return forSchool(actor.schoolId, async (tx) => {
+    // A published term is closed to score entry. Changing a mark underneath a
+    // result a family has already seen is exactly what the lifecycle prevents.
+    const [existing] = await tx
+      .select({ state: subjectResults.state })
+      .from(subjectResults)
+      .where(and(
+        eq(subjectResults.studentId, args.studentId),
+        eq(subjectResults.subjectId, args.subjectId),
+        eq(subjectResults.termId, args.termId),
+      ))
+      .limit(1);
+
+    if (existing && (existing.state === 'published' || existing.state === 'locked')) {
+      return {
+        ok: false,
+        error: 'These results are published. Unpublish the term before changing a score.',
+      };
+    }
+
+    await tx.insert(schema.assessmentScores).values({
+      schoolId: actor.schoolId,
+      studentId: args.studentId,
+      subjectId: args.subjectId,
+      sessionId: args.sessionId,
+      termId: args.termId,
+      componentKey: args.componentKey,
+      score: String(args.score),
+      maxScore: String(args.maxScore),
+      enteredBy: actor.userId,
+      updatedAt: new Date(),
+    }).onConflictDoUpdate({
+      target: [
+        schema.assessmentScores.studentId, schema.assessmentScores.subjectId,
+        schema.assessmentScores.termId, schema.assessmentScores.componentKey,
+      ],
+      set: {
+        score: String(args.score),
+        maxScore: String(args.maxScore),
+        enteredBy: actor.userId,
+        updatedAt: new Date(),
+      },
+    });
+
+    return { ok: true };
   });
 }

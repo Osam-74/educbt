@@ -27,8 +27,9 @@ import * as questionBank from './schema/questions';
 import * as vault from './schema/vault';
 import * as attemptsSchema from './schema/attempts';
 import * as resultsSchema from './schema/results';
+import * as scoresSchema from './schema/scores';
 
-export const schema = { ...core, ...people, ...questionBank, ...vault, ...attemptsSchema, ...resultsSchema };
+export const schema = { ...core, ...people, ...questionBank, ...vault, ...attemptsSchema, ...resultsSchema, ...scoresSchema };
 
 const connectionString = process.env.DATABASE_URL;
 
