@@ -262,3 +262,68 @@ npm run db:verify    # 12 — tenancy, audit, credentials
 npm run test:scope   #  6 — role scoping within a tenant
 npm run test:leak    # 11 — answer exposure, scope key
 ```
+
+---
+
+## Phase 3 (continued) — authoring, approval, vault
+
+### Submission rules
+
+Paired submission applies to the **terminal examination only**. Objective and
+theory go in together, so a teacher cannot hand in half a paper.
+
+A CA test and a practice paper are objective by design — requiring a theory half
+meant their submit button could never enable, which reads as a broken button
+rather than a rule.
+
+A practice paper is **never reviewed**. It is not scheduled and nothing rests on
+the result, so a review cycle would be skipped or rubber-stamped. It is approved
+on submission and available to students immediately.
+
+### Review
+
+The set's status is **derived from its questions**, never set independently, so
+the two cannot disagree. A set showing "approved" while holding a question sent
+back for revision is how a paper reaches the hall incomplete.
+
+Sending a set back requires a reason of at least 10 characters. A rejection
+without one is a rejection the teacher cannot act on.
+
+### Vault
+
+```bash
+npm run test:vault
+```
+
+Questions cannot be recomputed from anything else. Results survived the
+WordPress table-drop because they derive from scores; questions had no second
+copy and were simply gone.
+
+Snapshots are taken at submission and approval. The test simulates the real
+failure — deletes every question and restores:
+
+```
+PASS  snapshot is complete (no question missing its options)
+PASS  questions really were destroyed
+PASS  question IDS are preserved (results still point at them)
+PASS  the answer key survived
+PASS  a second restore adds nothing
+```
+
+Two rules the WordPress version got wrong:
+
+- **Question ids are preserved**; option ids are not. Papers reference questions
+  by id, nothing references an option by id, and restoring original option keys
+  collided with existing rows — surfacing as "duplicate entry for key PRIMARY".
+- **A lossy snapshot is refused.** An objective question stored without its
+  options is a question with no answer key, and that is only discovered at
+  restore time, when the original is gone.
+
+### All suites
+
+```bash
+npm run db:verify    # 12  tenancy, audit, credentials
+npm run test:scope   #  6  role scoping within a tenant
+npm run test:leak    # 11  answer exposure, scope key
+npm run test:vault   #  8  snapshot and recovery
+```

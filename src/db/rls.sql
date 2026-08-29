@@ -54,7 +54,8 @@ DECLARE
     'academic_sessions', 'terms', 'class_levels', 'departments', 'classes',
     'subjects', 'users', 'staff', 'staff_assignments', 'students',
     'enrollments', 'student_subjects', 'guardians', 'guardian_student',
-    'exam_series', 'passages', 'question_sets', 'questions', 'question_options'
+    'exam_series', 'passages', 'question_sets', 'questions', 'question_options',
+    'question_vault'
   ];
 BEGIN
   FOREACH t IN ARRAY scoped_tables LOOP
