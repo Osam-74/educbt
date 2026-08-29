@@ -698,9 +698,13 @@ and never blank. A zero reads as last place; a blank reads as an oversight.
 ## Fixes in this pass
 
 - **Ordinal ranking is deterministic.** When totals and every configured
-  tiebreaker are equal, order falls back to admission number, compared
-  numerically so `2026010009` precedes `2026010010`. Verified by ranking the
-  same cohort in both input orders and comparing.
+  tiebreaker are equal, order falls back to **admission-number order, compared
+  numerically** — `2026010009` precedes `2026010010`, and `99` precedes `100`.
+  Lexicographic comparison is the fallback for non-numeric formats only.
+
+  **The input-order independence test is permanent.** Ranking must never depend
+  on database row order, so the same cohort is ranked in both input orders and
+  the positions compared. Without it, two compilations of one term can disagree.
 - **NOT RANKED is explicit** — `position: null`, `state: 'not_ranked'`,
   `reason: 'incomplete'`.
 - **Score upserts carry the full academic context**: school, student, subject,
@@ -721,3 +725,48 @@ npm run test:engine     # 10  attempt lifecycle
 npm run test:authoring  #  9  authoring and review
 npm run test:results    # 23  composition, marking, compilation
 ```
+
+---
+
+## Broadsheet
+
+`/portal/broadsheet` — a whole class against every subject, landscape.
+
+Subject **codes** in the column heads, not full names: fifteen full subject
+names across a landscape page leaves no room for the marks.
+
+`nr` marks a subject excluded for incompleteness; `–` marks a subject the
+student does not offer. Both are stated rather than left blank, because a blank
+cell reads as an oversight.
+
+### Print regression suite — permanent
+
+```bash
+npm run test:print     # 25 checks, real PDF rendering
+```
+
+Boundaries, long content, NOT RANKED, realistic class batches, and the
+broadsheet in landscape across multiple pages.
+
+```
+1 · 2 · 9 · 16 · 19 (portrait limit) · 20 · 24 · 40 subjects
+long subject names · long student name · both together
+2 not ranked · every subject not ranked
+batches of 3, 10, 30, 45 · mixed batch
+broadsheet 30x9, 30x15, 45x15 — landscape confirmed by page geometry
+broadsheet spans pages · headers repeat on each page
+no blank page between cards
+```
+
+**Two failures this expansion caught:**
+
+- **20 subjects spills to two pages.** 19 is the honest portrait limit with the
+  signature block attached. Recorded as measured rather than adjusted to a round
+  number.
+- **The header-repeat check was wrong, not the CSS.** The stylesheet uppercases
+  headings, so a case-sensitive search for `Adm. No.` failed on *every* page and
+  reported a repeat failure that did not exist. Found by printing what the pages
+  actually contain. A test that fails for the wrong reason is worse than no test.
+
+Headings are confirmed present on **every** page of a multi-page broadsheet, by
+walking the rendered page boxes — not by trusting the CSS rule exists.

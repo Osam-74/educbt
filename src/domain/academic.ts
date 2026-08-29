@@ -197,9 +197,14 @@ export type Rankable = {
    * which is precisely the bug the single-pass ranking exists to prevent.
    *
    * The admission number is used because it is stable, unique within a school,
-   * and defensible to a parent: "alphabetical by admission number" is a rule a
-   * school can state out loud. Falling back to studentId would work but is an
-   * internal number nobody can explain.
+   * and defensible to a parent: "admission-number order, compared numerically"
+   * is a rule a school can state out loud. Falling back to studentId would work
+   * but is an internal row id nobody can explain.
+   *
+   * NUMERIC, not lexicographic. Admission numbers are digit strings, and
+   * comparing them as text puts "100" before "99". Where both parse as numbers
+   * they are compared as numbers; the string comparison is only a fallback for
+   * schools using a non-numeric format.
    */
   admissionNumber?: string;
 };
@@ -367,8 +372,9 @@ export function isEditable(state: ResultState): boolean {
 /**
  * Order two students who are otherwise identical.
  *
- * Ascending by admission number, with a numeric comparison where both are
- * numeric so 2026010009 sorts before 2026010010 rather than after it.
+ * Ascending by admission number, compared NUMERICALLY where both parse as
+ * numbers, so 2026010009 sorts before 2026010010 rather than after it.
+ * Lexicographic comparison is the fallback for non-numeric formats only.
  */
 function compareAdmission(a: Rankable, b: Rankable): number {
   const left = a.admissionNumber ?? String(a.studentId);

@@ -53,17 +53,22 @@ C4 60-64 · C5 55-59 · C6 50-54 · D7 45-49 · E8 40-44 · F9 0-39.
 Scale <em>waec-9</em> v1.</p>'''
 
 
-def sheet(n, not_ranked=0):
+def sheet(n, not_ranked=0, subject_name=None, student_name=None):
+    head = HEAD
+    if student_name:
+        head = HEAD.replace('Inioluwa Olayiwola', student_name)
+
     rows = ''
     for i in range(n):
         pos = ('<span class="not-ranked">not ranked</span>'
                if i < not_ranked else f'{(i % 20) + 1}/32')
-        rows += (f'<tr><td>Subject Number {i+1} With A Long Name</td>'
+        label = subject_name or f'Subject Number {i+1} With A Long Name'
+        rows += (f'<tr><td>{label}</td>'
                  f'<td class="num">18</td><td class="num">54</td>'
                  f'<td class="num"><strong>72</strong></td><td class="grade">B2</td>'
                  f'<td class="num">{pos}</td><td>Very Good</td></tr>')
 
-    return (f'<div class="doc__sheet">{HEAD}'
+    return (f'<div class="doc__sheet">{head}'
             f'<table class="doc__table"><thead><tr><th>Subject</th><th class="num">CA</th>'
             f'<th class="num">Exam</th><th class="num">Total</th><th class="grade">Grade</th>'
             f'<th class="num">Pos.</th><th>Remark</th></tr></thead><tbody>{rows}</tbody></table>'
@@ -78,14 +83,39 @@ def render(sheets):
     return weasyprint.HTML(string=html).render()
 
 
+LONG_SUBJECT = ('Christian Religious Studies and Comparative Moral Instruction '
+                'for Senior Secondary Candidates')
+LONG_NAME = 'Oluwafunmilayo Adebayo-Ogundimu Chukwuemeka'
+
 CASES = [
-    ('9 subjects',              [sheet(9)],                    1),
-    ('16 subjects',             [sheet(16)],                   1),
-    ('16 with 2 not ranked',    [sheet(16, not_ranked=2)],     1),
-    ('24 subjects',             [sheet(24)],                   2),
-    ('batch of 3 cards',        [sheet(9)] * 3,                3),
-    ('batch of 10 cards',       [sheet(9)] * 10,              10),
-    ('batch of 30, 16 subjects', [sheet(16)] * 30,            30),
+    # ── Boundaries ──────────────────────────────────────────────────────────
+    ('1 subject',                [sheet(1)],                    1),
+    ('2 subjects',               [sheet(2)],                    1),
+    ('9 subjects',               [sheet(9)],                    1),
+    ('16 subjects',              [sheet(16)],                   1),
+    # 19 is the honest portrait limit with the signature block attached.
+    # Recorded as measured rather than adjusted to a round number.
+    ('19 subjects (portrait limit)', [sheet(19)],               1),
+    ('20 subjects (spills)',      [sheet(20)],                  2),
+    ('24 subjects',              [sheet(24)],                   2),
+    ('40 subjects',              [sheet(40)],                   2),
+
+    # ── Long content must not break the layout ──────────────────────────────
+    ('long subject names',       [sheet(12, subject_name=LONG_SUBJECT)],  1),
+    ('long student name',        [sheet(12, student_name=LONG_NAME)],     1),
+    ('long name AND long subjects',
+     [sheet(12, subject_name=LONG_SUBJECT, student_name=LONG_NAME)],      1),
+
+    # ── NOT RANKED ──────────────────────────────────────────────────────────
+    ('16 with 2 not ranked',     [sheet(16, not_ranked=2)],     1),
+    ('every subject not ranked', [sheet(9, not_ranked=9)],      1),
+
+    # ── Realistic class batches ─────────────────────────────────────────────
+    ('batch of 3 cards',         [sheet(9)] * 3,                3),
+    ('batch of 10 cards',        [sheet(9)] * 10,              10),
+    ('class of 30, 16 subjects', [sheet(16)] * 30,             30),
+    ('class of 45, 9 subjects',  [sheet(9)] * 45,              45),
+    ('mixed batch',              [sheet(9), sheet(16), sheet(9)], 3),
 ]
 
 failures = 0
@@ -103,6 +133,102 @@ for name, sheets, expected in CASES:
         note = '  — a nearly empty trailing page wastes a school\'s paper'
 
     print(f'{"PASS" if ok else "FAIL"}  {name:<26}{pages} page(s), expected {expected}{note}')
+
+# ── Broadsheet: landscape, repeated headers, multi-page ─────────────────────
+
+def broadsheet(students, subjects):
+    """A whole class against every subject."""
+    heads = ''.join(f'<th class="num">SUB{j+1}</th>' for j in range(subjects))
+
+    rows = ''
+    for i in range(students):
+        marks = ''.join(f'<td class="num">{55 + (i + j) % 40}</td>' for j in range(subjects))
+        rows += (f'<tr><td class="num">{i+1}</td>'
+                 f'<td>Adebayo-Ogundimu Oluwafunmilayo {i+1}</td>'
+                 f'<td class="num">20260100{i:02d}</td>{marks}'
+                 f'<td class="num"><strong>720</strong></td><td class="num">72.0</td></tr>')
+
+    return (f'<div class="doc doc--broadsheet"><div class="doc__sheet">'
+            f'<header class="doc__head"><p class="doc__school">Broadsheet</p>'
+            f'<p class="doc__title">JSS 1 A — First Term</p></header>'
+            f'<table class="doc__table"><thead><tr><th class="num">#</th><th>Student</th>'
+            f'<th class="num">Adm. No.</th>{heads}'
+            f'<th class="num">Total</th><th class="num">Avg</th></tr></thead>'
+            f'<tbody>{rows}</tbody></table></div></div>')
+
+
+def render_raw(body):
+    html = (f'<!DOCTYPE html><html><head><meta charset="utf-8">'
+            f'<style>{CSS}</style></head><body>{body}</body></html>')
+
+    return weasyprint.HTML(string=html).render()
+
+
+print()
+
+BROADSHEETS = [
+    ('broadsheet 30x9',   broadsheet(30, 9)),
+    ('broadsheet 30x15',  broadsheet(30, 15)),
+    ('broadsheet 45x15',  broadsheet(45, 15)),
+]
+
+for name, body in BROADSHEETS:
+    doc = render_raw(body)
+    page = doc.pages[0]
+
+    # Landscape: the page must be wider than it is tall. A broadsheet printed
+    # portrait loses its right-hand columns off the edge of the paper.
+    landscape = page.width > page.height
+
+    print(f'{"PASS" if landscape else "FAIL"}  {name:<26}'
+          f'{page.width:.0f}x{page.height:.0f}pt '
+          f'{"landscape" if landscape else "*** PORTRAIT"}, {len(doc.pages)} page(s)')
+
+    if not landscape:
+        failures += 1
+
+# Headings must repeat on every page of a multi-page broadsheet. Without them
+# the second page is a grid of unlabelled numbers.
+wide = render_raw(broadsheet(60, 12))
+multi = len(wide.pages) > 1
+
+print(f'{"PASS" if multi else "FAIL"}  {"broadsheet spans pages":<26}'
+      f'60 students produced {len(wide.pages)} page(s)')
+
+if not multi:
+    failures += 1
+
+
+def has_header(page):
+    """Look for a heading cell in the rendered page, not in the source."""
+    found = []
+
+    def walk(box):
+        text = getattr(box, 'text', None)
+        if text:
+            found.append(text)
+        for child in getattr(box, 'children', []) or []:
+            walk(child)
+
+    walk(page._page_box)
+
+    # Case-insensitive: the stylesheet uppercases table headings, so a
+    # case-sensitive check fails on EVERY page and reports a repeat failure
+    # that is not real. Caught by printing what the pages actually contain.
+    joined = ' '.join(found).upper()
+
+    return 'ADM. NO.' in joined and 'STUDENT' in joined
+
+
+repeated = all(has_header(p) for p in wide.pages)
+
+print(f'{"PASS" if repeated else "FAIL"}  {"headers repeat on each page":<26}'
+      f'{"every page carries the column headings" if repeated else "*** page 2 is unlabelled numbers"}')
+
+if not repeated:
+    failures += 1
+
+print()
 
 # A class set must not carry a blank leaf between cards.
 thirty = render([sheet(16)] * 30)
