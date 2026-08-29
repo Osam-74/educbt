@@ -327,3 +327,68 @@ npm run test:scope   #  6  role scoping within a tenant
 npm run test:leak    # 11  answer exposure, scope key
 npm run test:vault   #  8  snapshot and recovery
 ```
+
+---
+
+## Phase 4 — CBT engine
+
+`exam_papers`, `paper_questions`, `attempts`, `attempt_answers`, `attempt_events`.
+
+### Four rules
+
+**1. Time is the server's.** `expiresAt` is computed at start and is the only
+thing deciding whether an answer is accepted. A device clock can be wound back;
+a closed laptop does not pause the examination. The client countdown is
+presentation.
+
+**2. One attempt per student per paper.** Enforced by a unique index. Starting
+again resumes — it never restarts, because a restart silently discards the first
+set of answers and the candidate finds out at results.
+
+**3. Saving is idempotent.** A dropped connection leaves the browser unsure
+whether the answer landed, so it retries. The save upserts on
+`(attempt, question)`; three retries produce one row.
+
+**4. Nothing tells the candidate whether they were right.** Not on save, not on
+submit. A response echoing correctness turns the paper into an answer key.
+
+### Question order is stored, not recomputed
+
+Fixed at start and kept on the attempt, so a resume on another device shows the
+same paper in the same order. Recomputing the shuffle would reorder the paper
+mid-examination.
+
+### Bookmarks are not integrity incidents
+
+Two separate counters. Conflating them meant a careful candidate who bookmarked
+four questions looked identical to one who left the exam window four times.
+
+### Auto-submission
+
+`sweepExpired()` closes attempts whose time has run out. The client cannot be
+trusted to submit on expiry — the tab may be closed, the machine asleep, or the
+timer tampered with.
+
+```bash
+npm run test:engine
+```
+
+```
+PASS  attempt created with a server deadline
+PASS  a second attempt is rejected (resume, never restart)
+PASS  three retried saves produce ONE answer row
+PASS  an elapsed attempt is past its deadline regardless of client time
+PASS  an extension moves the deadline forward
+PASS  bookmarks and integrity incidents are counted separately
+PASS  a submitted attempt no longer accepts integrity events
+```
+
+### All suites
+
+```bash
+npm run db:verify    # 12  tenancy, audit, credentials
+npm run test:scope   #  6  role scoping
+npm run test:leak    # 11  answer exposure, scope key
+npm run test:vault   #  8  snapshot and recovery
+npm run test:engine  # 10  attempt lifecycle
+```

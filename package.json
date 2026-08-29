@@ -19,7 +19,8 @@
     "db:verify": "tsx src/db/verify.ts",
     "test:scope": "tsx src/db/test-scope.ts",
     "test:leak": "tsx src/db/test-leak.ts",
-    "test:vault": "tsx src/db/test-vault.ts"
+    "test:vault": "tsx src/db/test-vault.ts",
+    "test:engine": "tsx src/db/test-engine.ts"
   },
   "dependencies": {
     "@node-rs/argon2": "^2.0.2",
