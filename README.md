@@ -392,3 +392,48 @@ npm run test:leak    # 11  answer exposure, scope key
 npm run test:vault   #  8  snapshot and recovery
 npm run test:engine  # 10  attempt lifecycle
 ```
+
+---
+
+## Phase 3 UI — authoring and review
+
+Question sets list, authoring screen, review queue.
+
+The screens enforce the same rules as the service layer, because both call the
+same functions. Nothing is checked only in the browser.
+
+- **Instructions come before the question text** — the order a candidate reads
+  them, and the order an author thinks in.
+- **The correct option must be marked.** A question with no answer key cannot be
+  marked, and that only surfaces after candidates have sat it.
+- **A submitted set is locked.** Editing resumes only when the exam office sends
+  it back, and the reason travels with it.
+- **Sending back requires a reason** of at least 10 characters.
+- **Snapshots on submission and approval**, so the work survives a table wipe.
+- `/portal/review` **refuses on the server** for anyone not school-wide.
+
+```bash
+npm run test:authoring
+```
+
+```
+PASS  a new set is a draft
+PASS  every question is PENDING, never approved on write
+PASS  a submitted set is no longer editable
+PASS  a returned set is editable again
+PASS  set status and question status agree
+PASS  approval leaves a snapshot behind
+```
+
+### All suites
+
+```bash
+npm run db:verify       # 12  tenancy, audit, credentials
+npm run test:scope      #  6  role scoping
+npm run test:leak       # 11  answer exposure, scope key
+npm run test:vault      #  8  snapshot and recovery
+npm run test:engine     # 10  attempt lifecycle
+npm run test:authoring  #  9  authoring and review workflow
+```
+
+**56 checks, all against live Postgres 16.**

@@ -20,7 +20,8 @@
     "test:scope": "tsx src/db/test-scope.ts",
     "test:leak": "tsx src/db/test-leak.ts",
     "test:vault": "tsx src/db/test-vault.ts",
-    "test:engine": "tsx src/db/test-engine.ts"
+    "test:engine": "tsx src/db/test-engine.ts",
+    "test:authoring": "tsx src/db/test-authoring.ts"
   },
   "dependencies": {
     "@node-rs/argon2": "^2.0.2",
