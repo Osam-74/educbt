@@ -249,3 +249,5 @@ button[type='submit']:disabled { opacity: .6; cursor: default; }
   gap: 14px; padding: 12px 0; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
 .paper-row:last-of-type { border-bottom: 0; }
 .paper-row a.primary-wide { text-decoration: none; display: inline-block; }
+.answer-box { background: var(--wash); border: 1px solid var(--line); border-radius: 9px;
+  padding: 12px 14px; font-size: 14.5px; line-height: 1.65; white-space: pre-wrap; }

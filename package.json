@@ -21,7 +21,8 @@
     "test:leak": "tsx src/db/test-leak.ts",
     "test:vault": "tsx src/db/test-vault.ts",
     "test:engine": "tsx src/db/test-engine.ts",
-    "test:authoring": "tsx src/db/test-authoring.ts"
+    "test:authoring": "tsx src/db/test-authoring.ts",
+    "test:results": "tsx src/db/test-results.ts"
   },
   "dependencies": {
     "@node-rs/argon2": "^2.0.2",

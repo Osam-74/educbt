@@ -68,6 +68,7 @@ export default async function PortalLayout({ children }: { children: React.React
           <Link href="/portal/classes">Classes</Link>
           <Link href="/portal/subjects">Subjects</Link>
           <Link href="/portal/questions">Questions</Link>
+          <Link href="/portal/marking">Marking</Link>
           {/* Menu visibility is convenience only. /portal/staff refuses on the
               server for anyone who is not school-wide, so removing this link is
               not what protects it. */}

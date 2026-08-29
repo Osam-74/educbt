@@ -56,7 +56,7 @@ DECLARE
     'enrollments', 'student_subjects', 'guardians', 'guardian_student',
     'exam_series', 'passages', 'question_sets', 'questions', 'question_options',
     'question_vault', 'exam_papers', 'paper_questions', 'attempts',
-    'attempt_answers', 'attempt_events'
+    'attempt_answers', 'attempt_events', 'subject_results'
   ];
 BEGIN
   FOREACH t IN ARRAY scoped_tables LOOP

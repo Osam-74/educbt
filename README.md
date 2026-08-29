@@ -486,3 +486,79 @@ src/app/api/exam` returns nothing.
 
 A paper is listed on a student's dashboard only for a subject they registered.
 Being in the class is not enough.
+
+---
+
+## Phase 5 — composition, marking, compilation
+
+### Composition (`src/lib/exam/compose.ts`)
+
+Turns approved question sets into papers.
+
+- **Only approved sets compose.** A draft in the pool is a paper containing
+  questions nobody reviewed.
+- **A short pool is named and skipped**, never silently shortened. Shortening
+  gives one class twelve questions and another twenty, marked out of the same
+  total.
+- **Re-composing does not duplicate.** A school office will run it twice.
+
+Scheduling lays papers across a sitting window. Two papers may share a slot for
+different levels; never for the same level, because one class cannot sit two
+subjects at once. Papers that will not fit are **named**, not dropped.
+
+The sitting window is set at scheduling, not at series creation — the dates on a
+series are the *question-submission* window, and a school does not know its
+sitting dates until it has papers to schedule.
+
+### Marking (`markingQueue`, `awardMarks`)
+
+Written answers route to the teacher **assigned to that subject**. Marked scripts
+leave the queue — a marked script reappearing is how a teacher loses an afternoon
+re-marking.
+
+A mark outside the question's range is rejected. Otherwise a typo becomes a
+student scoring 105%.
+
+### Compilation (`src/lib/exam/grading.ts`, `results.ts`)
+
+`grading.ts` has **no database imports**, so a grading boundary can be proven
+without standing up a database.
+
+- **Grades are stored on the result row, not derived.** Deriving them would
+  rewrite a report card issued last term the moment a school edits its scale.
+- **Positions are ranked in one pass, after every total is known.** Ranking as
+  results are computed gives a position based on however many students happened
+  to be processed first.
+- Equal totals **share** a position: 1st, 2nd, 2nd, 4th.
+- **Practice never counts** towards a result.
+- Results are **withheld until published**; staff can see them beforehand, so a
+  mark can be checked before the school commits to it.
+
+```bash
+npm run test:results
+```
+
+```
+PASS  75 is A1 · 74 is B2 · 40 is E8, a pass · 39 is F9, a fail
+PASS  equal totals share a position
+PASS  the position after a tie skips  — 1st, 2nd, 2nd, 4th
+PASS  a mark above the maximum is rejected
+PASS  draft sets are excluded from composition
+PASS  an unpublished result is hidden from the student
+PASS  the grade is stored on the row
+PASS  one result per student per subject per term
+```
+
+### All suites
+
+```bash
+npm run db:verify       # 12  tenancy, audit, credentials
+npm run test:scope      #  6  role scoping
+npm run test:leak       # 11  answer exposure, scope key
+npm run test:vault      #  8  snapshot and recovery
+npm run test:engine     # 10  attempt lifecycle
+npm run test:authoring  #  9  authoring and review
+npm run test:results    # 19  composition, marking, compilation
+```
+
+**75 checks, all against live Postgres 16.**
