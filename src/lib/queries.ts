@@ -283,3 +283,47 @@ export async function schoolStats(actor: Actor) {
     };
   });
 }
+
+/**
+ * Papers a student may sit right now.
+ *
+ * REGISTRATION IS AUTHORITATIVE. A paper appears only for a subject the student
+ * actually registered — being in the class is not enough. The WordPress version
+ * read "registered OR enrolled", which made registration optional in practice
+ * and let students sit subjects they do not offer.
+ */
+export async function papersForStudent(actor: Actor) {
+  if (!actor.studentId) return [];
+
+  return forSchool(actor.schoolId, async (tx) =>
+    tx
+      .select({
+        paperId: schema.examPapers.id,
+        subjectName: schema.subjects.name,
+        subjectCode: schema.subjects.code,
+        scheduledAt: schema.examPapers.scheduledAt,
+        durationSeconds: schema.examPapers.durationSeconds,
+        seriesTitle: schema.examSeries.title,
+        seriesType: schema.examSeries.seriesType,
+        attemptStatus: schema.attempts.status,
+      })
+      .from(schema.examPapers)
+      .innerJoin(schema.examSeries, eq(schema.examSeries.id, schema.examPapers.seriesId))
+      .innerJoin(schema.subjects, eq(schema.subjects.id, schema.examPapers.subjectId))
+      // The join that enforces registration.
+      .innerJoin(schema.studentSubjects, and(
+        eq(schema.studentSubjects.subjectId, schema.examPapers.subjectId),
+        eq(schema.studentSubjects.studentId, actor.studentId!),
+      ))
+      .leftJoin(schema.attempts, and(
+        eq(schema.attempts.paperId, schema.examPapers.id),
+        eq(schema.attempts.studentId, actor.studentId!),
+      ))
+      .where(and(
+        eq(schema.examPapers.schoolId, actor.schoolId),
+        eq(schema.examPapers.status, 'published'),
+      ))
+      .orderBy(asc(schema.examPapers.scheduledAt))
+      .limit(50),
+  );
+}

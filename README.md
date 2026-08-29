@@ -437,3 +437,52 @@ npm run test:authoring  #  9  authoring and review workflow
 ```
 
 **56 checks, all against live Postgres 16.**
+
+---
+
+## Phase 4 UI — the exam room
+
+`/exam/[paperId]` — the candidate's screen. Timer, palette, answer sync,
+integrity reporting, submit.
+
+### Sync, in three layers
+
+1. **Local first.** The answer is written to `localStorage` and the UI updates
+   immediately. A candidate must never wait on a round trip to see their own
+   selection register — at 200ms from Lagos to Ireland that wait is the whole
+   feel of the paper.
+2. **Server sync**, straight away, with an idempotency key so a retry updates
+   the same row.
+3. **Retry queue** with backoff, and a flush when the browser comes back online.
+   Nothing is ever resubmitted by hand.
+
+The server stays the source of truth. `localStorage` is an emergency copy for a
+dropped connection.
+
+### The timer is display only
+
+Rendered from a server deadline; the **server** decides whether an answer is
+accepted. A candidate who changes their device clock changes what they see and
+nothing else. `sweepExpired()` closes abandoned attempts regardless.
+
+### Sync status is visible
+
+`Saved` · `Saving…` · `Waiting for connection` · `Closed`. A student should
+always know whether their work is safe. A `409` stops the retry loop rather than
+hammering a closed paper.
+
+### Integrity warnings are true
+
+Right-click and tab-switch are reported to the server before the banner appears.
+In the WordPress system the banner said "this has been recorded" and nothing
+was — a warning the system cannot back up is worse than none.
+
+### Answers still never reach the browser
+
+The page maps options to `id, key, text` only. `grep -rn "isCorrect" src/app/exam
+src/app/api/exam` returns nothing.
+
+### Registration decides what appears
+
+A paper is listed on a student's dashboard only for a subject they registered.
+Being in the class is not enough.
