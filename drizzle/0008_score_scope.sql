@@ -1,0 +1,2 @@
+DROP INDEX "assessment_scores_uq";--> statement-breakpoint
+CREATE UNIQUE INDEX "assessment_scores_uq" ON "assessment_scores" USING btree ("school_id","student_id","subject_id","session_id","term_id","component_key");

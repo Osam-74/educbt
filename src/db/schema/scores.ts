@@ -27,9 +27,20 @@ export const assessmentScores = pgTable('assessment_scores', {
   enteredBy: bigint('entered_by', { mode: 'number' }),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 }, (t) => ({
-  // One score per component per subject per term. Entry is an upsert.
+  /**
+   * THE FULL ACADEMIC CONTEXT.
+   *
+   * school, student, subject, session, term, component — every one of them.
+   *
+   * The key previously omitted schoolId and sessionId. A term id implies its
+   * session today, but relying on that is exactly the assumption that breaks
+   * when a school reuses term numbering or a migration renumbers rows. An
+   * upsert keyed too loosely does not fail loudly — it OVERWRITES a score that
+   * belonged to another context, and nobody notices until a parent asks why a
+   * mark changed.
+   */
   uq: uniqueIndex('assessment_scores_uq')
-    .on(t.studentId, t.subjectId, t.termId, t.componentKey),
+    .on(t.schoolId, t.studentId, t.subjectId, t.sessionId, t.termId, t.componentKey),
   scopeIdx: index('assessment_scores_scope_idx')
     .on(t.schoolId, t.subjectId, t.termId),
 }));

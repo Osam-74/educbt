@@ -117,11 +117,49 @@ const withIncomplete = [...cohort, { studentId: 5, total: 30, examTotal: 20, com
 const excludedRun = rank(withIncomplete, DEFAULT_RANKING);
 const five = excludedRun.find((r) => r.studentId === 5);
 
-check('an incomplete result is excluded by default', five?.excluded === true && five?.position === null);
+check(
+  'an incomplete result is NOT RANKED, not zero',
+  five?.state === 'not_ranked' && five?.position === null,
+  'a report card showing "0 of 32" reads as last place, not as unassessed',
+);
+check('the reason for exclusion is stated', five?.reason === 'incomplete');
 check('excluding does not shift the others', posOf(excludedRun, 1) === 1);
 
 const includedRun = rank(withIncomplete, { ...DEFAULT_RANKING, rankIncomplete: true });
-check('a school may choose to rank incomplete results', includedRun.every((r) => !r.excluded));
+check('a school may choose to rank incomplete results', includedRun.every((r) => r.state === 'ranked'));
+
+// ── Deterministic ordering ───────────────────────────────────────────────────
+// Two students identical on total AND every tiebreaker. The order must not
+// depend on the order rows arrived in.
+const identical = [
+  { studentId: 9, total: 60, examTotal: 30, caTotal: 30, complete: true, admissionNumber: '2026010010' },
+  { studentId: 8, total: 60, examTotal: 30, caTotal: 30, complete: true, admissionNumber: '2026010009' },
+];
+
+const ordinalPolicy: RankingPolicy = { tiePolicy: 'ordinal', tiebreakers: ['exam'], rankIncomplete: false };
+const forward = rank(identical, ordinalPolicy);
+const reversed = rank([...identical].reverse(), ordinalPolicy);
+
+check(
+  'ordinal ordering does not depend on input order',
+  posOf(forward, 8) === posOf(reversed, 8) && posOf(forward, 9) === posOf(reversed, 9),
+  'otherwise two compilations of one term rank differently',
+);
+
+check(
+  'the lower admission number comes first',
+  posOf(forward, 8) === 1 && posOf(forward, 9) === 2,
+  '2026010009 before 2026010010',
+);
+
+check(
+  'admission numbers compare numerically, not as text',
+  posOf(rank([
+    { studentId: 1, total: 50, complete: true, admissionNumber: '100' },
+    { studentId: 2, total: 50, complete: true, admissionNumber: '99' },
+  ], ordinalPolicy), 2) === 1,
+  '99 before 100, not "100" before "99"',
+);
 
 check('an empty cohort ranks without error', rank([], DEFAULT_RANKING).length === 0);
 check('a single student is 1st', posOf(rank([cohort[0]!], DEFAULT_RANKING), 1) === 1);

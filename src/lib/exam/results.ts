@@ -191,8 +191,10 @@ export async function compileSubject(
         .select({ score: schema.assessmentScores.score })
         .from(schema.assessmentScores)
         .where(and(
+          eq(schema.assessmentScores.schoolId, actor.schoolId),
           eq(schema.assessmentScores.studentId, Number(student.id)),
           eq(schema.assessmentScores.subjectId, args.subjectId),
+          eq(schema.assessmentScores.sessionId, args.sessionId),
           eq(schema.assessmentScores.termId, args.termId),
         ));
 
@@ -436,9 +438,15 @@ export async function enterScore(
       enteredBy: actor.userId,
       updatedAt: new Date(),
     }).onConflictDoUpdate({
+      // Matches the unique key exactly. A conflict target narrower than the
+      // constraint silently updates the wrong row.
       target: [
-        schema.assessmentScores.studentId, schema.assessmentScores.subjectId,
-        schema.assessmentScores.termId, schema.assessmentScores.componentKey,
+        schema.assessmentScores.schoolId,
+        schema.assessmentScores.studentId,
+        schema.assessmentScores.subjectId,
+        schema.assessmentScores.sessionId,
+        schema.assessmentScores.termId,
+        schema.assessmentScores.componentKey,
       ],
       set: {
         score: String(args.score),

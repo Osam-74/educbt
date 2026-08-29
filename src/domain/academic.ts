@@ -188,13 +188,37 @@ export type Rankable = {
   examTotal?: number;
   caTotal?: number;
   complete?: boolean;
+  /**
+   * The final, deterministic tiebreaker.
+   *
+   * When totals and every configured tiebreaker are equal, ordering must still
+   * not depend on the order rows came back from a query — that would let the
+   * same cohort rank differently between two compilations of the same term,
+   * which is precisely the bug the single-pass ranking exists to prevent.
+   *
+   * The admission number is used because it is stable, unique within a school,
+   * and defensible to a parent: "alphabetical by admission number" is a rule a
+   * school can state out loud. Falling back to studentId would work but is an
+   * internal number nobody can explain.
+   */
+  admissionNumber?: string;
 };
+
+/**
+ * A student's ranking outcome.
+ *
+ * `position` is null and `state` is 'not_ranked' when the policy excludes them.
+ * Never 0, never an empty value, never a fabricated position — a report card
+ * showing "0 of 32" reads as last place rather than as not assessed.
+ */
+export type RankState = 'ranked' | 'not_ranked';
 
 export type RankOutcome = {
   studentId: number;
   position: number | null;
-  /** Null when the policy excludes them, so the caller need not guess why. */
-  excluded: boolean;
+  state: RankState;
+  /** Why they were not ranked, for display. */
+  reason?: 'incomplete';
 };
 
 /**
@@ -213,9 +237,14 @@ export function rank(
     ? [...rows]
     : rows.filter((r) => r.complete !== false);
 
-  const excluded = rows
+  const excluded: RankOutcome[] = rows
     .filter((r) => !eligible.includes(r))
-    .map((r) => ({ studentId: r.studentId, position: null, excluded: true }));
+    .map((r) => ({
+      studentId: r.studentId,
+      position: null,
+      state: 'not_ranked' as const,
+      reason: 'incomplete' as const,
+    }));
 
   const sorted = [...eligible].sort((a, b) => {
     if (b.total !== a.total) return b.total - a.total;
@@ -232,7 +261,11 @@ export function rank(
       }
     }
 
-    return 0;
+    // Deterministic final rule. Without this the sort is unstable across
+    // engines and query orders, and two compilations of the same term can
+    // produce different orderings — which matters most for 'ordinal', where
+    // every position is distinct and somebody must genuinely come first.
+    return compareAdmission(a, b);
   });
 
   const out: RankOutcome[] = [];
@@ -253,7 +286,7 @@ export function rank(
     out.push({
       studentId: row.studentId,
       position: policy.tiePolicy === 'ordinal' ? seen : position,
-      excluded: false,
+      state: 'ranked',
     });
 
     previous = row;
@@ -329,6 +362,26 @@ export function isVisibleToFamily(state: ResultState): boolean {
 
 export function isEditable(state: ResultState): boolean {
   return state === 'draft' || state === 'compiled';
+}
+
+/**
+ * Order two students who are otherwise identical.
+ *
+ * Ascending by admission number, with a numeric comparison where both are
+ * numeric so 2026010009 sorts before 2026010010 rather than after it.
+ */
+function compareAdmission(a: Rankable, b: Rankable): number {
+  const left = a.admissionNumber ?? String(a.studentId);
+  const right = b.admissionNumber ?? String(b.studentId);
+
+  const leftNum = Number(left);
+  const rightNum = Number(right);
+
+  if (Number.isFinite(leftNum) && Number.isFinite(rightNum) && leftNum !== rightNum) {
+    return leftNum - rightNum;
+  }
+
+  return left.localeCompare(right);
 }
 
 function round2(n: number): number {

@@ -1,0 +1,220 @@
+/* ════════════════════════════════════════════════════════════════════════════
+   PRINTED DOCUMENTS — report cards, broadsheets, transcripts.
+
+   Every rule below exists because its absence produced a broken document in the
+   WordPress system. They are not style preferences.
+
+   THE FIRST RULE: printing is done by the BROWSER'S OWN PRINT ENGINE.
+
+   The old system rasterised the page with html2canvas and sliced the image at
+   fixed intervals. That approach cannot paginate: it has no idea where a
+   document ends, so report cards started halfway down a page, bled into the
+   next, and left blank leaves behind. Because the output was a picture, table
+   rules and signature lines came out as whatever the rasteriser managed to
+   redraw. There is no configuration that fixes this — the technique is wrong.
+
+   The browser understands the page box and the break rules below, and prints
+   real vector text with real borders.
+   ════════════════════════════════════════════════════════════════════════════ */
+
+@page {
+  size: A4 portrait;
+  margin: 12mm 12mm 14mm;
+}
+
+/* ── Hiding the application chrome ──────────────────────────────────────────
+   By VISIBILITY, not by class name.
+
+   Hiding "everything except .doc" by listing classes means any element added
+   later prints unless somebody remembers to hide it. Making the whole body
+   invisible and the document visible again inverts the default: new chrome is
+   hidden automatically. */
+@media print {
+  /* Chrome is REMOVED FROM FLOW ENTIRELY, not merely made invisible.
+     `visibility: hidden` leaves the element occupying its space, so an app
+     header would still push the document down the first page.
+
+     The document itself is NOT absolutely positioned. Pulling it to the
+     top-left with `position: absolute` looks correct on a one-page preview and
+     then silently breaks pagination: out-of-flow content does not paginate, so
+     a batch of thirty report cards collapses onto a single page. Caught by
+     rendering a three-card batch and counting pages — it printed one. */
+  .no-print,
+  header.portal__bar,
+  nav { display: none !important; }
+
+  body { margin: 0; padding: 0; background: #fff; }
+  .doc { margin: 0; padding: 0; background: #fff; }
+
+  /* Backgrounds and borders must survive. Browsers strip them by default to
+     save ink, which turns a bordered result table into floating text. */
+  .doc, .doc * {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+}
+
+/* ── The sheet ──────────────────────────────────────────────────────────────
+   overflow MUST stay visible.
+
+   `overflow: hidden` on a multi-page block clips everything past the first
+   page — the single most damaging line in the old stylesheet, because on
+   screen it looked fine. */
+.doc__sheet {
+  overflow: visible;
+  padding: 0;
+  background: #fff;
+  color: #111;
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: 10.5pt;
+  line-height: 1.4;
+}
+
+/* Break BEFORE each sheet rather than after it.
+
+   `page-break-after: always` fires after the LAST sheet too, leaving a blank
+   page at the end of every run. Breaking before, and exempting the first,
+   cannot produce a trailing blank. */
+.doc__sheet + .doc__sheet {
+  page-break-before: always;
+  break-before: page;
+}
+
+.doc__sheet {
+  page-break-inside: auto;
+}
+
+/* ── Header ─────────────────────────────────────────────────────────────── */
+.doc__head {
+  text-align: center;
+  border-bottom: 2pt solid #1f4a2f;
+  padding-bottom: 4mm;
+  margin-bottom: 4mm;
+}
+
+.doc__crest { max-height: 18mm; margin-bottom: 2mm; }
+.doc__school { font-size: 16pt; font-weight: bold; margin: 0 0 1mm; color: #1f4a2f; }
+.doc__address { font-size: 9pt; margin: 0 0 2mm; color: #444; }
+.doc__title { font-size: 12pt; font-weight: bold; margin: 2mm 0 0; text-transform: uppercase; letter-spacing: 0.5pt; }
+
+/* ── Candidate details ──────────────────────────────────────────────────────
+   Labels carry a colon and do not wrap. A label column sized as a percentage
+   made "Admission No." break onto a second line while the value beside it sat
+   half empty. */
+.doc__bio { width: 100%; border-collapse: collapse; margin-bottom: 5mm; font-size: 10pt; }
+.doc__bio td { padding: 1.5mm 0; vertical-align: top; }
+.doc__bio .label { color: #555; white-space: nowrap; width: 1%; padding-right: 3mm; }
+.doc__bio td:not(.label) { padding-right: 6mm; }
+
+/* ── Results table ──────────────────────────────────────────────────────────
+   Borders in POINTS, stated literally.
+
+   Widths in mm rounded to zero in some engines and the table printed without
+   rules. Colours held in custom properties were dropped entirely. Both are
+   stated as literal pt values here for that reason. */
+.doc__table { width: 100%; border-collapse: collapse; font-size: 9.5pt; }
+
+.doc__table th,
+.doc__table td {
+  border: 0.75pt solid #333;
+  padding: 1.4mm 2mm;
+  text-align: left;
+}
+
+.doc__table thead th {
+  background: #eef2e8;
+  font-weight: bold;
+  font-size: 8.5pt;
+  text-transform: uppercase;
+  letter-spacing: 0.3pt;
+}
+
+/* Repeat the headings on every page. A results table running to a second page
+   without them is a grid of unlabelled numbers. */
+.doc__table thead { display: table-header-group; }
+.doc__table tfoot { display: table-footer-group; }
+
+/* A row split across a page break is unreadable. */
+.doc__table tr { page-break-inside: avoid; break-inside: avoid; }
+
+.doc__table .num { text-align: center; width: 12mm; }
+.doc__table .grade { text-align: center; width: 14mm; font-weight: bold; }
+
+/* NOT RANKED is stated, never rendered as 0 or left blank. A blank cell reads
+   as an oversight and a zero reads as last place. */
+.not-ranked { font-style: italic; color: #666; font-size: 8.5pt; }
+
+/* ── Summary ────────────────────────────────────────────────────────────── */
+.doc__summary {
+  display: flex;
+  gap: 4mm;
+  margin: 4mm 0;
+  page-break-inside: avoid;
+}
+
+.doc__stat {
+  flex: 1;
+  border: 0.75pt solid #333;
+  padding: 3mm;
+  text-align: center;
+}
+
+.doc__stat b { display: block; font-size: 14pt; }
+.doc__stat span { font-size: 8pt; text-transform: uppercase; letter-spacing: 0.3pt; color: #555; }
+
+/* ── Remarks and signatures ────────────────────────────────────────────────
+   A signature separated from its own line is the break that makes a document
+   look broken rather than merely long. */
+.doc__remarks { margin: 3mm 0; page-break-inside: avoid; }
+.doc__remarks p { margin: 0 0 2.5mm; }
+.doc__remarks .line { border-bottom: 0.5pt solid #666; display: inline-block; min-width: 60mm; }
+
+/* A signature block that spills alone onto a second page is the commonest
+   waste in a school print run — sixteen subjects fitting the table but pushing
+   two rules and a name over the edge. The margin is sized so an ordinary card
+   closes on one sheet; `break-inside: avoid` still keeps the block whole if a
+   longer paper genuinely needs a second page. */
+.doc__signs {
+  display: flex;
+  justify-content: space-between;
+  gap: 10mm;
+  margin-top: 6mm;
+  page-break-inside: avoid;
+  break-inside: avoid;
+}
+
+.doc__sign { flex: 1; text-align: center; }
+.doc__sign .rule { border-top: 0.75pt solid #333; margin-bottom: 1.5mm; }
+.doc__sign .name { font-size: 9pt; font-weight: bold; }
+.doc__sign .role { font-size: 8pt; color: #555; }
+
+.doc__grading-key { font-size: 7.5pt; color: #444; margin-top: 3mm; line-height: 1.45; }
+
+/* ── Broadsheet ─────────────────────────────────────────────────────────────
+   Landscape, because a class of thirty against fifteen subjects does not fit
+   across a portrait page. Declared on its own @page so it does not affect the
+   report cards printed from the same stylesheet. */
+@page broadsheet { size: A4 landscape; margin: 10mm; }
+.doc--broadsheet { page: broadsheet; }
+.doc--broadsheet .doc__table { font-size: 7.5pt; }
+.doc--broadsheet .doc__table th,
+.doc--broadsheet .doc__table td { padding: 1mm 1.2mm; }
+.doc--broadsheet .subject-col { writing-mode: vertical-rl; text-orientation: mixed; white-space: nowrap; }
+
+/* ── Screen preview ─────────────────────────────────────────────────────────
+   The sheet is shown at its printed size on screen, so what a user checks is
+   what comes out of the printer. */
+@media screen {
+  .doc {
+    background: #f3f5ef;
+    padding: 20px;
+  }
+
+  .doc__sheet {
+    width: 210mm;
+    min-height: 297mm;
+    margin: 0 auto 20px;
+    padding: 12mm;
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.15);
+  }
+}

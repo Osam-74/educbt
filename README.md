@@ -635,3 +635,89 @@ npm run test:results    # 23  composition, marking, compilation
 ```
 
 **123 checks. 44 of them need no database at all.**
+
+---
+
+## Printed documents
+
+```bash
+npm run test:print
+```
+
+Requires `weasyprint` (`pip install weasyprint`). It renders report cards at
+several subject counts and **counts the pages**.
+
+This exists because the WordPress printing was never actually printed during
+development. It looked right in a browser preview and produced report cards that
+started halfway down a page, bled into the next, and left blank leaves behind.
+Nobody found out until a school printed a class set.
+
+**Two bugs in this stylesheet were caught by the script, not by review:**
+
+- `position: absolute` on the document container. Out-of-flow content does not
+  paginate, so a batch of three report cards printed on **one page**.
+- The signature block spilling alone onto a nearly empty second page at sixteen
+  subjects — doubling a school's paper for two rules and a name.
+
+Neither was visible in a single-page preview.
+
+```
+PASS  9 subjects                 1 page
+PASS  16 subjects                1 page
+PASS  16 with 2 not ranked       1 page
+PASS  24 subjects                2 pages
+PASS  batch of 3 cards           3 pages
+PASS  batch of 30, 16 subjects  30 pages
+PASS  no blank page between cards
+```
+
+### The rules, and why
+
+- **The browser's own print engine.** Never html2canvas — a rasteriser cannot
+  paginate, and its output is a picture, so table rules and signature lines come
+  out as whatever it manages to redraw.
+- **Chrome is removed from flow**, not merely hidden. `visibility: hidden`
+  leaves the element occupying space, pushing the document down page one.
+- **Break BEFORE each sheet**, never after. `page-break-after: always` fires
+  after the last sheet too, leaving a blank page at the end of every run.
+- **`overflow: visible` on the sheet.** `overflow: hidden` clips everything past
+  page one and looks fine on screen.
+- **Borders in points, stated literally.** Widths in mm rounded to zero in some
+  engines; colours in custom properties were dropped entirely.
+- **`print-color-adjust: exact`**, or browsers strip backgrounds and a bordered
+  table becomes floating text.
+- **`thead { display: table-header-group }`** so headings repeat on page two.
+  Without it, a long table's second page is unlabelled numbers.
+- **`page-break-inside: avoid`** on rows, the summary and the signature block.
+
+### NOT RANKED is stated
+
+A result excluded for incompleteness prints *not ranked* in italics, never `0`
+and never blank. A zero reads as last place; a blank reads as an oversight.
+
+## Fixes in this pass
+
+- **Ordinal ranking is deterministic.** When totals and every configured
+  tiebreaker are equal, order falls back to admission number, compared
+  numerically so `2026010009` precedes `2026010010`. Verified by ranking the
+  same cohort in both input orders and comparing.
+- **NOT RANKED is explicit** — `position: null`, `state: 'not_ranked'`,
+  `reason: 'incomplete'`.
+- **Score upserts carry the full academic context**: school, student, subject,
+  session, term, component. The key previously omitted school and session; a
+  conflict target narrower than the constraint silently updates the wrong row.
+  Proven across all five axes.
+
+### All suites
+
+```bash
+npm run test:domain     # 49  pure rules, NO database
+npm run test:print      #  8  pagination, real PDF rendering
+npm run db:verify       # 12  tenancy, audit, credentials
+npm run test:scope      #  6  role scoping
+npm run test:leak       # 11  answer exposure, scope key
+npm run test:vault      #  8  snapshot and recovery
+npm run test:engine     # 10  attempt lifecycle
+npm run test:authoring  #  9  authoring and review
+npm run test:results    # 23  composition, marking, compilation
+```
