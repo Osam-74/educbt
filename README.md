@@ -667,8 +667,10 @@ npm run test:results    # 23  composition, marking, compilation
 npm run test:print
 ```
 
-Requires `weasyprint` (`pip install weasyprint`). It renders report cards at
-several subject counts and **counts the pages**.
+Requires `weasyprint` — pinned, because the rendered page count is what the
+suite asserts: `pip install -r scripts/requirements-print.txt`
+(WeasyPrint 69.0, pydyf 0.12.1). It renders report cards at several subject
+counts and **counts the pages**.
 
 This exists because the WordPress printing was never actually printed during
 development. It looked right in a browser preview and produced report cards that
@@ -681,8 +683,16 @@ Nobody found out until a school printed a class set.
   paginate, so a batch of three report cards printed on **one page**.
 - The signature block spilling alone onto a nearly empty second page at sixteen
   subjects — doubling a school's paper for two rules and a name.
+- Long subject names tripling every row's height. Auto table layout gave the
+  Subject column ~292px; a realistic 92-character name wrapped to three lines,
+  so twelve rows pushed the tail block onto a nearly empty second page. Fixed
+  with a deliberate fixed-column layout: the number columns (oversized for
+  "1/32") fund an 88mm Subject column, long names wrap to at most two
+  readable lines, and single-line rows — the honest 19-subjects-one-page /
+  20-subjects-two-pages boundary — do not move by a single pixel. The
+  broadsheet keeps its own geometry untouched.
 
-Neither was visible in a single-page preview.
+None of these were visible in a single-page preview.
 
 ```
 PASS  9 subjects                 1 page
@@ -750,8 +760,7 @@ npm run test:practice   # 20  practice area and the formal-feedback guard
 
 8 database suites, **156 checks against live Postgres 16**.
 
-npm run test:print      # 25 checks, real PDF rendering
-                          2 known print regressions tracked separately
+npm run test:print      # 24 checks, real PDF rendering
 ```
 
 ---
@@ -770,7 +779,7 @@ cell reads as an oversight.
 ### Print regression suite — permanent
 
 ```bash
-npm run test:print     # 25 checks, real PDF rendering
+npm run test:print     # 24 checks, real PDF rendering
 ```
 
 Boundaries, long content, NOT RANKED, realistic class batches, and the

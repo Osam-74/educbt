@@ -137,8 +137,43 @@
 /* A row split across a page break is unreadable. */
 .doc__table tr { page-break-inside: avoid; break-inside: avoid; }
 
+/* ── Column widths, fixed deliberately ────────────────────────────────────
+   Root cause of the long-subject spill (measured on WeasyPrint 69, CSS px):
+
+   auto table layout gave the Subject column ~292px and the remark column
+   ~63px. A realistic 92-character subject name wrapped to THREE lines in
+   that column, so every row stood 64.8px instead of 29.4px — and twelve
+   such rows pushed the final row plus the summary/remarks/signature tail
+   onto a nearly empty second page.
+
+   The page cannot feed a wide Subject column AND a wide remark column from
+   the numeric columns at their old sizes, so the number columns (12mm each,
+   holding values like "1/32" with room to spare) fund the difference.
+
+   With fixed layout the Subject column is 88mm: long names wrap to at most
+   two readable lines instead of three. Single-line rows are governed by the
+   other cells' line-height, so their height does not move, and the honest
+   boundary — nineteen subjects on one page, twenty on two — is untouched.
+   Scoped away from the broadsheet, whose vertical subject column has its
+   own geometry. */
 .doc__table .num { text-align: center; width: 12mm; }
 .doc__table .grade { text-align: center; width: 14mm; font-weight: bold; }
+
+.doc:not(.doc--broadsheet) .doc__table { table-layout: fixed; }
+/* The number columns are generous for their content ("1/32" sits in 12mm);
+   in PORTRAIT they fund the wide Subject column. The broadsheet keeps the
+   original 12mm/14mm above, so its landscape geometry does not move. */
+.doc:not(.doc--broadsheet) .doc__table .num { width: 9.5mm; }
+.doc:not(.doc--broadsheet) .doc__table .grade { width: 12mm; }
+.doc:not(.doc--broadsheet) .doc__table th:first-child,
+.doc:not(.doc--broadsheet) .doc__table td:first-child {
+  width: 88mm;
+  /* Wrapped names sit a touch tighter than the sheet's 1.4; a one-line
+     subject cell is shorter than the row's other cells, so single-line rows
+     keep exactly their old height. */
+  line-height: 1.3;
+  overflow-wrap: break-word;
+}
 
 /* NOT RANKED is stated, never rendered as 0 or left blank. A blank cell reads
    as an oversight and a zero reads as last place. */

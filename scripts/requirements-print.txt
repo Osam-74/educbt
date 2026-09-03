@@ -1,0 +1,7 @@
+# Pinned print-rendering environment for `npm run test:print`.
+#
+# The suite asserts rendered PAGE COUNTS, so its verdict is only meaningful
+# against the WeasyPrint version it was measured with. WeasyPrint 69.0 is the
+# current, supported release — this is reproducibility, not a rollback.
+weasyprint==69.0
+pydyf==0.12.1
