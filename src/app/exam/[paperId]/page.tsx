@@ -14,6 +14,9 @@ const REASON: Record<string, string> = {
   not_registered: 'You are not registered for this subject, so you cannot sit this paper.',
   already_submitted: 'You have already submitted this paper.',
   no_questions: 'This paper has no questions yet. Tell your teacher.',
+  not_scheduled: 'This paper has not been given a timetable slot yet.',
+  window_not_open: 'This examination has not started yet. Check your timetable for the day and time.',
+  window_closed: 'This examination has closed. It can no longer be started.',
 };
 
 export default async function ExamPage({

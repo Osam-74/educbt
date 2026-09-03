@@ -74,6 +74,7 @@ export default async function PortalLayout({ children }: { children: React.React
               not what protects it. */}
           {['principal', 'vice_principal', 'exam_officer'].includes(actor.role) ? (
             <>
+              <Link href="/portal/exams">Exam office</Link>
               <Link href="/portal/review">Review</Link>
               <Link href="/portal/broadsheet">Broadsheet</Link>
               <Link href="/portal/staff">Staff</Link>

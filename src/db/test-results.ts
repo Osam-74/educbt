@@ -14,6 +14,10 @@ import * as att from './schema/attempts';
 import * as res from './schema/results';
 import { gradeFor, rank, DEFAULT_RANKING } from '@/domain/academic';
 import { canTransition } from '@/domain/academic';
+import {
+  createSeries, questionAvailability, composeSeries, scheduleSeries, publishSeries,
+} from '@/lib/exam/compose';
+import type { Actor } from '@/lib/session';
 
 const schema = { ...core, ...people, ...qb, ...att, ...res };
 let failures = 0;
@@ -161,6 +165,187 @@ async function main() {
       'compiled cannot skip review and publish directly',
       !canTransition('compiled', 'published'),
     );
+
+    // ── The Exam Office: create, check, compose, schedule, publish ──────────
+    // A PRIVATE school, so these checks read exactly what the services do and
+    // are never polluted by fixtures left behind by other suites.
+    // Rerunnable: a previous run's copy is removed (cascades to its fixtures).
+    await db.delete(core.schools).where(eq(core.schools.code, 'EXAMOFF1'));
+
+    const [testSchool] = await db.insert(core.schools).values({
+      name: 'Exam Office Test School', code: 'EXAMOFF1', status: 'active',
+    }).returning();
+    const officeSchoolId = Number(testSchool!.id);
+
+    const [officeSession] = await db.insert(core.academicSessions).values({
+      schoolId: officeSchoolId, title: '2026/2027', isCurrent: true,
+    }).returning();
+    const [officeTerm] = await db.insert(core.terms).values({
+      schoolId: officeSchoolId, sessionId: Number(officeSession!.id),
+      title: 'First Term', position: 1, isCurrent: true,
+    }).returning();
+    const [officeLevel] = await db.insert(core.classLevels).values({
+      schoolId: officeSchoolId, name: 'SS1', stage: 'senior', levelOrder: 1,
+    }).returning();
+    const [mathSubject] = await db.insert(core.subjects).values({
+      schoolId: officeSchoolId, name: 'Mathematics', code: 'MTH', isCompulsory: true,
+    }).returning();
+    const [englishSubject] = await db.insert(core.subjects).values({
+      schoolId: officeSchoolId, name: 'English Language', code: 'ENG', isCompulsory: true,
+    }).returning();
+
+    const officer: Actor = {
+      userId: 1, schoolId: officeSchoolId, role: 'exam_officer',
+      loginId: 'test', staffId: null, studentId: null,
+    };
+
+    // Validation refuses a nonsense question window.
+    let badWindowRejected = false;
+    try {
+      await createSeries(officer, {
+        title: 'Bad window', seriesType: 'ca_test',
+        sessionId: Number(officeSession!.id), termId: Number(officeTerm!.id),
+        questionsPerStudent: 2, durationMinutes: 30,
+        questionsOpenFrom: '2030-01-10', questionsOpenTo: '2030-01-01',
+      });
+    } catch { badWindowRejected = true; }
+    check('a question window that closes before it opens is refused', badWindowRejected);
+
+    const officeSeries = await createSeries(officer, {
+      title: 'First Term Examination', seriesType: 'examination',
+      sessionId: Number(officeSession!.id), termId: Number(officeTerm!.id),
+      questionsPerStudent: 2, durationMinutes: 30,
+    });
+    check('an examination is created as a draft', officeSeries.status === 'draft');
+
+    const emptyBank = await questionAvailability(officer, Number(officeSeries.id));
+    check('an examination with no approved questions shows nothing available', emptyBank.rows.length === 0);
+
+    // Publishing with no papers at all is refused.
+    let emptyPublishBlocked = false;
+    try {
+      await publishSeries(officer, Number(officeSeries.id));
+    } catch { emptyPublishBlocked = true; }
+    check('publishing an examination with no papers is refused', emptyPublishBlocked);
+
+    // An approved terminal objective set with enough questions for Mathematics,
+    // and one with too few for English.
+    async function seededSet(subjectId: number, n: number) {
+      const [s] = await db.insert(qb.questionSets).values({
+        schoolId: officeSchoolId, sessionId: Number(officeSession!.id),
+        termId: Number(officeTerm!.id), subjectId, levelId: Number(officeLevel!.id),
+        examType: 'objective', seriesId: 0, status: 'approved', minRequired: 2,
+      }).returning();
+
+      for (let i = 0; i < n; i++) {
+        const [q] = await db.insert(qb.questions).values({
+          schoolId: officeSchoolId, questionSetId: Number(s!.id),
+          questionText: `Fixture question ${i + 1}`,
+          approvalStatus: 'approved', status: 'active',
+        }).returning();
+        await db.insert(qb.questionOptions).values(
+          ['A', 'B', 'C', 'D'].map((k, j) => ({
+            schoolId: officeSchoolId, questionId: Number(q!.id), optionKey: k,
+            optionText: `Option ${k}`, isCorrect: j === 0, sortOrder: j,
+          })),
+        );
+      }
+    }
+
+    await seededSet(Number(mathSubject!.id), 3);
+    await seededSet(Number(englishSubject!.id), 1);
+
+    const afterBank = await questionAvailability(officer, Number(officeSeries.id));
+    const mathRow = afterBank.rows.find((r) => r.subjectName === 'Mathematics');
+    const engRow = afterBank.rows.find((r) => r.subjectName === 'English Language');
+    check(
+      'availability reports Ready and Not enough questions per subject',
+      Boolean(mathRow?.ready && mathRow.available === 3 && engRow && !engRow.ready && engRow.available === 1),
+    );
+
+    const composed = await composeSeries(officer, Number(officeSeries.id));
+    check(
+      'the short subject is skipped and named, the ready one composed',
+      composed.created === 1 && composed.short.length === 1,
+      composed.short.join(', '),
+    );
+
+    // Idempotent: the office WILL press this twice.
+    const recomposed = await composeSeries(officer, Number(officeSeries.id));
+    check('composing twice does not duplicate the paper', recomposed.created === 0);
+
+    // Publishing with unscheduled papers is refused.
+    let unscheduledBlocked = false;
+    try {
+      await publishSeries(officer, Number(officeSeries.id));
+    } catch { unscheduledBlocked = true; }
+    check('publishing before scheduling is refused', unscheduledBlocked);
+
+    // Scheduling: next Monday, so weekends never empty the window.
+    const monday = new Date();
+    monday.setUTCDate(monday.getUTCDate() + ((8 - monday.getUTCDay()) % 7 || 7));
+
+    const scheduled = await scheduleSeries(
+      officer, Number(officeSeries.id), monday.toISOString().slice(0, 10), null, 2,
+    );
+    check('scheduling places the paper on a school day', scheduled.scheduled === 1 && scheduled.unplaced.length === 0);
+
+    const [windowRow] = await db.select().from(qb.examSeries)
+      .where(eq(qb.examSeries.id, Number(officeSeries.id))).limit(1);
+    check(
+      'the sitting window is stored on the series for the engine to enforce',
+      Boolean(windowRow!.sittingOpensAt && windowRow!.sittingClosesAt),
+    );
+
+    const published = await publishSeries(officer, Number(officeSeries.id));
+    check('publishing after scheduling succeeds', published === 1);
+
+    let republishBlocked = false;
+    try {
+      await publishSeries(officer, Number(officeSeries.id));
+    } catch { republishBlocked = true; }
+    check('publishing an already-published examination is refused', republishBlocked);
+
+    // ── Practice: no timetable, always available ──────────────────────────────
+    const practice = await createSeries(officer, {
+      title: 'Revision practice', seriesType: 'practice',
+      sessionId: Number(officeSession!.id), termId: Number(officeTerm!.id),
+      questionsPerStudent: 2, durationMinutes: 30,
+    });
+
+    // Practice questions live IN the series, not the terminal bank.
+    const [pset] = await db.insert(qb.questionSets).values({
+      schoolId: officeSchoolId, sessionId: Number(officeSession!.id),
+      termId: Number(officeTerm!.id), subjectId: Number(mathSubject!.id),
+      levelId: Number(officeLevel!.id),
+      examType: 'objective', seriesId: Number(practice.id), status: 'approved', minRequired: 2,
+    }).returning();
+
+    for (let i = 0; i < 2; i++) {
+      const [q] = await db.insert(qb.questions).values({
+        schoolId: officeSchoolId, questionSetId: Number(pset!.id),
+        questionText: `Practice question ${i + 1}`,
+        approvalStatus: 'approved', status: 'active',
+      }).returning();
+      await db.insert(qb.questionOptions).values(
+        ['A', 'B'].map((k, j) => ({
+          schoolId: officeSchoolId, questionId: Number(q!.id), optionKey: k,
+          optionText: `Option ${k}`, isCorrect: j === 0, sortOrder: j,
+        })),
+      );
+    }
+
+    const practiceComposed = await composeSeries(officer, Number(practice.id));
+    check('a practice series composes from its own sets', practiceComposed.created === 1);
+
+    let practiceSchedulingRefused = false;
+    try {
+      await scheduleSeries(officer, Number(practice.id), monday.toISOString().slice(0, 10), null, 2);
+    } catch { practiceSchedulingRefused = true; }
+    check('scheduling a practice series is refused', practiceSchedulingRefused);
+
+    const practicePublished = await publishSeries(officer, Number(practice.id));
+    check('a practice series publishes without a timetable', practicePublished === 1);
   } finally {
     await client.end();
   }

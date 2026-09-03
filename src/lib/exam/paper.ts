@@ -62,7 +62,25 @@ export async function paperForCandidate(
 ): Promise<PublicQuestion[]> {
   if (questionIds.length === 0) return [];
 
-  return forSchool(schoolId, async (tx) => {
+  return forSchool(schoolId, (tx) => paperForCandidateTx(tx, schoolId, questionIds));
+}
+
+/**
+ * The same paper, on a transaction the CALLER owns.
+ *
+ * `startAttempt` runs inside a forSchool transaction, and the shared pool holds
+ * exactly one connection — calling paperForCandidate() from there waits for a
+ * second connection that will never come, hanging the student at the start
+ * button forever. Passing the caller's transaction in is the only safe shape.
+ */
+export async function paperForCandidateTx(
+  tx: Parameters<Parameters<typeof forSchool>[1]>[0],
+  schoolId: number,
+  questionIds: number[],
+): Promise<PublicQuestion[]> {
+  if (questionIds.length === 0) return [];
+
+  {
     const rows = await tx
       .select({
         id: schema.questions.id,
@@ -137,7 +155,7 @@ export async function paperForCandidate(
       passage: r.passageId ? passageById.get(Number(r.passageId)) ?? null : null,
       options: optionsByQuestion.get(Number(r.id)) ?? [],
     }));
-  });
+  }
 }
 
 /**

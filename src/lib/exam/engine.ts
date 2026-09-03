@@ -23,11 +23,14 @@
 
 import { and, eq, sql, inArray, lt } from 'drizzle-orm';
 import { forSchool, schema } from '@/db';
-import { paperForCandidate, type PublicQuestion } from './paper';
+import { paperForCandidateTx, type PublicQuestion } from './paper';
 
 export type StartResult =
   | { ok: true; attemptId: number; expiresAt: Date; questions: PublicQuestion[]; resumed: boolean }
-  | { ok: false; reason: 'not_published' | 'not_registered' | 'already_submitted' | 'no_questions' };
+  | { ok: false; reason:
+    | 'not_published' | 'not_registered' | 'already_submitted' | 'no_questions'
+    // Sitting-window refusals, formal examinations only.
+    | 'not_scheduled' | 'window_not_open' | 'window_closed' };
 
 /**
  * Start or resume.
@@ -81,9 +84,42 @@ export async function startAttempt(
         // The SAME order as before. Recomputing the shuffle would reorder the
         // paper mid-examination, which is indistinguishable from cheating
         // prevention gone wrong.
-        questions: await paperForCandidate(schoolId, existing.questionOrder),
+        // The tx this callback already owns — paperForCandidate() here would
+        // open a second forSchool on a one-connection pool and never return.
+        questions: await paperForCandidateTx(tx, schoolId, existing.questionOrder),
         resumed: true,
       };
+    }
+
+    /**
+     * THE SITTING WINDOW, enforced by the server for scheduled examinations.
+     *
+     * The browser's clock is not authority: a candidate arriving before the
+     * window opens, or after it closes, is refused here. A PRACTICE paper is
+     * exempt — practice is always available. The check runs only for a NEW
+     * attempt; a resume above has already passed it, so a candidate whose
+     * attempt is still open is never locked out mid-examination.
+     */
+    const [series] = await tx.select({
+      t: schema.examSeries.seriesType,
+      opensAt: schema.examSeries.sittingOpensAt,
+      closesAt: schema.examSeries.sittingClosesAt,
+    })
+      .from(schema.examSeries)
+      .where(eq(schema.examSeries.id, paper.seriesId))
+      .limit(1);
+
+    const formal = series?.t === 'examination' || series?.t === 'ca_test';
+
+    if (formal) {
+      if (!series?.opensAt || !series?.closesAt) {
+        return { ok: false, reason: 'not_scheduled' };
+      }
+
+      const now = Date.now();
+
+      if (now < series.opensAt.getTime()) return { ok: false, reason: 'window_not_open' };
+      if (now > series.closesAt.getTime()) return { ok: false, reason: 'window_closed' };
     }
 
     const pool = await tx.select({ questionId: schema.paperQuestions.questionId })
@@ -114,7 +150,7 @@ export async function startAttempt(
       ok: true,
       attemptId: Number(attempt!.id),
       expiresAt,
-      questions: await paperForCandidate(schoolId, chosen),
+      questions: await paperForCandidateTx(tx, schoolId, chosen),
       resumed: false,
     };
   });

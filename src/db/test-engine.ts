@@ -15,6 +15,7 @@ import * as core from './schema/core';
 import * as people from './schema/people';
 import * as qb from './schema/questions';
 import * as att from './schema/attempts';
+import { startAttempt } from '@/lib/exam/engine';
 
 const schema = { ...core, ...people, ...qb, ...att };
 let failures = 0;
@@ -166,6 +167,91 @@ async function main() {
     // ── A closed attempt stops accepting events ──────────────────────────────
     const closed = counts!.status !== 'in_progress';
     check('a submitted attempt no longer accepts integrity events', closed);
+    // ── The sitting window is enforced by the server ────────────────────────
+    // Fixtures through the REAL service: the checks must fail if startAttempt
+    // ever stops consulting the series' sitting window.
+    const H = 3600_000;
+    const subj = Number(set!.subjectId);
+
+    async function windowPaper(seriesRowId: number, pool: typeof qs) {
+      const [paper] = await db.insert(att.examPapers).values({
+        schoolId, seriesId: seriesRowId, subjectId: subj,
+        durationSeconds: 3600, questionCount: pool.length, status: 'published',
+      }).returning();
+
+      await db.insert(att.paperQuestions).values(
+        pool.map((q, i) => ({ schoolId, paperId: Number(paper!.id), questionId: Number(q.id), sortOrder: i })),
+      );
+      return Number(paper!.id);
+    }
+
+    // (2) A formal paper DURING its sitting window starts.
+    const [inWindow] = await db.insert(qb.examSeries).values({
+      schoolId, sessionId: Number(session!.id), termId: Number(term!.id),
+      title: 'Window Test - In Window', seriesType: 'examination', status: 'published',
+      sittingOpensAt: new Date(Date.now() - H), sittingClosesAt: new Date(Date.now() + H),
+    }).returning();
+
+    const inWindowPaper = await windowPaper(Number(inWindow!.id), qs);
+    const during = await startAttempt(schoolId, inWindowPaper, Number(student!.id));
+    check('formal paper inside the sitting window starts', during.ok, during.ok ? '' : String(during.reason));
+    if (!inWindow) throw new Error('Window fixture missing.');
+
+    // (5) Resume keeps working — and keeps the SAME attempt — even after the
+    // window has closed. One attempt per student per paper is untouched.
+    await db.update(qb.examSeries)
+      .set({ sittingClosesAt: new Date(Date.now() - 60_000) })
+      .where(eq(qb.examSeries.id, Number(inWindow!.id)));
+
+    const resumedLate = await startAttempt(schoolId, inWindowPaper, Number(student!.id));
+    check(
+      'an open attempt resumes after the window closes (resume, never restart)',
+      resumedLate.ok && 'resumed' in resumedLate && resumedLate.resumed
+        && resumedLate.attemptId === (during.ok ? during.attemptId : -1),
+    );
+
+    // (1) A formal paper BEFORE its window opens is refused.
+    const [notYet] = await db.insert(qb.examSeries).values({
+      schoolId, sessionId: Number(session!.id), termId: Number(term!.id),
+      title: 'Window Test - Not Yet', seriesType: 'examination', status: 'published',
+      sittingOpensAt: new Date(Date.now() + 2 * H), sittingClosesAt: new Date(Date.now() + 3 * H),
+    }).returning();
+
+    const before = await startAttempt(schoolId, await windowPaper(Number(notYet!.id), qs), Number(student!.id));
+    check('formal paper before the window opens is refused', !before.ok && before.reason === 'window_not_open',
+      before.ok ? 'started anyway' : String(before.reason));
+
+    // (3) A formal paper AFTER its window closes is refused.
+    const [over] = await db.insert(qb.examSeries).values({
+      schoolId, sessionId: Number(session!.id), termId: Number(term!.id),
+      title: 'Window Test - Over', seriesType: 'examination', status: 'published',
+      sittingOpensAt: new Date(Date.now() - 3 * H), sittingClosesAt: new Date(Date.now() - 2 * H),
+    }).returning();
+
+    const after = await startAttempt(schoolId, await windowPaper(Number(over!.id), qs), Number(student!.id));
+    check('formal paper after the window closes is refused', !after.ok && after.reason === 'window_closed',
+      after.ok ? 'started anyway' : String(after.reason));
+
+    // A formal paper published without ever being scheduled is refused too.
+    const [unscheduled] = await db.insert(qb.examSeries).values({
+      schoolId, sessionId: Number(session!.id), termId: Number(term!.id),
+      title: 'Window Test - Unscheduled', seriesType: 'examination', status: 'published',
+    }).returning();
+
+    const noWindow = await startAttempt(schoolId, await windowPaper(Number(unscheduled!.id), qs), Number(student!.id));
+    check('formal paper with no sitting window is refused', !noWindow.ok && noWindow.reason === 'not_scheduled',
+      noWindow.ok ? 'started anyway' : String(noWindow.reason));
+
+    // (4) A PRACTICE paper ignores the window entirely — always available.
+    const [practice] = await db.insert(qb.examSeries).values({
+      schoolId, sessionId: Number(session!.id), termId: Number(term!.id),
+      title: 'Window Test - Practice', seriesType: 'practice', status: 'published',
+      // No window at all — and none needed.
+    }).returning();
+
+    const practiceStart = await startAttempt(schoolId, await windowPaper(Number(practice!.id), qs), Number(student!.id));
+    check('practice paper outside any window still starts', practiceStart.ok,
+      practiceStart.ok ? '' : String(practiceStart.reason));
   } finally {
     await client.end();
   }

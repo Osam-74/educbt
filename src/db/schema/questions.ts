@@ -88,6 +88,17 @@ export const examSeries = pgTable('exam_series', {
   questionsOpenFrom: timestamp('questions_open_from', { withTimezone: true }),
   questionsOpenTo: timestamp('questions_open_to', { withTimezone: true }),
 
+  /**
+   * THE SITTING WINDOW — when candidates may sit papers in this series.
+   *
+   * Set by the scheduling step, not at creation: a school knows its sitting
+   * dates only once it has papers to place. `startAttempt` enforces it for
+   * examination and CA series; practice papers are exempt because practice
+   * is always available.
+   */
+  sittingOpensAt: timestamp('sitting_opens_at', { withTimezone: true }),
+  sittingClosesAt: timestamp('sitting_closes_at', { withTimezone: true }),
+
   questionsPerStudent: integer('questions_per_student').default(0).notNull(),
   durationMinutes: integer('duration_minutes').default(0).notNull(),
 
