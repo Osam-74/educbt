@@ -14,6 +14,7 @@
  */
 
 import postgres from 'postgres';
+import { drizzle } from 'drizzle-orm/postgres-js';
 import { eq, inArray } from 'drizzle-orm';
 import { hash } from '@node-rs/argon2';
 import * as core from './schema/core';
@@ -33,31 +34,39 @@ function check(name: string, ok: boolean, detail = '') {
 async function main() {
   const client = postgres(process.env.DATABASE_URL_UNPOOLED!, { max: 1 });
 
+    // Fixture writes run on the OWNER connection: creating a school is a
+    // platform action that the schools RLS rightly forbids to the app role,
+    // and school-scoped inserts happen before any tenant GUC exists. The
+    // behaviour under test (startAttempt, saveAnswer, practiceFeedback, …)
+    // still runs through the real app-role services — that is where RLS is
+    // being proven. Same split as test-auth: fixture via owner, checks via app.
+    const odb = drizzle(client);
+
   try {
     // ── A private world, cleaned of any previous run ──────────────────────────
-    await db.delete(core.schools).where(eq(core.schools.code, 'PRACTICE01'));
-    await db.delete(core.schools).where(eq(core.schools.code, 'PRACTICE02'));
+    await odb.delete(core.schools).where(eq(core.schools.code, 'PRACTICE01'));
+    await odb.delete(core.schools).where(eq(core.schools.code, 'PRACTICE02'));
 
-    const [school] = await db.insert(core.schools).values({
+    const [school] = await odb.insert(core.schools).values({
       name: 'Practice Test School', code: 'PRACTICE01', status: 'active',
     }).returning();
     const schoolId = Number(school!.id);
 
-    const [other] = await db.insert(core.schools).values({
+    const [other] = await odb.insert(core.schools).values({
       name: 'Other School', code: 'PRACTICE02', status: 'active',
     }).returning();
     const otherSchoolId = Number(other!.id);
 
-    const [session] = await db.insert(core.academicSessions).values({
+    const [session] = await odb.insert(core.academicSessions).values({
       schoolId, title: '2026/2027', isCurrent: true,
     }).returning();
-    const [term] = await db.insert(core.terms).values({
+    const [term] = await odb.insert(core.terms).values({
       schoolId, sessionId: Number(session!.id), title: 'First Term', position: 1, isCurrent: true,
     }).returning();
-    const [level] = await db.insert(core.classLevels).values({
+    const [level] = await odb.insert(core.classLevels).values({
       schoolId, name: 'SS1', stage: 'senior', levelOrder: 1,
     }).returning();
-    const [subject] = await db.insert(core.subjects).values({
+    const [subject] = await odb.insert(core.subjects).values({
       schoolId, name: 'Mathematics', code: 'MTH', isCompulsory: true,
     }).returning();
 
@@ -65,21 +74,21 @@ async function main() {
     // every school and a planted non-argon2id hash would rightly fail it.
     const passwordHash = await hash('practice-fixture-password');
 
-    const [userA] = await db.insert(people.users).values({
+    const [userA] = await odb.insert(people.users).values({
       schoolId, loginId: 'PRAC-0001', passwordHash,
       role: 'student', status: 'active',
     }).returning();
-    const [userB] = await db.insert(people.users).values({
+    const [userB] = await odb.insert(people.users).values({
       schoolId, loginId: 'PRAC-0002', passwordHash,
       role: 'student', status: 'active',
     }).returning();
 
-    const [studentA] = await db.insert(people.students).values({
+    const [studentA] = await odb.insert(people.students).values({
       schoolId, userId: Number(userA!.id), admissionNumber: 'PRAC-0001',
       firstName: 'Ada', lastName: 'Test',
       status: 'active',
     }).returning();
-    const [studentB] = await db.insert(people.students).values({
+    const [studentB] = await odb.insert(people.students).values({
       schoolId, userId: Number(userB!.id), admissionNumber: 'PRAC-0002',
       firstName: 'Bayo', lastName: 'Test',
       status: 'active',
@@ -88,7 +97,7 @@ async function main() {
     // Both students are registered for the subject — registration decides
     // what appears, and student B is registered yet must still be refused.
     for (const s of [studentA, studentB]) {
-      await db.insert(people.studentSubjects).values({
+      await odb.insert(people.studentSubjects).values({
         schoolId, studentId: Number(s!.id), subjectId: Number(subject!.id),
         sessionId: Number(session!.id),
       });
@@ -98,7 +107,7 @@ async function main() {
     async function seededQuestions(setId: number, n: number, prefix: string) {
       const ids: number[] = [];
       for (let i = 0; i < n; i++) {
-        const [q] = await db.insert(qb.questions).values({
+        const [q] = await odb.insert(qb.questions).values({
           schoolId, questionSetId: setId,
           questionText: `${prefix} question ${i + 1}`,
           marks: '1',
@@ -106,7 +115,7 @@ async function main() {
           approvalStatus: 'approved', status: 'active',
         }).returning();
         ids.push(Number(q!.id));
-        await db.insert(qb.questionOptions).values(
+        await odb.insert(qb.questionOptions).values(
           ['A', 'B', 'C', 'D'].map((k, j) => ({
             schoolId, questionId: Number(q!.id), optionKey: k,
             optionText: `${prefix} option ${i + 1}${k}`,
@@ -119,7 +128,7 @@ async function main() {
 
     async function seriesWithPaper(kind: 'practice' | 'examination', prefix: string) {
       const H = 3600_000;
-      const [series] = await db.insert(qb.examSeries).values({
+      const [series] = await odb.insert(qb.examSeries).values({
         schoolId, sessionId: Number(session!.id), termId: Number(term!.id),
         title: `${prefix} series`, seriesType: kind,
         status: 'published',
@@ -129,7 +138,7 @@ async function main() {
         } : {}),
       }).returning();
 
-      const [set] = await db.insert(qb.questionSets).values({
+      const [set] = await odb.insert(qb.questionSets).values({
         schoolId, sessionId: Number(session!.id), termId: Number(term!.id),
         subjectId: Number(subject!.id), levelId: Number(level!.id),
         examType: 'objective', seriesId: Number(series!.id),
@@ -138,12 +147,12 @@ async function main() {
 
       const questionIds = await seededQuestions(Number(set!.id), 3, prefix);
 
-      const [paper] = await db.insert(att.examPapers).values({
+      const [paper] = await odb.insert(att.examPapers).values({
         schoolId, seriesId: Number(series!.id), subjectId: Number(subject!.id),
         durationSeconds: 1800, questionCount: questionIds.length, status: 'published',
       }).returning();
 
-      await db.insert(att.paperQuestions).values(
+      await odb.insert(att.paperQuestions).values(
         questionIds.map((qid, i) => ({
           schoolId, paperId: Number(paper!.id), questionId: qid, sortOrder: i,
         })),
@@ -158,7 +167,7 @@ async function main() {
     // Options, so answers can be exact.
     const correctByQuestion = new Map<number, number>();
     const wrongByQuestion = new Map<number, number>();
-    const allOptions = await db.select({
+    const allOptions = await odb.select({
       id: qb.questionOptions.id, questionId: qb.questionOptions.questionId, isCorrect: qb.questionOptions.isCorrect,
     }).from(qb.questionOptions)
       .where(inArray(qb.questionOptions.questionId, [...practice.questionIds, ...formal.questionIds]));
@@ -297,8 +306,8 @@ async function main() {
     // (users, students, attempts) are removed, so this suite leaves no
     // durable records and a rerun starts from nothing.
     try {
-      await db.delete(core.schools).where(eq(core.schools.code, 'PRACTICE01'));
-      await db.delete(core.schools).where(eq(core.schools.code, 'PRACTICE02'));
+      await odb.delete(core.schools).where(eq(core.schools.code, 'PRACTICE01'));
+      await odb.delete(core.schools).where(eq(core.schools.code, 'PRACTICE02'));
     } catch {
       // Cleanup is best-effort; the next run's leading delete is the backstop.
     }

@@ -207,7 +207,7 @@ DATABASE_URL_UNPOOLED=postgres://owner@...     # fixtures
 DATABASE_URL_APP=postgres://educbt_app@...     # the role RLS applies to
 ```
 
-Thirteen checks, all verified against live Postgres 16:
+Fourteen checks, all verified against live Postgres 16:
 
 ```
 PASS  app role is not a superuser
@@ -319,10 +319,10 @@ proves nothing.
 ### All suites
 
 ```bash
-npm run db:verify    # 12 — tenancy, audit, credentials
+npm run db:verify    # 14 — tenancy, audit, credentials, RLS coverage
 npm run test:scope   #  6 — role scoping within a tenant
 npm run test:leak    # 11 — answer exposure, scope key
-npm run test:auth    # 23 — credentials, lockout, sessions, tenant scoping
+npm run test:auth    # 25 — credentials, lockout, sessions, school suspension
 ```
 
 ---
@@ -384,10 +384,10 @@ Two rules the WordPress version got wrong:
 ### All suites
 
 ```bash
-npm run db:verify    # 12  tenancy, audit, credentials
+npm run db:verify    # 14  tenancy, audit, credentials, RLS coverage
 npm run test:scope   #  6  role scoping within a tenant
 npm run test:leak    # 11  answer exposure, scope key
-npm run test:auth    # 23  credentials, lockout, sessions, tenant scoping
+npm run test:auth    # 25  credentials, lockout, sessions, school suspension
 npm run test:vault   #  8  snapshot and recovery
 ```
 
@@ -449,7 +449,7 @@ PASS  a submitted attempt no longer accepts integrity events
 ### All suites
 
 ```bash
-npm run db:verify    # 12  tenancy, audit, credentials
+npm run db:verify    # 14  tenancy, audit, credentials, RLS coverage
 npm run test:scope   #  6  role scoping
 npm run test:leak    # 11  answer exposure, scope key
 npm run test:vault   #  8  snapshot and recovery
@@ -491,7 +491,7 @@ PASS  approval leaves a snapshot behind
 ### All suites
 
 ```bash
-npm run db:verify       # 12  tenancy, audit, credentials
+npm run db:verify       # 14  tenancy, audit, credentials, RLS coverage
 npm run test:scope      #  6  role scoping
 npm run test:leak       # 11  answer exposure, scope key
 npm run test:vault      #  8  snapshot and recovery
@@ -615,7 +615,7 @@ PASS  one result per student per subject per term
 ### All suites
 
 ```bash
-npm run db:verify       # 12  tenancy, audit, credentials
+npm run db:verify       # 14  tenancy, audit, credentials, RLS coverage
 npm run test:scope      #  6  role scoping
 npm run test:leak       # 11  answer exposure, scope key
 npm run test:vault      #  8  snapshot and recovery
@@ -688,7 +688,7 @@ DRAFT → COMPILED → REVIEWED → PUBLISHED → LOCKED
 
 ```bash
 npm run test:domain     # 44  pure rules, NO database
-npm run db:verify       # 12  tenancy, audit, credentials
+npm run db:verify       # 14  tenancy, audit, credentials, RLS coverage
 npm run test:scope      #  6  role scoping
 npm run test:leak       # 11  answer exposure, scope key
 npm run test:vault      #  8  snapshot and recovery
@@ -800,12 +800,13 @@ npm run test:engine     # 16  attempt lifecycle, sitting windows
 npm run test:authoring  #  9  authoring and review
 npm run test:results    # 38  marking, compilation, exam-office services
 npm run test:practice   # 20  practice area and the formal-feedback guard
+npm run test:auth       # 25  credentials, lockout, sessions, school suspension
 
-8 database suites, **156 checks against live Postgres 16**.
+9 database suites, **147 checks against live Postgres 16**.
 
 npm run test:print      # 24 checks, real PDF rendering
 
-**169 automated checks** (61 with no database: domain rules, print geometry,
+**232 automated checks** (61 with no database: domain rules, print geometry,
 connection contract) **+ 24 print checks**.
 ```
 

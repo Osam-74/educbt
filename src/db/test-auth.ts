@@ -214,6 +214,25 @@ async function main() {
     check('session resolves the live user', !!sessionUser && sessionUser.id === Number(principal!.id));
     check('unknown token reads nothing', (await readSessionUser('garbage')) === null);
 
+    // A suspended SCHOOL closes the door for everyone in it on their next
+    // request — an existing session must not outlive the tenant's status.
+    await odb
+      .update(core.schools)
+      .set({ status: 'suspended' })
+      .where(eq(core.schools.id, Number(school!.id)));
+    check(
+      'school suspension ends the session on the next request',
+      (await readSessionUser(token)) === null,
+    );
+    await odb
+      .update(core.schools)
+      .set({ status: 'active' })
+      .where(eq(core.schools.id, Number(school!.id)));
+    check(
+      'the same session resumes when the school is reactivated',
+      (await readSessionUser(token))?.id === Number(principal!.id),
+    );
+
     // Suspension kills the session on the NEXT request — the core property.
     await odb
       .update(people.users)

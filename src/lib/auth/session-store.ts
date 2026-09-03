@@ -125,6 +125,20 @@ export async function readSessionUser(token: string): Promise<SessionUser | null
       sql`select set_config('app.school_id', ${user.schoolId ? String(user.schoolId) : ''}, true)`,
     );
 
+    // The school's status is re-read LIVE too. Suspending a school must close
+    // the door for everyone in it on their NEXT request — not just at the
+    // next sign-in (which hostname resolution already blocks). The read sits
+    // after the tenant GUC is set, so it is bounded by the school's own
+    // tenant_self policy.
+    if (user.schoolId) {
+      const [school] = await tx
+        .select({ status: schema.schools.status })
+        .from(schema.schools)
+        .where(eq(schema.schools.id, user.schoolId))
+        .limit(1);
+      if (!school || school.status !== 'active') return null;
+    }
+
     let staffId: number | null = null;
     let studentId: number | null = null;
     if (user.schoolId) {

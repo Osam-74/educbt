@@ -179,6 +179,30 @@ async function main() {
         AND c.relforcerowsecurity = false`;
 
     check('RLS is FORCEd (applies to the table owner too)', (notForced?.n ?? 1) === 0);
+
+    // Catalog-driven guard: the lists above are a snapshot, but a NEW tenant
+    // table must not reach production quietly unguarded. Any public table
+    // (only 'sessions' is exempt, by documented design) must have RLS
+    // enabled, FORCEd, and at least one policy. A new schema table missing
+    // from rls.sql fails HERE — no maintainer has to remember the list.
+    const [unguarded] = await owner<{ n: number }[]>`
+      SELECT count(*)::int AS n
+      FROM pg_tables t
+      JOIN pg_class c ON c.relname = t.tablename
+      WHERE t.schemaname = 'public'
+        AND t.tablename <> 'sessions'
+        AND (
+          c.relrowsecurity = false
+          OR c.relforcerowsecurity = false
+          OR NOT EXISTS (
+            SELECT 1 FROM pg_policies p
+            WHERE p.schemaname = t.schemaname AND p.tablename = t.tablename
+          )
+        )`;
+    check(
+      'every public table (catalog-checked) is RLS-forced with a policy',
+      (unguarded?.n ?? 1) === 0,
+    );
   } finally {
     await owner.end();
     await app.end();

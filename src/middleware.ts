@@ -2,12 +2,16 @@
  * Request gate.
  *
  * Three jobs, in order:
- *   1. resolve the school from the hostname
- *   2. require a session for anything under /portal
- *   3. force a password change before anything else can be reached
+ *   1. require a session cookie for anything under /portal
+ *   2. set security headers on every response
  *
- * (3) is here rather than in a page redirect because a redirect can be skipped
- * by typing a different URL. Middleware sees every request.
+ * What deliberately does NOT happen here: tenant resolution and the forced
+ * password-change redirect. Edge middleware has no database, so it cannot
+ * verify anything about the session — it only checks cookie PRESENCE and
+ * bounces anonymous visitors early. Validity (expiry, suspension, lockout,
+ * must-change-password) is decided per request on the server from the live
+ * rows (src/lib/auth/session-store.ts, src/lib/session.ts), where a redirect
+ * cannot be skipped by typing a URL.
  */
 
 import { NextResponse, type NextRequest } from 'next/server';
