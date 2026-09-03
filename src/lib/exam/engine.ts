@@ -21,7 +21,7 @@
  *      answer key.
  */
 
-import { and, eq, sql, inArray, lt } from 'drizzle-orm';
+import { and, eq, sql, inArray } from 'drizzle-orm';
 import { forSchool, schema } from '@/db';
 import { paperForCandidateTx, type PublicQuestion } from './paper';
 
@@ -319,10 +319,9 @@ export async function sweepExpired(schoolId: number): Promise<number> {
       .from(schema.attempts)
       .where(and(
         eq(schema.attempts.status, 'in_progress'),
-        lt(
-          sql`${schema.attempts.expiresAt} + (${schema.attempts.extensionSeconds} * interval '1 second')`,
-          new Date(),
-        ),
+        // The whole deadline comparison lives in Postgres: the database's
+        // clock is the authoritative "server time" here, same as expiresAt.
+        sql`${schema.attempts.expiresAt} + (${schema.attempts.extensionSeconds} * interval '1 second') < now()`,
       ));
 
     return rows.map((r) => ({ id: Number(r.id), studentId: Number(r.studentId) }));

@@ -90,12 +90,14 @@ cp .env.example .env.local
 | `PLATFORM_DOMAIN` | Root domain for subdomain resolution | Required | Required | No |
 | `UPSTASH_REDIS_REST_URL` | Login rate limiting | Optional (fails open) | Strongly recommended | Yes |
 | `UPSTASH_REDIS_REST_TOKEN` | Login rate limiting | Optional (fails open) | Strongly recommended | Yes |
+| `INNGEST_SIGNING_KEY` | Signs every request Inngest makes to `/api/inngest` | Not needed (`INNGEST_DEV=1`) | **Required — fails closed** | Yes |
+| `INNGEST_DEV` | Local dev-server mode (`npx inngest-cli dev`) | Optional | Never set | Yes |
 
 There are **no `NEXT_PUBLIC_` variables** — nothing secret ever reaches the
 client bundle, and `test:config` scans the source tree to keep it that way.
-R2, Resend, SMS, Sentry and Inngest appear in `.env.example` only as
-clearly-labelled placeholders; they are not yet required and do nothing
-until their features exist.
+R2, Resend, SMS and Sentry appear in `.env.example` only as clearly-labelled
+placeholders; they are not yet required and do nothing until their features
+exist.
 
 #### Production deployment flow
 
@@ -453,7 +455,7 @@ npm run db:verify    # 14  tenancy, audit, credentials, RLS coverage
 npm run test:scope   #  6  role scoping
 npm run test:leak    # 11  answer exposure, scope key
 npm run test:vault   #  8  snapshot and recovery
-npm run test:engine  # 10  attempt lifecycle
+npm run test:engine  # 16  attempt lifecycle, sitting windows
 ```
 
 ---
@@ -687,19 +689,22 @@ DRAFT → COMPILED → REVIEWED → PUBLISHED → LOCKED
 ### All suites
 
 ```bash
-npm run test:domain     # 44  pure rules, NO database
+npm run test:domain     # 48  pure rules, NO database
+npm run test:config     # 13  connection contract — NO database
 npm run db:verify       # 14  tenancy, audit, credentials, RLS coverage
 npm run test:scope      #  6  role scoping
 npm run test:leak       # 11  answer exposure, scope key
 npm run test:vault      #  8  snapshot and recovery
+npm run test:auth      # 25  credentials, lockout, sessions, school suspension
 npm run test:engine     # 16  attempt lifecycle, sitting windows
 npm run test:authoring  #  9  authoring and review
 npm run test:results    # 38  composition, marking, compilation
 npm run test:practice   # 20  practice area and the formal-feedback guard
-npm run test:config     # 13  connection contract — NO database
+npm run test:jobs       # 20  scheduled session purge and expired-attempt sweep
+npm run test:print      # 24  printed documents
 ```
 
-**169 checks. 61 of them need no database at all.**
+**252 checks. 61 of them need no database at all.**
 
 ---
 
@@ -942,3 +947,96 @@ learner screen: score, percentage, correct/attempted, then question review.
 Practice fixtures in `test-practice` live in a private school, seeded with real
 argon2id hashes (db:verify scans every user in every school), and are deleted
 in a `finally` block — rerun-safe, nothing durable left behind.
+
+## Background jobs — Inngest
+
+Two things in this system must happen even when nobody is clicking: an exam
+attempt whose time ran out must close (a candidate cannot be trusted to
+submit — the tab may be closed, the machine asleep, the timer tampered
+with), and a session record must die once its token has expired. The CBT
+engine always owned the first half — `sweepExpired(schoolId)` is the same
+tenant-scoped auto-submit path a candidate would trigger. What was missing
+was the *when*: a scheduler that runs it without a human in the loop.
+
+Inngest is that scheduler. The design keeps the two halves separable — the
+job services (`src/lib/jobs/`) are plain, provider-free functions the test
+suite covers directly; `src/inngest/` is thin glue; `src/app/api/inngest/`
+is the only surface the provider can reach.
+
+### The two jobs
+
+| Job | Cadence | What it does |
+|---|---|---|
+| `sweep-expired-attempts` | every minute | Enumerates **active schools** and runs `sweepExpired` inside each tenant's own RLS scope |
+| `purge-expired-sessions` | hourly | Deletes `sessions` rows past `expires_at` — the scheduled counterpart of the sign-in opportunistic purge |
+
+Cadence reasoning: server-authoritative deadlines only bite if the sweep is
+at least as granular as a countdown, hence every minute — and one run sweeps
+every active school, so cadence is per-deployment, not per-school (Inngest
+cron supports 1-minute schedules; volume is ~44k runs/month). Sessions live
+12 hours, so hourly is far below the lifecycle at ~744 runs/month.
+
+### Security — no RLS bypass, no open endpoint
+
+- **Enumeration without privilege**: the school list the sweep iterates is
+  read as the least-privileged `educbt_app` role through the existing,
+  deliberately narrow `hostname_lookup` policy — `FOR SELECT`, active
+  schools only. A suspended school stops being swept the moment it stops
+  resolving. No superuser, no `BYPASSRLS`, no owner credential anywhere in
+  the job path.
+- **Tenant isolation preserved**: each school's sweep runs through
+  `forSchool(schoolId)` — the normal RLS-scoped path, not a bulk update.
+- **The route is not an open "trigger maintenance" endpoint**: `serve()`
+  cryptographically verifies the `x-inngest-signature` header (HMAC-SHA256
+  over the body with `INNGEST_SIGNING_KEY`, plus a timestamp window). In
+  production without the key the route fails closed — mutating verbs return
+  `503` rather than serving unsigned traffic.
+- **Session records stay opaque**: the purge deletes by expiry and returns a
+  count; token digests never appear in logs or summaries.
+
+### Failure, overlap, and retries
+
+Both services are idempotent — a double sweep closes nothing (`submitAttempt`
+treats a non-`in_progress` attempt as a no-op), a double purge deletes
+nothing — so an overlapping, delayed or retried run is always safe. Both
+functions also set `concurrency: 1`, so Inngest queues an overlapping run
+instead of executing it alongside. A school whose sweep throws is recorded
+in the run summary and the NEXT school still sweeps; the failure is visible
+in the Inngest dashboard and the provider retries the run.
+
+```bash
+npm run test:jobs
+```
+
+```
+PASS  session rows store the SHA-256 digest, never the raw token
+PASS  both users’ expired sessions are deleted
+PASS  the active session survives the purge
+PASS  a password-revoked session is not resurrected
+PASS  running the purge again is safe and finds nothing (empty workload)
+PASS  the expired attempt is auto-submitted by the sweep
+PASS  saved answers remain intact after closure
+PASS  objective answers are marked (1 correct, 1 wrong)
+PASS  the student cannot keep answering after closure
+PASS  an already-submitted attempt is unchanged
+PASS  a practice attempt past its own deadline closes the same way
+PASS  a suspended school is not swept (active-only enumeration)
+PASS  running the sweep again closes nothing (idempotent rerun)
+```
+*(20 checks in full.)*
+
+### Running the scheduler locally
+
+```bash
+INNGEST_DEV=1 npm run dev            # terminal 1 — the app
+npx inngest-cli@latest dev          # terminal 2 — the provider emulator
+```
+
+The dev server discovers the app, registers both functions (no credentials
+needed in dev) and fires the crons on schedule — the every-minute sweep
+appears within 60 seconds as structured `{"job":"sweep-expired-attempts"...}`
+lines in the app log, with its per-school summary. Jobs can be inspected,
+re-run and triggered manually from the dev server UI at
+`http://127.0.0.1:8288`. Production: deploy normally (the route is already
+public on `/api/inngest`), then set `INNGEST_SIGNING_KEY` from the Inngest
+dashboard (Environment → Keys) and register the app there.
