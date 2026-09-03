@@ -27,10 +27,22 @@ function check(name: string, ok: boolean, detail = '') {
 
 async function main() {
   const ownerUrl = process.env.DATABASE_URL_UNPOOLED;
+  const viaAppVar = Boolean(process.env.DATABASE_URL_APP?.trim());
   const appUrl = process.env.DATABASE_URL_APP ?? process.env.DATABASE_URL;
 
   if (!ownerUrl || !appUrl) {
     throw new Error('DATABASE_URL_UNPOOLED and DATABASE_URL_APP are both required.');
+  }
+
+  if (!viaAppVar) {
+    // Verification as a superuser/owner proves nothing — those roles are
+    // exempt from RLS, so every policy would pass while doing nothing. Say so
+    // loudly instead of letting the run look meaningful.
+    console.log(
+      'NOTE  DATABASE_URL_APP is not set; verifying over DATABASE_URL.\n' +
+      '      If that is an owner or superuser credential, the isolation checks\n' +
+      '      below are meaningless — RLS does not apply to owners.',
+    );
   }
 
   const owner = postgres(ownerUrl, { max: 1 });
@@ -38,13 +50,21 @@ async function main() {
 
   try {
     // ── Is the app role actually subject to RLS? ──────────────────────────────
-    const [who] = await app`SELECT current_user AS u, usesuper AS su
-                            FROM pg_user WHERE usename = current_user`;
+    // pg_roles carries both rolsuper and rolbypassrls. A role can be a plain
+    // non-superuser and still carry BYPASSRLS — the check must catch both.
+    const [who] = await app`SELECT current_user AS u, rolsuper AS su, rolbypassrls AS bpr
+                            FROM pg_roles WHERE rolname = current_user`;
 
     check(
       'app role is not a superuser',
       who?.su === false,
       who?.su ? 'RLS is silently disabled for superusers' : '',
+    );
+
+    check(
+      'app role does not carry BYPASSRLS',
+      who?.bpr === false,
+      who?.bpr ? 'BYPASSRLS ignores every row policy' : '',
     );
 
     const [owned] = await app`

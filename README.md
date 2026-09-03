@@ -63,17 +63,54 @@ from RLS, so verifying as them proves nothing. A local `.env.local` therefore
 needs all three:
 
 ```bash
-DATABASE_URL=...            # what the app runs as (the app role in production)
+DATABASE_URL_APP=...         # the app role — what the app RUNS on
 DATABASE_URL_UNPOOLED=...    # the owner, for migrations and test fixtures
-DATABASE_URL_APP=...        # the app role, for db:verify
+DATABASE_URL=...             # dev-only fallback when DATABASE_URL_APP is unset
 ```
+
+The runtime contract is enforced in code, not by convention
+(`src/db/connection.ts`): **production boots only on `DATABASE_URL_APP` and
+fails closed without it** — it never silently falls back to a possibly
+privileged `DATABASE_URL`. `npm run test:config` regression-tests the
+contract without a database.
 
 ### 3. Environment
 
 ```bash
 cp .env.example .env.local
-openssl rand -base64 32   # → AUTH_SECRET
 ```
+
+`.env.example` documents every variable in full. The matrix:
+
+| Variable | Purpose | Dev | Production | Server-only |
+|---|---|---|---|---|
+| `DATABASE_URL_APP` | Runtime DB: pooled `educbt_app` role, RLS applies | Optional (falls back) | **Required — fails closed** | Yes |
+| `DATABASE_URL` | Runtime fallback for local dev only | Optional | Never used by the runtime | Yes |
+| `DATABASE_URL_UNPOOLED` | Migrations, DDL, provisioning, test fixtures | Required | Required (migration step only) | Yes |
+| `PLATFORM_DOMAIN` | Root domain for subdomain resolution | Required | Required | No |
+| `UPSTASH_REDIS_REST_URL` | Login rate limiting | Optional (fails open) | Strongly recommended | Yes |
+| `UPSTASH_REDIS_REST_TOKEN` | Login rate limiting | Optional (fails open) | Strongly recommended | Yes |
+
+There are **no `NEXT_PUBLIC_` variables** — nothing secret ever reaches the
+client bundle, and `test:config` scans the source tree to keep it that way.
+R2, Resend, SMS, Sentry and Inngest appear in `.env.example` only as
+clearly-labelled placeholders; they are not yet required and do nothing
+until their features exist.
+
+#### Production deployment flow
+
+1. **Backup** — take a verified database backup first (see the backup
+   section once automated backups exist; until then, `pg_dump` by hand).
+2. **Migrate** — `DATABASE_URL_UNPOOLED` (owner credential):
+   `npm run db:migrate`. Migrations never run from application startup —
+   the app runtime holds no DDL credential at all.
+3. **Verify** — `DATABASE_URL_APP` (app role): `npm run db:verify`. This
+   proves the runtime role is not superuser, does not own tables, does not
+   carry `BYPASSRLS`, and that tenant isolation actually holds.
+4. **Deploy** — the application starts on `DATABASE_URL_APP` only. A
+   misconfigured production environment fails at boot with a clear error,
+   never degrades to owner credentials.
+5. **Health check** — then decide rollback on evidence, not guesswork.
 
 ### 4. Migrate
 
@@ -170,10 +207,11 @@ DATABASE_URL_UNPOOLED=postgres://owner@...     # fixtures
 DATABASE_URL_APP=postgres://educbt_app@...     # the role RLS applies to
 ```
 
-Twelve checks, all verified against live Postgres 16:
+Thirteen checks, all verified against live Postgres 16:
 
 ```
 PASS  app role is not a superuser
+PASS  app role does not carry BYPASSRLS
 PASS  app role does not own the tables
 PASS  unscoped read returns nothing (fails closed)
 PASS  scoped read returns only that school
@@ -284,6 +322,7 @@ proves nothing.
 npm run db:verify    # 12 — tenancy, audit, credentials
 npm run test:scope   #  6 — role scoping within a tenant
 npm run test:leak    # 11 — answer exposure, scope key
+npm run test:auth    # 23 — credentials, lockout, sessions, tenant scoping
 ```
 
 ---
@@ -348,6 +387,7 @@ Two rules the WordPress version got wrong:
 npm run db:verify    # 12  tenancy, audit, credentials
 npm run test:scope   #  6  role scoping within a tenant
 npm run test:leak    # 11  answer exposure, scope key
+npm run test:auth    # 23  credentials, lockout, sessions, tenant scoping
 npm run test:vault   #  8  snapshot and recovery
 ```
 
@@ -652,12 +692,14 @@ npm run db:verify       # 12  tenancy, audit, credentials
 npm run test:scope      #  6  role scoping
 npm run test:leak       # 11  answer exposure, scope key
 npm run test:vault      #  8  snapshot and recovery
-npm run test:engine     # 10  attempt lifecycle
+npm run test:engine     # 16  attempt lifecycle, sitting windows
 npm run test:authoring  #  9  authoring and review
-npm run test:results    # 23  composition, marking, compilation
+npm run test:results    # 38  composition, marking, compilation
+npm run test:practice   # 20  practice area and the formal-feedback guard
+npm run test:config     # 13  connection contract — NO database
 ```
 
-**123 checks. 44 of them need no database at all.**
+**169 checks. 61 of them need no database at all.**
 
 ---
 
@@ -749,7 +791,8 @@ and never blank. A zero reads as last place; a blank reads as an oversight.
 
 ```bash
 npm run test:domain     # 48  pure rules, NO database
-npm run db:verify       # 12  tenancy, audit, credentials — as the app role
+npm run test:config     # 13  connection contract, NO database, NO secrets
+npm run db:verify       # 13  tenancy, audit, credentials — as the app role
 npm run test:scope      #  6  role scoping
 npm run test:leak       # 11  answer exposure, scope key
 npm run test:vault      #  8  snapshot and recovery
@@ -761,6 +804,9 @@ npm run test:practice   # 20  practice area and the formal-feedback guard
 8 database suites, **156 checks against live Postgres 16**.
 
 npm run test:print      # 24 checks, real PDF rendering
+
+**169 automated checks** (61 with no database: domain rules, print geometry,
+connection contract) **+ 24 print checks**.
 ```
 
 ---

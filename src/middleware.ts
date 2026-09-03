@@ -12,7 +12,7 @@
 
 import { NextResponse, type NextRequest } from 'next/server';
 
-const PUBLIC_PATHS = ['/sign-in', '/api/auth', '/trial', '/_next', '/favicon.ico'];
+const PUBLIC_PATHS = ['/sign-in', '/trial', '/_next', '/favicon.ico'];
 
 export function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
@@ -21,9 +21,10 @@ export function middleware(req: NextRequest) {
     return NextResponse.next();
   }
 
-  const sessionCookie =
-    req.cookies.get('authjs.session-token') ??
-    req.cookies.get('__Secure-authjs.session-token');
+  // Presence only — the session's VALIDITY (expiry, suspension, lockout) is
+  // decided per request on the server from the live row, never here. Edge
+  // middleware has no database; a cookie check is the only safe thing to do.
+  const sessionCookie = req.cookies.get('educbt.session');
 
   if (pathname.startsWith('/portal') && !sessionCookie) {
     const url = req.nextUrl.clone();

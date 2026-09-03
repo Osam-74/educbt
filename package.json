@@ -19,6 +19,7 @@
     "db:verify": "tsx src/db/verify.ts",
     "db:provision-app-role": "tsx scripts/provision-app-role.ts",
     "test:scope": "tsx src/db/test-scope.ts",
+    "test:auth": "tsx src/db/test-auth.ts",
     "test:leak": "tsx src/db/test-leak.ts",
     "test:vault": "tsx src/db/test-vault.ts",
     "test:engine": "tsx src/db/test-engine.ts",
@@ -26,7 +27,8 @@
     "test:results": "tsx src/db/test-results.ts",
     "test:practice": "tsx src/db/test-practice.ts",
     "test:domain": "tsx src/domain/academic.test.ts",
-    "test:print": "python3 scripts/test-print.py"
+    "test:print": "python3 scripts/test-print.py",
+    "test:config": "tsx src/db/test-config.ts"
   },
   "dependencies": {
     "@node-rs/argon2": "^2.0.2",
@@ -34,7 +36,6 @@
     "@upstash/redis": "^1.34.3",
     "drizzle-orm": "^0.38.0",
     "next": "15.1.0",
-    "next-auth": "5.0.0-beta.25",
     "postgres": "^3.4.5",
     "react": "19.0.0",
     "react-dom": "19.0.0",

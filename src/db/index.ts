@@ -21,6 +21,7 @@
 import { drizzle } from 'drizzle-orm/postgres-js';
 import postgres from 'postgres';
 import { sql as dsql } from 'drizzle-orm';
+import { resolveRuntimeDatabaseUrl } from './connection';
 import * as core from './schema/core';
 import * as people from './schema/people';
 import * as questionBank from './schema/questions';
@@ -31,15 +32,16 @@ import * as scoresSchema from './schema/scores';
 
 export const schema = { ...core, ...people, ...questionBank, ...vault, ...attemptsSchema, ...resultsSchema, ...scoresSchema };
 
-const connectionString = process.env.DATABASE_URL;
+// The connection contract lives in ./connection — see its header for the
+// three-connection model. Production resolves to DATABASE_URL_APP only and
+// fails closed without it; development may fall back to DATABASE_URL.
+const resolved = resolveRuntimeDatabaseUrl(process.env, process.env.NODE_ENV);
 
-if (!connectionString) {
-  throw new Error(
-    'DATABASE_URL is not set. Use the POOLED Neon endpoint (-pooler host); the ' +
-    'unpooled one is for migrations only and will exhaust connections under ' +
-    'examination load.',
-  );
+if (!resolved.ok) {
+  throw new Error(resolved.error);
 }
+
+const connectionString = resolved.url;
 
 /**
  * `prepare: false` is required by PgBouncer transaction mode — prepared

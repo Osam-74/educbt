@@ -19,36 +19,36 @@ export type Actor = {
 };
 
 export async function currentActor(): Promise<Actor | null> {
-  const session = await auth();
+  const user = await auth();
 
-  if (!session?.user?.id || !session.user.schoolId) return null;
+  if (!user || !user.schoolId) return null;
 
   return {
-    userId: Number(session.user.id),
-    schoolId: session.user.schoolId,
-    role: session.user.role,
-    loginId: session.user.loginId,
-    staffId: session.user.staffId,
-    studentId: session.user.studentId,
+    userId: user.id,
+    schoolId: user.schoolId,
+    role: user.role,
+    loginId: user.loginId,
+    staffId: user.staffId,
+    studentId: user.studentId,
   };
 }
 
 export async function requireSchoolSession(): Promise<Actor> {
-  const session = await auth();
+  const user = await auth();
 
-  if (!session?.user?.id) redirect('/sign-in');
+  if (!user) redirect('/sign-in');
 
-  if (session.user.mustChangePassword) redirect('/portal/account/password');
+  if (user.mustChangePassword) redirect('/portal/account/password');
 
-  if (!session.user.schoolId) redirect('/sign-in');
+  if (!user.schoolId) redirect('/sign-in');
 
   return {
-    userId: Number(session.user.id),
-    schoolId: session.user.schoolId,
-    role: session.user.role,
-    loginId: session.user.loginId,
-    staffId: session.user.staffId,
-    studentId: session.user.studentId,
+    userId: user.id,
+    schoolId: user.schoolId,
+    role: user.role,
+    loginId: user.loginId,
+    staffId: user.staffId,
+    studentId: user.studentId,
   };
 }
 

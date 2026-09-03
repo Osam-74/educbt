@@ -2,7 +2,6 @@ import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { tenantFromHost } from '@/lib/tenant';
 import { auth, signIn } from '@/lib/auth';
-import { AuthError } from 'next-auth';
 
 // Never cached: the page is per-hostname and reflects session state.
 export const dynamic = 'force-dynamic';
@@ -15,7 +14,7 @@ export default async function SignInPage({
   const params = await searchParams;
   const session = await auth();
 
-  if (session?.user) redirect('/portal');
+  if (session) redirect('/portal');
 
   const host = (await headers()).get('host');
   const school = await tenantFromHost(host);
@@ -41,25 +40,29 @@ export default async function SignInPage({
 
     const target = String(formData.get('next') ?? '/portal');
 
+    // Server actions are hoisted, so TypeScript cannot narrow `school` into
+    // this closure — and a defensive re-check is correct anyway.
+    if (!school) redirect('/sign-in?error=School+not+found');
+
     try {
-      await signIn('credentials', {
+      await signIn({
         loginId: String(formData.get('loginId') ?? '').trim(),
         password: String(formData.get('password') ?? ''),
-        schoolId: String(formData.get('schoolId') ?? ''),
-        redirectTo: target.startsWith('/') ? target : '/portal',
+        // The tenant comes from the HOSTNAME resolution in this closure —
+        // never from the posted form, which a user could edit.
+        schoolId: school.id,
       });
     } catch (error) {
-      if (error instanceof AuthError) {
-        const message =
-          error.cause && typeof error.cause === 'object' && 'err' in error.cause
-            ? String((error.cause.err as Error)?.message ?? '')
-            : '';
-
-        redirect(`/sign-in?error=${encodeURIComponent(message || 'Sign-in failed.')}`);
+      // All expected failures throw a user-safe message (credentials.ts);
+      // redirect surfaces it on the form. Anything else is a bug: rethrow.
+      if (error instanceof Error && error.message) {
+        redirect(`/sign-in?error=${encodeURIComponent(error.message)}`);
       }
 
       throw error;
     }
+
+    redirect(target.startsWith('/') ? target : '/portal');
   }
 
   return (
@@ -71,10 +74,9 @@ export default async function SignInPage({
         {params.error ? <p className="error">{params.error}</p> : null}
 
         <form action={authenticate}>
-          {/* The tenant comes from the hostname, resolved on the server. It is
-              posted only so the credentials provider can scope the lookup — the
-              session it produces is what everything downstream trusts. */}
-          <input type="hidden" name="schoolId" value={school.id} />
+          {/* The tenant is never posted: the server action takes the school
+              from the hostname resolution in its closure, so editing anything
+              in this form cannot change which school's account is used. */}
           <input type="hidden" name="next" value={params.next ?? '/portal'} />
 
           <label htmlFor="loginId">Admission or staff number</label>

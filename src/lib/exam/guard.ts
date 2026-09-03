@@ -11,15 +11,15 @@ import { auth } from '@/lib/auth';
 export type Candidate = { schoolId: number; studentId: number; userId: number };
 
 export async function requireCandidate(): Promise<Candidate | null> {
-  const session = await auth();
+  const user = await auth();
 
-  if (!session?.user?.id) return null;
-  if (session.user.role !== 'student') return null;
-  if (!session.user.schoolId || !session.user.studentId) return null;
+  if (!user) return null;
+  if (user.role !== 'student') return null;
+  if (!user.schoolId || !user.studentId) return null;
 
   return {
-    schoolId: session.user.schoolId,
-    studentId: session.user.studentId,
-    userId: Number(session.user.id),
+    schoolId: user.schoolId,
+    studentId: user.studentId,
+    userId: user.id,
   };
 }
