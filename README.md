@@ -92,12 +92,17 @@ cp .env.example .env.local
 | `UPSTASH_REDIS_REST_TOKEN` | Login rate limiting | Optional (fails open) | Strongly recommended | Yes |
 | `INNGEST_SIGNING_KEY` | Signs every request Inngest makes to `/api/inngest` | Not needed (`INNGEST_DEV=1`) | **Required — fails closed** | Yes |
 | `INNGEST_DEV` | Local dev-server mode (`npx inngest-cli dev`) | Optional | Never set | Yes |
+| `BACKUP_DATABASE_URL` | Nightly pg_dump credential (owner/admin — never `educbt_app`) | Falls back to `DATABASE_URL_UNPOOLED` | **Required** (GitHub secret) | Yes |
+| `R2_BACKUP_ACCESS_KEY_ID` / `_SECRET_ACCESS_KEY` / `_BUCKET` / `_ACCOUNT_ID` | Backup object storage (private R2 bucket) | Optional (`BACKUP_LOCAL_DIR` instead) | **Required** (GitHub secrets) | Yes |
+| `BACKUP_RETENTION_DAYS` | Age-based retention window | Defaults to 30 | Defaults to 30 | Yes |
+| `RESTORE_DATABASE_URL` | Restore target — separate DB only, never defaulted | For rehearsals | For rehearsals / DR only | Yes |
 
 There are **no `NEXT_PUBLIC_` variables** — nothing secret ever reaches the
 client bundle, and `test:config` scans the source tree to keep it that way.
-R2, Resend, SMS and Sentry appear in `.env.example` only as clearly-labelled
+Resend, SMS and Sentry appear in `.env.example` only as clearly-labelled
 placeholders; they are not yet required and do nothing until their features
-exist.
+exist. R2 **is** integrated — but only for the backup layer above; the bucket
+is private and there is no public-URL code anywhere.
 
 #### Production deployment flow
 
@@ -165,13 +170,51 @@ An unscoped query returning rows means the app is connecting as owner or superus
 
 ---
 
-## Backups — set this up now, not later
+## Backups and disaster recovery
 
-Neon is owned by Databricks, who have shut down an acquired database product before. Unlikely to repeat, but "unlikely" is not a plan when a term of results is at stake.
+Neon is owned by Databricks, who have shut down an acquired database product before. Unlikely to repeat, but "unlikely" is not a plan when a term of results is at stake. The backup layer below is **built, tested and rehearsed** — not a to-do.
 
-- Nightly `pg_dump` to Cloudflare R2, 30-day retention.
-- **Restore rehearsal once per term**, into a Neon branch, with a named owner. A backup you have never restored is a hope.
-- No Neon-specific extensions in the schema, so moving to any stock Postgres stays a weekend rather than a rewrite.
+### What exists
+
+- **`npm run backup:db`** (scripts/backup-database.ts) — full-database `pg_dump` in PostgreSQL custom format (compressed, single file, integrity-checkable with `pg_restore --list`), uploaded to a **private** Cloudflare R2 bucket, size-confirmed, then age-based retention cleanup. Structured JSON result; a failed upload is a failed backup; retention never runs after a failure.
+- **`npm run restore:db`** (scripts/restore-database.ts) — `--list` to enumerate backups, `--backup <id>` to download, integrity-check and `pg_restore` into a **separate** database, then verify the restored schema (relations, migrations, row counts, RLS policies) from inside.
+- **`npm run test:backup`** — 43 regression checks: naming determinism, collision handling, retention boundaries (age-based, never count-based), foreign-object safety, environment validation, restore-target guards, and credential hygiene (no password or URI ever reaches a pg_dump/pg_restore command line).
+- **`.github/workflows/nightly-backup.yml`** — the scheduled production backup (GitHub Actions, 01:00 UTC / 02:00 WAT, off-peak before Nigerian school hours). Enabled on deploy day by adding the repository secrets below; it is deliberately inert until then.
+
+### Security model
+
+- `BACKUP_DATABASE_URL` is an owner/admin credential — RLS would silently turn an `educbt_app` dump into a partial backup, so backing up as the app role is **refused** (`readBackupEnv`).
+- The R2 bucket is private and the storage layer has **no public-URL code at all** — backups cannot be shared as links, only fetched by credential.
+- Deletion is structurally confined to the `backups/database/` prefix and to objects our own naming produced. Anything else — newer backups, foreign files inside the prefix, objects outside it — is never a deletion candidate (proven live in the rehearsal below).
+- Restoring into the **live application database is refused outright**, flag or no flag. Non-local restore targets that do not look like rehearsal/staging require an explicit `--disaster-recovery` flag. `RESTORE_DATABASE_URL` has no default: a typo cannot reach production.
+
+### Restore rehearsal (executed, not hypothetical)
+
+The full chain was run end-to-end against a real S3-compatible server (MinIO speaking the same API as R2):
+
+1. `pg_dump` of the dev database (177,045 bytes, 374 archive objects) → upload → size-confirmed.
+2. A second run seconds later → distinct backup id, nothing overwritten.
+3. Three seeded old backups (older than 30 days) plus two decoys (a foreign file inside the prefix, an unrelated object outside it) → a real backup run deleted exactly the three old backups, reported the foreign-in-prefix object, and left **both decoys untouched**.
+4. Restore of the first backup into a freshly created empty database (`educbt_restore_rehearsal`): byte-exact download, 30 relations restored, 10 migrations applied, all row counts matching the source — **and all 34 RLS policies / 29 forced-RLS tables survived**.
+5. `npm run db:verify` run against the restored database over the real `educbt_app` role: **all checks passed** — cross-tenant reads return nothing, cross-tenant writes are rejected, the audit log is immutable, and RLS is forced on every public table. A restored database is not just data-complete; it is policy-complete.
+
+Re-run this rehearsal at least **once per term**, with a named owner. A backup you have never restored is a hope.
+
+### Disaster recovery runbook
+
+1. Provision a **clean, empty** PostgreSQL (same major version as production) and a fresh empty database.
+2. `npm run restore:db -- --list` to find the backup; then `RESTORE_DATABASE_URL=<fresh-db> npm run restore:db -- --backup <id> --disaster-recovery`.
+3. On a brand-new cluster the `educbt_app` role does not exist yet — pg_restore reports the missing-role ACLs as **warnings and continues**; then run `npm run db:provision-app-role` and `npm run db:rls` (idempotent — every policy is `DROP ... IF EXISTS` + `CREATE`).
+4. `npm run db:verify` against the recovered database — it must pass completely before anything points at it.
+5. Repoint `DATABASE_URL_APP` (and only then) and redeploy. The restore script refuses to touch the old live database throughout.
+
+### Deploy-day checklist (production secrets)
+
+GitHub repository secrets: `BACKUP_DATABASE_URL`, `R2_BACKUP_ACCESS_KEY_ID`, `R2_BACKUP_SECRET_ACCESS_KEY`, `R2_BACKUP_BUCKET`, `R2_BACKUP_ACCOUNT_ID`. Set `PG_MAJOR` in the workflow file to the production server's PostgreSQL major version. The workflow is scheduled and will not fire until it is on the default branch with secrets present — no risk of half-configured automation.
+
+### Why not Vercel Cron / a web endpoint
+
+The backup needs `pg_dump`/`pg_restore` binaries and a writable filesystem; Vercel serverless functions ship with neither and their execution limits rule out database-scale dumps. GitHub Actions runners install `postgresql-client` cleanly, hold no persistent secrets, and clean up their own temp files. Inngest remains what it is here for: application-level jobs (session purge, attempt sweep) that belong to the app.
 
 ---
 
@@ -702,9 +745,13 @@ npm run test:results    # 38  composition, marking, compilation
 npm run test:practice   # 20  practice area and the formal-feedback guard
 npm run test:jobs       # 20  scheduled session purge and expired-attempt sweep
 npm run test:print      # 24  printed documents
+npm run test:backup     # 43  backup naming, retention, restore-target safety — NO database
 ```
 
-**252 checks. 61 of them need no database at all.**
+**295 checks. 104 of them need no database at all.**
+
+Backup operations themselves (not part of the suite): `npm run backup:db`,
+`npm run restore:db -- --list` — see "Backups and disaster recovery".
 
 ---
 
