@@ -72,6 +72,9 @@ export default async function PortalLayout({ children }: { children: React.React
           {/* Menu visibility is convenience only. /portal/staff refuses on the
               server for anyone who is not school-wide, so removing this link is
               not what protects it. */}
+          {actor.role === 'student' ? (
+            <Link href="/portal/practice">Practice</Link>
+          ) : null}
           {['principal', 'vice_principal', 'exam_officer'].includes(actor.role) ? (
             <>
               <Link href="/portal/exams">Exam office</Link>

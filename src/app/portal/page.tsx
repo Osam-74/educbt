@@ -27,7 +27,6 @@ export default async function PortalHome() {
                   <br />
                   <span className="muted" style={{ fontSize: 12.5 }}>
                     {Math.round(p.durationSeconds / 60)} minutes
-                    {p.seriesType === 'practice' ? ' · practice, does not count' : ''}
                   </span>
                 </span>
                 {sat ? (

@@ -746,8 +746,9 @@ npm run test:vault      #  8  snapshot and recovery
 npm run test:engine     # 16  attempt lifecycle, sitting windows
 npm run test:authoring  #  9  authoring and review
 npm run test:results    # 38  marking, compilation, exam-office services
+npm run test:practice   # 20  practice area and the formal-feedback guard
 
-7 database suites, **136 checks against live Postgres 16**.
+8 database suites, **156 checks against live Postgres 16**.
 
 npm run test:print      # 25 checks, real PDF rendering
                           2 known print regressions tracked separately
@@ -846,3 +847,42 @@ attempts, results, publishing or scheduling) create their own school and clean i
 up first, so no suite passes only because another ran before it, and reruns never
 hit unique constraints. Production constraints — RLS, foreign keys, unique
 indexes — are never weakened for tests.
+
+
+---
+
+## Practice papers — the student flow and its hard boundary
+
+`/portal/practice` is the student-facing practice area, deliberately separate
+from the dashboard's formal paper list: practice never counts towards results,
+and the two mixed together invite a student to treat one as the other. The
+page lists Available / In Progress / Completed practice, each derived
+server-side from the same registration join the formal papers use.
+
+Sitting a practice paper reuses the CBT engine untouched — `startAttempt`,
+`saveAnswer`, `submitAttempt` — so resume semantics, answer retry and
+server-owned timing are the ones the engine tests already pin.
+
+### Feedback, and why the guard is in the service
+
+`practiceFeedback` (`src/lib/exam/practice.ts`) is the only source of
+question-level feedback, and it refuses, server-side:
+
+- **formal examinations** — whatever the attempt's status, even submitted. The
+  check runs before any answer data is read, so no route, page or future UI can
+  reach a formal marking key through the practice path. A formal exam's score
+  is published by the school through compilation, never handed over on exit.
+- **unsubmitted attempts** — feedback mid-paper is an answer key by another name.
+- **another student's attempt** (`not_yours`) and **another school's attempt**
+  (`not_found` — the id scanner learns nothing, not even existence).
+
+The payload is a dedicated `PracticeFeedback` type: per question the text, the
+student's option, the correct option, correctness, awarded marks and the
+explanation — and nothing else. No approval state, marking guide, moderation
+metadata or vault fields; the practice suite asserts the serialised payload
+contains none of them. `/portal/practice/[attemptId]/feedback` renders it as a
+learner screen: score, percentage, correct/attempted, then question review.
+
+Practice fixtures in `test-practice` live in a private school, seeded with real
+argon2id hashes (db:verify scans every user in every school), and are deleted
+in a `finally` block — rerun-safe, nothing durable left behind.

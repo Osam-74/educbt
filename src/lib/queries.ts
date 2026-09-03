@@ -13,7 +13,7 @@
  * tenant boundary, this file guards the boundary within a tenant.
  */
 
-import { and, eq, ilike, or, sql, inArray, asc, count } from 'drizzle-orm';
+import { and, eq, ne, ilike, or, sql, inArray, asc, count } from 'drizzle-orm';
 import { forSchool, schema } from '@/db';
 import type { Actor } from '@/lib/session';
 
@@ -322,6 +322,8 @@ export async function papersForStudent(actor: Actor) {
       .where(and(
         eq(schema.examPapers.schoolId, actor.schoolId),
         eq(schema.examPapers.status, 'published'),
+        // Practice lives in its own area, never mixed into the formal list.
+        ne(schema.examSeries.seriesType, 'practice'),
       ))
       .orderBy(asc(schema.examPapers.scheduledAt))
       .limit(50),
