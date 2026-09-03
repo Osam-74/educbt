@@ -45,6 +45,29 @@ REVOKE UPDATE, DELETE ON audit_log FROM educbt_app;
 
 Point `DATABASE_URL` at `educbt_app`. Keep the owner credential for migrations only.
 
+For local development there is a runnable version of the block above:
+
+```bash
+npm run db:provision-app-role   # creates educbt_app idempotently, same grants
+```
+
+It reads `DATABASE_URL_UNPOOLED` from the environment, creates the role with a
+development password if absent, and never runs in the application itself —
+provisioning is infrastructure, not runtime. If the role already exists with a
+different password, reset it by hand (`ALTER ROLE educbt_app PASSWORD '...'`).
+
+**Verification must use the app role.** `db:verify` reads `DATABASE_URL_APP` —
+when it is unset it falls back to `DATABASE_URL`, and if that is the owner,
+every tenant-isolation check fails *by design*: superusers and owners are exempt
+from RLS, so verifying as them proves nothing. A local `.env.local` therefore
+needs all three:
+
+```bash
+DATABASE_URL=...            # what the app runs as (the app role in production)
+DATABASE_URL_UNPOOLED=...    # the owner, for migrations and test fixtures
+DATABASE_URL_APP=...        # the app role, for db:verify
+```
+
 ### 3. Environment
 
 ```bash
@@ -715,15 +738,19 @@ and never blank. A zero reads as last place; a blank reads as an oversight.
 ### All suites
 
 ```bash
-npm run test:domain     # 49  pure rules, NO database
-npm run test:print      #  8  pagination, real PDF rendering
-npm run db:verify       # 12  tenancy, audit, credentials
+npm run test:domain     # 48  pure rules, NO database
+npm run db:verify       # 12  tenancy, audit, credentials — as the app role
 npm run test:scope      #  6  role scoping
 npm run test:leak       # 11  answer exposure, scope key
 npm run test:vault      #  8  snapshot and recovery
-npm run test:engine     # 10  attempt lifecycle
+npm run test:engine     # 16  attempt lifecycle, sitting windows
 npm run test:authoring  #  9  authoring and review
-npm run test:results    # 23  composition, marking, compilation
+npm run test:results    # 38  marking, compilation, exam-office services
+
+7 database suites, **136 checks against live Postgres 16**.
+
+npm run test:print      # 25 checks, real PDF rendering
+                          2 known print regressions tracked separately
 ```
 
 ---
@@ -770,3 +797,52 @@ no blank page between cards
 
 Headings are confirmed present on **every** page of a multi-page broadsheet, by
 walking the rendered page boxes — not by trusting the CSS rule exists.
+
+
+---
+
+## Exam Office — questions to published papers
+
+`/portal/exams` is the one path from approved questions to a paper a student can
+sit. It replaces nothing — it sequences what already existed into the order a
+school office actually works in.
+
+- `/portal/exams` — the list: what is drafting, what is published, what paper
+  each series produced.
+- `/portal/exams/new` — create a series. The **question window** (when teachers
+  may submit questions) is separate from the sitting window, which is set at
+  scheduling, because a school does not know its sitting dates until it has
+  papers.
+- `/portal/exams/[seriesId]` — the workflow: availability → compose → schedule →
+  publish, with an honest checklist of what is missing rather than a button that
+  fails on click.
+
+### Publish gates, enforced in the service layer
+
+- **Publishing refuses** an examination with no papers, with unscheduled papers,
+  or one already published. Each refusal is a named error, not a disabled button.
+- **Scheduling refuses practice series** — practice has no timetable, by design.
+- **Practice publishes without a window.** Practice papers ignore formal sitting
+  windows entirely; `startAttempt` checks the window for examinations only. The
+  regression tests pin this: a practice series with no window starts, a formal
+  one without a window is refused.
+
+### Transactions and the one-connection pool
+
+The shared pool is `max: 1`. A function already inside a `forSchool` transaction
+must not call a helper that opens its own `forSchool` — the inner call waits for
+a connection the outer one holds, and hangs. `startAttempt` did exactly this to
+`paperForCandidate`, and would have hung every paper start in production.
+
+The pattern is `service(...)` for top-level callers and `serviceTx(tx, ...)` for
+use inside another transaction (`paperForCandidate` / `paperForCandidateTx`).
+When you add a service that calls another service, ask which one owns the
+transaction first.
+
+### Test fixtures live in their own schools
+
+Suites that mutate data (the exam-office checks, and any future suite touching
+attempts, results, publishing or scheduling) create their own school and clean it
+up first, so no suite passes only because another ran before it, and reruns never
+hit unique constraints. Production constraints — RLS, foreign keys, unique
+indexes — are never weakened for tests.

@@ -17,6 +17,7 @@
     "db:rls": "tsx src/db/apply-rls.ts",
     "db:seed": "tsx src/db/seed.ts",
     "db:verify": "tsx src/db/verify.ts",
+    "db:provision-app-role": "tsx scripts/provision-app-role.ts",
     "test:scope": "tsx src/db/test-scope.ts",
     "test:leak": "tsx src/db/test-leak.ts",
     "test:vault": "tsx src/db/test-vault.ts",
