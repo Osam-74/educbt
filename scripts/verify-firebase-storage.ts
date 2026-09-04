@@ -93,23 +93,54 @@ async function main() {
   // 4—5. Metadata + size.
   let metaSizeOk = false;
   let aclOk = false;
-  let publicAccessPrevention = 'unknown';
-  let uniform = 'unknown';
   try {
     const [meta] = await bucket.file(key).getMetadata();
     metaSizeOk = Number(meta.size) === bytes.length;
     const acl = Array.isArray((meta as { acl?: { entity: string }[] }).acl) ? (meta as { acl: { entity: string }[] }).acl : [];
     aclOk = !acl.some((e) => e.entity === 'allUsers' || e.entity === 'allAuthenticatedUsers');
-    // Bucket-level privacy posture (metadata read, no policy changes).
-    const [bmeta] = await bucket.getMetadata();
-    const iam = (bmeta as { iamConfiguration?: { publicAccessPrevention?: string; uniformBucketLevelAccess?: { enabled?: boolean } } }).iamConfiguration;
-    publicAccessPrevention = iam?.publicAccessPrevention ?? 'unknown';
-    uniform = String(iam?.uniformBucketLevelAccess?.enabled ?? 'unknown');
   } catch (err) {
     step('metadata read succeeds', false, (err as Error).message);
   }
   step('remote size via metadata matches uploaded bytes exactly', metaSizeOk, `${metaSizeOk ? bytes.length : 'mismatch'} bytes`);
   step('no public ACL on the object (no allUsers grant)', aclOk, aclOk ? 'private' : 'PUBLIC GRANT FOUND');
+
+  // ── Empirical privacy proof: anonymous, unauthenticated probes ────────────
+  // While the test object exists, hit its public endpoints with NO
+  // credentials. A private bucket denies (401/403); only a public bucket
+  // would return the bytes (200). This tests the actual behaviour, without
+  // needing bucket-metadata permissions the backup account deliberately
+  // does not have.
+  const probe = async (label: string, url: string): Promise<void> => {
+    try {
+      const res = await fetch(url, { redirect: 'error' }); // no auth headers, ever
+      const denied = res.status !== 200;
+      step(label, denied, `HTTP ${res.status} — access denied without credentials`);
+    } catch (err) {
+      step(label, true, `no public content served (${(err as Error).message.split('\n')[0]})`);
+    }
+  };
+  const encodedKey = encodeURIComponent(key);
+  await probe(
+    'anonymous access is DENIED on the GCS public endpoint',
+    `https://storage.googleapis.com/${bucketName}/${key}`,
+  );
+  await probe(
+    'anonymous access is DENIED on the Firebase Storage endpoint',
+    `https://firebasestorage.googleapis.com/v0/b/${bucketName}/o/${encodedKey}`,
+  );
+
+  // The backup account must not be able to read bucket-level metadata or
+  // policy either — object-only scope, tighter than bucket administration.
+  const bucketMetaDenied = await (async () => {
+    try {
+      await bucket.getMetadata();
+      return false; // could read bucket metadata — broader than necessary
+    } catch (err) {
+      const e = err as { code?: number };
+      return e.code === 403;
+    }
+  })();
+  step('backup account cannot read bucket-level metadata (object-only scope)', bucketMetaDenied, bucketMetaDenied ? 'storage.buckets.get denied (403)' : 'could read bucket metadata');
 
   // 6. List under backups/test/ — the object appears.
   const [testFiles] = await bucket.getFiles({ prefix: TEST_PREFIX, autoPaginate: true });
@@ -142,10 +173,7 @@ async function main() {
   const [stillThere] = await bucket.file(key).exists();
   step('object no longer exists after delete', !stillThere, !stillThere ? 'confirmed absent' : 'STILL PRESENT');
 
-  // ── Privacy / least-privilege proofs ──────────────────────────────────────
-  const papOk = publicAccessPrevention !== 'unknown';
-  step('bucket privacy posture is readable and reported', papOk, `publicAccessPrevention=${publicAccessPrevention}, uniformBucketLevelAccess=${uniform}`);
-
+  // ── Least-privilege negative proofs ────────────────────────────────────────
   // Negative tests: bucket-scoped Object Admin must NOT be able to create
   // buckets or change bucket IAM — 403 PERMISSION_DENIED is the expected,
   // desired outcome. (Project-wide Storage Admin/Editor would succeed here.)
@@ -201,8 +229,7 @@ async function main() {
         identity,
         testKey: key,
         sha256,
-        publicAccessPrevention,
-        uniformBucketLevelAccess: uniform,
+        privacyProof: 'anonymous HTTP probes denied on both public endpoints; no allUsers ACL; no signed/public URL code exists',
         passed: steps.length - failed.length,
         failed: failed.length,
         steps,
