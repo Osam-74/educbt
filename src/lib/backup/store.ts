@@ -1,33 +1,31 @@
 /**
- * Backup storage — the smallest R2 integration that is still real.
+ * Backup storage — provider-independent by construction.
  *
- * Cloudflare R2 is S3-API compatible, so the production store speaks plain
- * S3 (PutObject / HeadObject / ListObjectsV2 / GetObject / DeleteObject)
- * against the R2 endpoint. The SAME implementation runs unchanged against
- * any S3-compatible server — which is how the restore rehearsal exercises
- * the real storage code path locally (MinIO) without real R2 credentials.
+ * Production speaks Google Cloud Storage (Firebase Cloud Storage is GCS —
+ * bucket `educbt-a07ae.firebasestorage.app`) through the server-side
+ * `@google-cloud/storage` SDK. Local development and restore rehearsals use
+ * the LocalDirStore. The backup/restore scripts only ever see the
+ * BackupStore interface, so the storage provider is a one-adapter concern.
  *
  * Security posture:
- *  - The bucket is private; backups never get public URLs. This module has
- *    no presign / public-URL code at all — it cannot leak a download link.
- *  - Credentials are server/infrastructure-only and never appear in logs.
+ *  - The bucket is private; backups never get public URLs. This module
+ *    cannot create a shareable link even by mistake — there is no code for
+ *    URL signing or object publicising anywhere in it (a regression check
+ *    scans for the corresponding SDK method names).
+ *  - Authentication is server/infrastructure-only: Application Default
+ *    Credentials (Workload Identity Federation in CI) or an explicit
+ *    service-account credential supplied by the environment. The browser
+ *    Firebase SDK and its web API key are never used here.
  *  - Deletion is structurally confined to the `backups/database/` prefix
- *    (see assertBackupKey) — a broad bucket delete is impossible to express
- *    through this API.
+ *    (see assertBackupPrefix) — a broad bucket delete is impossible to
+ *    express through this API.
  */
 
 import { createReadStream, createWriteStream } from 'node:fs';
 import { mkdir, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
 import { join, posix } from 'node:path';
 import { pipeline } from 'node:stream/promises';
-import {
-  S3Client,
-  PutObjectCommand,
-  HeadObjectCommand,
-  GetObjectCommand,
-  ListObjectsV2Command,
-  DeleteObjectCommand,
-} from '@aws-sdk/client-s3';
+import { Storage } from '@google-cloud/storage';
 import { assertValidBackupId, backupKey, BACKUP_PREFIX } from './naming';
 import type { StoreConfig } from './env';
 
@@ -37,7 +35,7 @@ export interface PutResult {
 }
 
 export interface BackupStore {
-  readonly kind: 'r2' | 'local';
+  readonly kind: 'gcs' | 'local';
   /** Store `localPath` under the key for `backupId`. */
   put(backupId: string, localPath: string): Promise<PutResult>;
   /** Download the key for `backupId` to `localPath`. */
@@ -145,44 +143,83 @@ export class LocalDirStore implements BackupStore {
   }
 }
 
-// ─── S3-compatible store (Cloudflare R2 in production, MinIO in tests) ─────
+// ─── Google Cloud Storage store (Firebase Cloud Storage in production) ─────
+//
+// The narrow surface of the SDK this adapter uses is declared as an interface
+// so the adapter is unit-testable with a deterministic fake — no network, no
+// credentials, and no confusion between "mocked adapter test" and real
+// provider verification (which is performed separately against the actual
+// bucket once credentials exist).
 
-export class S3CompatibleStore implements BackupStore {
-  readonly kind = 'r2' as const;
-  private readonly client: S3Client;
+export interface GcsFileApi {
+  save(data: Buffer, options?: { contentType?: string; resumable?: boolean }): Promise<unknown>;
+  download(): Promise<[Buffer, unknown]>;
+  exists(): Promise<[boolean]>;
+  getMetadata(): Promise<{ size?: number | string }>;
+  delete(): Promise<unknown>;
+}
+
+export interface GcsBucketApi {
+  file(name: string): GcsFileApi;
+  /** Prefix-scoped listing (the SDK aggregates pagination). */
+  getFiles(options: { prefix: string; autoPaginate: true }): Promise<{ name: string }[]>;
+}
+
+export class GcsStore implements BackupStore {
+  readonly kind = 'gcs' as const;
   private readonly bucketName: string;
+  private readonly bucket: GcsBucketApi;
 
-  constructor(cfg: StoreConfig & { kind: 'r2' }) {
-    if (!cfg.bucket || !cfg.accessKeyId || !cfg.secretAccessKey || !cfg.endpoint) {
-      throw new Error('S3-compatible store requires bucket, accessKeyId, secretAccessKey and endpoint');
+  constructor(cfg: StoreConfig & { kind: 'gcs' }, bucket?: GcsBucketApi) {
+    if (!cfg.bucket || !cfg.projectId) {
+      throw new Error('GCS store requires FIREBASE_STORAGE_BUCKET and FIREBASE_PROJECT_ID');
     }
     this.bucketName = cfg.bucket;
-    this.client = new S3Client({
-      region: cfg.region ?? 'auto',
-      endpoint: cfg.endpoint,
-      forcePathStyle: cfg.forcePathStyle ?? false,
-      credentials: {
-        accessKeyId: cfg.accessKeyId,
-        secretAccessKey: cfg.secretAccessKey,
-      },
-    });
+    // Explicit service-account credential (env `GCS_BACKUP_CREDENTIALS_JSON`,
+    // server-only) or — when absent — Application Default Credentials
+    // (Workload Identity Federation in CI, `gcloud auth application-default`
+    // locally). The adapter never sees or stores a private key itself.
+    let credentials: Record<string, unknown> | undefined;
+    if (cfg.credentialsJson) {
+      try {
+        credentials = JSON.parse(cfg.credentialsJson);
+      } catch {
+        throw new Error('GCS_BACKUP_CREDENTIALS_JSON is not valid JSON');
+      }
+      if (
+        !credentials || typeof credentials !== 'object' ||
+        typeof (credentials as Record<string, unknown>).client_email !== 'string' ||
+        typeof (credentials as Record<string, unknown>).private_key !== 'string'
+      ) {
+        throw new Error('GCS_BACKUP_CREDENTIALS_JSON does not look like a service-account key (client_email/private_key missing)');
+      }
+    }
+    if (bucket) {
+      this.bucket = bucket; // injected fake for unit tests
+    } else {
+      const storage = new Storage({
+        projectId: cfg.projectId,
+        ...(credentials ? { credentials } : {}),
+        ...(cfg.apiEndpoint ? { apiEndpoint: cfg.apiEndpoint } : {}),
+      });
+      this.bucket = storage.bucket(this.bucketName) as unknown as GcsBucketApi;
+    }
   }
 
   async put(backupId: string, localPath: string): Promise<PutResult> {
     const key = keyFor(backupId);
     const body = await readFile(localPath);
-    await this.client.send(
-      new PutObjectCommand({ Bucket: this.bucketName, Key: key, Body: body, ContentType: 'application/octet-stream' }),
-    );
+    await this.bucket.file(key).save(body, {
+      contentType: 'application/octet-stream',
+      // One-shot upload: no resumable session state, no partial artifacts.
+      resumable: false,
+    });
     return { key, sizeBytes: body.byteLength };
   }
 
   async get(backupId: string, localPath: string): Promise<void> {
-    const res = await this.client.send(
-      new GetObjectCommand({ Bucket: this.bucketName, Key: keyFor(backupId) }),
-    );
-    if (!res.Body) throw new Error(`empty body downloading backup ${backupId}`);
-    await pipeline(res.Body as unknown as NodeJS.ReadableStream, createWriteStream(localPath));
+    const [bytes] = await this.bucket.file(keyFor(backupId)).download();
+    await writeFile(localPath, bytes);
   }
 
   async exists(backupId: string): Promise<boolean> {
@@ -191,42 +228,31 @@ export class S3CompatibleStore implements BackupStore {
 
   async size(backupId: string): Promise<number | null> {
     try {
-      const res = await this.client.send(
-        new HeadObjectCommand({ Bucket: this.bucketName, Key: keyFor(backupId) }),
-      );
-      return res.ContentLength ?? null;
+      const meta = await this.bucket.file(keyFor(backupId)).getMetadata();
+      return meta.size == null ? null : Number(meta.size);
     } catch {
-      return null;
+      return null; // absent object — the backup script treats null as missing
     }
   }
 
   async list(): Promise<string[]> {
     // Listing is deliberately prefix-scoped: unrelated objects in the same
-    // bucket are not even visible here.
-    const keys: string[] = [];
-    let token: string | undefined;
-    do {
-      const res = await this.client.send(
-        new ListObjectsV2Command({ Bucket: this.bucketName, Prefix: BACKUP_PREFIX, ContinuationToken: token }),
-      );
-      for (const obj of res.Contents ?? []) if (obj.Key) keys.push(obj.Key);
-      token = res.IsTruncated ? res.NextContinuationToken : undefined;
-    } while (token);
-    keys.sort();
-    return keys;
+    // bucket (school logos, photos, exports…) are not even visible here.
+    const files = await this.bucket.getFiles({ prefix: BACKUP_PREFIX, autoPaginate: true });
+    return files.map((f) => f.name).sort();
   }
 
   async delete(backupId: string): Promise<void> {
     const key = keyFor(backupId);
     assertBackupPrefix(key);
-    await this.client.send(new DeleteObjectCommand({ Bucket: this.bucketName, Key: key }));
+    await this.bucket.file(key).delete();
   }
 }
 
 /** Build the store described by the validated environment. */
 export function storeFromConfig(cfg: StoreConfig): BackupStore {
   if (cfg.kind === 'local') return new LocalDirStore(cfg.localDir!);
-  if (cfg.kind === 'r2') return new S3CompatibleStore({ ...cfg, kind: 'r2' });
+  if (cfg.kind === 'gcs') return new GcsStore({ ...cfg, kind: 'gcs' });
   throw new Error(`unknown store kind: ${(cfg as StoreConfig).kind}`);
 }
 

@@ -8,13 +8,20 @@
  * environment validation, restore-target safety, and the fact that pg_dump /
  * pg_restore are invoked with NO secret on the command line.
  *
+ * The Google Cloud Storage adapter is tested against a deterministic in-file
+ * fake of the SDK surface (no network, no credentials). That is an adapter
+ * unit test, NOT real-provider verification — the actual Firebase bucket
+ * (educbt-a07ae.firebasestorage.app) is exercised separately once
+ * infrastructure credentials exist.
+ *
  * It deliberately does NOT mock pg_dump and call that a recovery proof —
  * the real restore rehearsal (backup → upload → download → pg_restore →
  * db:verify on a separate database) is executed live and documented in the
  * README "Backups and disaster recovery" section.
  */
 
-import { mkdtemp, rm, writeFile, mkdir } from 'node:fs/promises';
+import { mkdtemp, rm, writeFile, mkdir, readFile } from 'node:fs/promises';
+import { readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { backupId, backupFilename, backupKey, parseBackupKey, nextAvailableId, BACKUP_PREFIX } from '@/lib/backup/naming';
@@ -22,7 +29,7 @@ import { selectRetention } from '@/lib/backup/retention';
 import { readBackupEnv, readStoreConfig, assertSafeRestoreTarget, BackupEnvError } from '@/lib/backup/env';
 import { parsePgUri, describePgUri, pgToolEnv } from '@/lib/backup/pg-uri';
 import { pgDumpArgs, pgRestoreArgs } from '@/lib/backup/pg-commands';
-import { LocalDirStore, storeFromConfig } from '@/lib/backup/store';
+import { LocalDirStore, GcsStore, storeFromConfig, type GcsBucketApi } from '@/lib/backup/store';
 
 let failures = 0;
 function check(name: string, ok: boolean, detail = '') {
@@ -103,23 +110,123 @@ async function main() {
   }
 
   // ── Environment validation ──────────────────────────────────────────────
+  const svcJson = JSON.stringify({ client_email: 'educbt-backup@educbt-a07ae.iam.gserviceaccount.com', private_key: '-----BEGIN PRIVATE KEY-----\nnot-a-real-key\n-----END PRIVATE KEY-----\n' });
   const baseEnv: Record<string, string> = {
     BACKUP_DATABASE_URL: 'postgresql://postgres:pw@db-admin.example.com:5432/educbt',
-    R2_BACKUP_ACCESS_KEY_ID: 'k',
-    R2_BACKUP_SECRET_ACCESS_KEY: 's',
-    R2_BACKUP_BUCKET: 'educbt-backups',
-    R2_BACKUP_ACCOUNT_ID: 'acc',
+    FIREBASE_STORAGE_BUCKET: 'educbt-a07ae.firebasestorage.app',
+    FIREBASE_PROJECT_ID: 'educbt-a07ae',
+    GCS_BACKUP_CREDENTIALS_JSON: svcJson,
     DATABASE_URL_APP: 'postgresql://educbt_app:pw@db.example.com:5432/educbt',
   };
-  check('a complete R2 env validates', readBackupEnv(baseEnv).store.kind === 'r2');
-  check('R2 endpoint is derived from the account id', readBackupEnv(baseEnv).store.endpoint === 'https://acc.r2.cloudflarestorage.com');
-  check('partial R2 configuration is rejected (never a silent local fallback)', (() => { try { readBackupEnv({ ...baseEnv, R2_BACKUP_BUCKET: '' }); return false; } catch (e) { return e instanceof BackupEnvError; } })());
+  const gcsStore = readBackupEnv(baseEnv).store;
+  check('a complete Firebase/GCS env validates as the gcs store', gcsStore.kind === 'gcs');
+  check('the bucket and project id are read from FIREBASE_* variables', gcsStore.bucket === 'educbt-a07ae.firebasestorage.app' && gcsStore.projectId === 'educbt-a07ae');
+  check('partial GCS configuration is rejected (never a silent local fallback)', (() => { try { readBackupEnv({ ...baseEnv, FIREBASE_PROJECT_ID: '' }); return false; } catch (e) { return e instanceof BackupEnvError; } })());
+  check('malformed credential JSON is rejected at env validation time', (() => { try { readBackupEnv({ ...baseEnv, GCS_BACKUP_CREDENTIALS_JSON: '{not json' }); return false; } catch (e) { return e instanceof BackupEnvError; } })());
+  check('credential JSON without service-account fields is rejected', (() => { try { readBackupEnv({ ...baseEnv, GCS_BACKUP_CREDENTIALS_JSON: '{"foo":1}' }); return false; } catch (e) { return e instanceof BackupEnvError; } })());
+  check('the error names the Firebase variables when nothing is configured', (() => { try { readStoreConfig({}); return false; } catch (e) { return e instanceof BackupEnvError && /FIREBASE_STORAGE_BUCKET/.test(e.message); } })());
   check('no destination at all is rejected', (() => { try { readBackupEnv({ BACKUP_DATABASE_URL: baseEnv.BACKUP_DATABASE_URL }); return false; } catch { return true; } })());
   check('missing backup source URL is rejected', (() => { try { readBackupEnv({}); return false; } catch { return true; } })());
   check('backing up over the RLS-restricted app credential is refused', (() => { try { readBackupEnv({ ...baseEnv, BACKUP_DATABASE_URL: baseEnv.DATABASE_URL_APP, DATABASE_URL_APP: baseEnv.DATABASE_URL_APP }); return false; } catch (e) { return e instanceof BackupEnvError; } })());
   check('BACKUP_RETENTION_DAYS defaults to 30', readBackupEnv(baseEnv).retentionDays === 30);
   check('BACKUP_RETENTION_DAYS=0 is rejected (would delete every backup)', (() => { try { readBackupEnv({ ...baseEnv, BACKUP_RETENTION_DAYS: '0' }); return false; } catch { return true; } })());
   check('local dir store is accepted for rehearsal', readStoreConfig({ BACKUP_LOCAL_DIR: '/tmp/backups' }).kind === 'local');
+
+
+  // ── GCS adapter against a deterministic fake of the SDK surface ───────────
+  class FakeBucket implements GcsBucketApi {
+    files = new Map<string, Buffer>();
+    lastSaveOptions: Record<string, unknown> | null = null;
+    lastListPrefix = '';
+    failOnSave = false;
+    file(name: string) {
+      const self = this;
+      return {
+        async save(data: Buffer, options?: { contentType?: string; resumable?: boolean }) {
+          if (self.failOnSave) throw new Error(' simulated storage failure ');
+          self.lastSaveOptions = options ?? {};
+          self.files.set(name, data);
+          return {};
+        },
+        async download() {
+          const f = self.files.get(name);
+          if (!f) throw new Error('not found');
+          return [f, {}] as [Buffer, unknown];
+        },
+        async exists() { return [self.files.has(name)] as [boolean]; },
+        async getMetadata() {
+          const f = self.files.get(name);
+          if (!f) throw new Error('not found');
+          return { size: f.byteLength };
+        },
+        async delete() {
+          if (!self.files.has(name)) throw new Error('not found');
+          self.files.delete(name);
+          return {};
+        },
+      };
+    }
+    async getFiles(options: { prefix: string; autoPaginate: true }) {
+      this.lastListPrefix = options.prefix;
+      // Only objects under the requested prefix are ever visible — same as
+      // a real prefix-scoped listing.
+      return [...this.files.keys()].filter((k) => k.startsWith(options.prefix)).map((name) => ({ name }));
+    }
+  }
+  {
+    const fake = new FakeBucket();
+    const store = new GcsStore({ kind: 'gcs', bucket: 'educbt-a07ae.firebasestorage.app', projectId: 'educbt-a07ae' }, fake);
+    const dir = await mkdtemp(join(tmpdir(), 'gcs-adapter-'));
+    try {
+      const dumpFile = join(dir, 'dump.bin');
+      await writeFile(dumpFile, Buffer.alloc(1536, 9));
+      const put = await store.put(idAt(t), dumpFile);
+      check('gcs put stores under the deterministic key and reports exact bytes', put.key === backupKey(idAt(t)) && put.sizeBytes === 1536);
+      check('gcs upload is one-shot, non-resumable, binary content type', fake.lastSaveOptions?.resumable === false && fake.lastSaveOptions?.contentType === 'application/octet-stream');
+      check('gcs size confirms the uploaded object via metadata', (await store.size(idAt(t))) === 1536);
+      check('gcs size returns null for a missing object', (await store.size(idAt(utc(2026, 1, 1, 0, 0, 0)))) === null);
+      const dl = join(dir, 'download.bin');
+      await store.get(idAt(t), dl);
+      const dlBytes = await readFile(dl);
+      check('gcs download returns byte-identical content', dlBytes.byteLength === 1536 && dlBytes[0] === 9 && dlBytes[1535] === 9);
+      check('gcs exists distinguishes present from absent', (await store.exists(idAt(t))) && !(await store.exists(idAt(utc(2026, 1, 1, 0, 0, 0)))));
+      // A foreign object inside the bucket but outside the prefix.
+      await fake.files.set('media/logos/school.png', Buffer.from('x'));
+      const listed = await store.list();
+      check('gcs list is prefix-scoped — unrelated bucket objects are invisible', listed.length === 1 && listed[0] === put.key && fake.lastListPrefix === BACKUP_PREFIX);
+      await store.delete(idAt(t));
+      check('gcs delete removes exactly the one backup', !(await store.exists(idAt(t))) && (await store.list()).length === 0 && fake.files.has('media/logos/school.png'));
+      let refused = false;
+      try { await store.delete(idAt(t)); } catch { refused = true; }
+      check('gcs delete of a missing object surfaces the error (no silent success)', refused);
+      fake.failOnSave = true;
+      let uploadFailed = false;
+      try { await store.put(idAt(t), dumpFile); } catch { uploadFailed = true; }
+      check('a storage failure propagates — a failed upload is a failed backup', uploadFailed);
+      fake.failOnSave = false;
+      let badKeyRefused = false;
+      try { await store.delete('../etc/passwd'); } catch { badKeyRefused = true; }
+      check('the backup-id pattern refuses key traversal before the SDK is touched', badKeyRefused);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+    // Adapter construction guards.
+    let noBucketRefused = false;
+    try { new GcsStore({ kind: 'gcs', bucket: '', projectId: 'p' } as never, fake); } catch { noBucketRefused = true; }
+    check('the gcs store refuses construction without a bucket/project', noBucketRefused);
+    let badJsonRefused = false;
+    try { new GcsStore({ kind: 'gcs', bucket: 'b', projectId: 'p', credentialsJson: '{bad' }, fake); } catch { badJsonRefused = true; }
+    check('the gcs store rejects malformed credential JSON itself', badJsonRefused);
+    let adcOk = false;
+    try { new GcsStore({ kind: 'gcs', bucket: 'b', projectId: 'p' }, fake); adcOk = true; } catch { adcOk = false; }
+    check('the gcs store constructs cleanly with no inline credential (ADC path)', adcOk);
+    // Structural privacy guarantee: the storage module cannot create public
+    // or signed URLs, and no R2/S3 code remains in the production path.
+    const storeSrc = readFileSync(join(process.cwd(), 'src/lib/backup/store.ts'), 'utf8');
+    check('the store has no signed-URL, makePublic or public-URL code', !/getSignedUrl|makePublic|publicUrl|public_url/i.test(storeSrc));
+    check('no R2/S3 adapter remains in the store module', !/@aws-sdk|S3Compatible/i.test(storeSrc));
+    check('env validation never leaks the credential JSON in errors', (() => { try { readBackupEnv({ ...baseEnv, GCS_BACKUP_CREDENTIALS_JSON: '{bad' }); return false; } catch (e) { return !(e instanceof Error) || !e.message.includes(svcJson); } })());
+  }
 
   // ── Restore-target safety ────────────────────────────────────────────────
   const appUrl = 'postgresql://educbt_app:pw2@prod.example.com:5432/educbt';

@@ -1,19 +1,31 @@
-# Nightly full-database backup → Cloudflare R2.
+# Nightly full-database backup → Firebase Cloud Storage (Google Cloud Storage).
 #
 # INERT UNTIL DEPLOY DAY: this workflow only runs once it is on the default
 # branch AND the repository secrets below exist. No secrets → the job fails
 # fast in the validate step without ever reaching a database.
 #
 # Required repository secrets:
-#   BACKUP_DATABASE_URL          privileged (owner/admin) Neon connection URI
-#   R2_BACKUP_ACCESS_KEY_ID      R2 token (bucket-scoped)
-#   R2_BACKUP_SECRET_ACCESS_KEY
-#   R2_BACKUP_BUCKET             private bucket name, e.g. educbt-backups
-#   R2_BACKUP_ACCOUNT_ID         Cloudflare account id (endpoint is derived)
+#   BACKUP_DATABASE_URL        privileged (owner/admin) Postgres connection URI
+#   GCS_BACKUP_CREDENTIALS_JSON restricted service-account key JSON
+#                              (bucket-scoped; see README → IAM design)
+#   FIREBASE_STORAGE_BUCKET    e.g. educbt-a07ae.firebasestorage.app
+#   FIREBASE_PROJECT_ID        educbt-a07ae
 #
 # Required repository variables (Settings → Secrets and variables → Actions):
-#   PG_MAJOR                    PostgreSQL major version of production
-#                               (must match, so pg_dump's format matches)
+#   PG_MAJOR                   PostgreSQL major version of production
+#                              (must match, so pg_dump's format matches)
+#
+# AUTHENTICATION ARCHITECTURE
+# The service-account JSON secret is used HERE ONLY to mint short-lived
+# Application Default Credentials on the runner (google-github-actions/auth).
+# The backup code itself never sees a private key — it just uses ADC.
+#
+# RECOMMENDED UPGRADE (no code change needed): replace the `credentials_json`
+# input with Workload Identity Federation —
+#   workload_identity_provider: projects/<number>/locations/global/workloadIdentityPools/gh-actions/providers/educbt
+#   service_account:            educbt-backup@educbt-a07ae.iam.gserviceaccount.com
+# and delete the GCS_BACKUP_CREDENTIALS_JSON secret. Because the adapter
+# authenticates via ADC either way, the swap is confined to this workflow.
 
 name: nightly-backup
 
@@ -43,6 +55,28 @@ jobs:
         with:
           node-version: 20
 
+      # Fail CLOSED: missing credentials must abort the job before any
+      # database is touched, not silently skip the backup.
+      - name: Validate configuration
+        env:
+          BACKUP_DATABASE_URL: ${{ secrets.BACKUP_DATABASE_URL }}
+          GCS_BACKUP_CREDENTIALS_JSON: ${{ secrets.GCS_BACKUP_CREDENTIALS_JSON }}
+          FIREBASE_STORAGE_BUCKET: ${{ secrets.FIREBASE_STORAGE_BUCKET }}
+          FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
+        run: |
+          missing=0
+          for v in BACKUP_DATABASE_URL GCS_BACKUP_CREDENTIALS_JSON FIREBASE_STORAGE_BUCKET FIREBASE_PROJECT_ID; do
+            if [ -z "$(printenv "$v")" ]; then
+              echo "::error::Missing required secret: $v"
+              missing=1
+            fi
+          done
+          if [ "$missing" -ne 0 ]; then
+            echo "::error::Backup is NOT configured. A missing credential must fail loudly, never skip silently."
+            exit 1
+          fi
+          echo "All required credentials present."
+
       # pg_dump major version must match the server. Ubuntu ships old client
       # packages, so use the official PostgreSQL apt repository.
       - name: Install postgresql-client-${{ vars.PG_MAJOR || '17' }}
@@ -56,20 +90,23 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Backup
+      # Sets up Application Default Credentials on the runner. The JSON key
+      # is consumed by this action and is never echoed or forwarded further.
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCS_BACKUP_CREDENTIALS_JSON }}
+
+      - name: Backup (pg_dump → integrity check → upload → size confirm → retention)
         env:
           BACKUP_DATABASE_URL: ${{ secrets.BACKUP_DATABASE_URL }}
-          R2_BACKUP_ACCESS_KEY_ID: ${{ secrets.R2_BACKUP_ACCESS_KEY_ID }}
-          R2_BACKUP_SECRET_ACCESS_KEY: ${{ secrets.R2_BACKUP_SECRET_ACCESS_KEY }}
-          R2_BACKUP_BUCKET: ${{ secrets.R2_BACKUP_BUCKET }}
-          R2_BACKUP_ACCOUNT_ID: ${{ secrets.R2_BACKUP_ACCOUNT_ID }}
+          FIREBASE_STORAGE_BUCKET: ${{ secrets.FIREBASE_STORAGE_BUCKET }}
+          FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
           BACKUP_RETENTION_DAYS: '30'
         run: npm run backup:db
 
-      # A failed backup must be visible. The script itself exits non-zero on
-      # any failure; the summary makes the run readable in the Actions log.
       - name: Job summary
         if: always()
         run: |
           echo "## Nightly backup" >> $GITHUB_STEP_SUMMARY
-          echo "Exit status of the backup step determines the run result." >> $GITHUB_STEP_SUMMARY
+          echo "The backup step's JSON summary is in its log. A non-zero exit is a failed backup — retention never ran." >> $GITHUB_STEP_SUMMARY

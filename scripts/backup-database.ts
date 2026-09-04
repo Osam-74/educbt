@@ -3,7 +3,7 @@
  *
  * Usage:
  *   npm run backup:db
- *   BACKUP_DATABASE_URL=... R2_BACKUP_* ... npm run backup:db
+ *   BACKUP_DATABASE_URL=... FIREBASE_* ... npm run backup:db
  *
  * Pipeline (each step must succeed before the next runs; nothing is
  * swallowed):
@@ -13,7 +13,7 @@
  *   3. pg_dump -Fc to a temporary file
  *   4. verify the file exists and is non-zero
  *   5. `pg_restore --list` — the archive is parseable and contains objects
- *   6. upload to the configured store (R2 in production)
+ *   6. upload to the configured store (Firebase Cloud Storage / GCS in production)
  *   7. confirm the upload: object exists, size matches exactly
  *   8. remove the temporary file
  *   9. ONLY THEN run age-based retention cleanup, confined to the
@@ -52,7 +52,7 @@ async function main() {
   const store = storeFromConfig(env.store);
   // Logged: connection identity WITHOUT credentials.
   console.error(`INFO  source: ${describePgUri(process.env.BACKUP_DATABASE_URL || process.env.DATABASE_URL_UNPOOLED)}`);
-  console.error(`INFO  store:  ${store.kind}${store.kind === 'r2' ? '' : ` (${env.store.localDir})`}`);
+  console.error(`INFO  store:  ${store.kind}${store.kind === 'gcs' ? ` (bucket ${env.store.bucket})` : store.kind === 'local' ? ` (${env.store.localDir})` : ''}`);
 
   // 1—2: deterministic, collision-safe id. Two near-simultaneous runs get
   // distinct ids; nothing already stored is ever overwritten.

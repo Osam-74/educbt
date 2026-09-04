@@ -52,7 +52,7 @@ function parseArgs(argv: string[]): { list: boolean; backup?: string; disasterRe
 async function main() {
   const args = parseArgs(process.argv.slice(2));
 
-  // The store configuration (R2 or local) is validated by the same code the
+  // The store configuration (GCS/Firebase or local) is validated by the same code the
   // backup script uses — one contract, one validator.
   let store;
   try {

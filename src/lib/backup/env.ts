@@ -6,6 +6,12 @@
  *    make an `educbt_app` dump partial, so `BACKUP_DATABASE_URL` is an
  *    owner/admin credential — infrastructure only, never the app runtime,
  *    never committed, never logged.
+ *  - Storage authentication is server-only: either Application Default
+ *    Credentials (Workload Identity Federation in CI, gcloud locally) or the
+ *    `GCS_BACKUP_CREDENTIALS_JSON` service-account key, which must live in a
+ *    secret store (GitHub Secrets) — never in a file, never in .env, never
+ *    printed. The browser Firebase web API key is NOT a storage credential
+ *    and is never read here.
  *  - The restore target is a SEPARATE database by construction: restoring
  *    into the live application database is refused outright, and non-local
  *    targets that do not look like rehearsal/staging require the explicit
@@ -15,14 +21,14 @@
 import { parsePgUri, dbIdentity, PgUriError } from './pg-uri';
 
 export interface StoreConfig {
-  kind: 'r2' | 'local';
-  /** R2 / S3-compatible */
-  accessKeyId?: string;
-  secretAccessKey?: string;
+  kind: 'gcs' | 'local';
+  /** Google Cloud Storage / Firebase Cloud Storage */
   bucket?: string;
-  endpoint?: string;
-  region?: string;
-  forcePathStyle?: boolean;
+  projectId?: string;
+  /** Optional inline service-account JSON (secret-store only, never logged). */
+  credentialsJson?: string;
+  /** Optional API endpoint override (local GCS emulator, if ever needed). */
+  apiEndpoint?: string;
   /** local dir fallback (dev / rehearsal) */
   localDir?: string;
 }
@@ -37,41 +43,57 @@ export interface BackupEnv {
 
 export class BackupEnvError extends Error {}
 
-const R2_KEYS = ['R2_BACKUP_ACCESS_KEY_ID', 'R2_BACKUP_SECRET_ACCESS_KEY', 'R2_BACKUP_BUCKET'] as const;
-const R2_KEYS_OPTIONAL = ['R2_BACKUP_ACCOUNT_ID', 'R2_BACKUP_ENDPOINT', 'R2_BACKUP_REGION', 'R2_BACKUP_FORCE_PATH_STYLE'] as const;
+const GCS_KEYS = ['FIREBASE_STORAGE_BUCKET', 'FIREBASE_PROJECT_ID'] as const;
+const GCS_KEYS_OPTIONAL = ['GCS_BACKUP_CREDENTIALS_JSON', 'GCS_BACKUP_API_ENDPOINT'] as const;
+
+/** Shape-check an inline service-account credential WITHOUT keeping it. */
+function validateCredentialsJson(raw: string): void {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    throw new BackupEnvError('GCS_BACKUP_CREDENTIALS_JSON is not valid JSON');
+  }
+  if (
+    !parsed || typeof parsed !== 'object' || Array.isArray(parsed) ||
+    typeof (parsed as Record<string, unknown>).client_email !== 'string' ||
+    typeof (parsed as Record<string, unknown>).private_key !== 'string'
+  ) {
+    throw new BackupEnvError(
+      'GCS_BACKUP_CREDENTIALS_JSON does not look like a service-account key ' +
+      '(expected an object with client_email and private_key)',
+    );
+  }
+}
 
 export function readStoreConfig(env: Record<string, string | undefined>): StoreConfig {
-  // R2 is configured only when ALL required keys are present — partial
-  // configuration would silently fall back to local storage on a server,
-  // which is worse than a clear failure.
-  if (R2_KEYS.some((k) => env[k]?.trim())) {
-    const missing = R2_KEYS.filter((k) => !env[k]?.trim());
+  // GCS (Firebase Cloud Storage) is configured only when BOTH required keys
+  // are present — partial configuration would silently fall back to local
+  // storage on a server, which is worse than a clear failure.
+  if (GCS_KEYS.some((k) => env[k]?.trim())) {
+    const missing = GCS_KEYS.filter((k) => !env[k]?.trim());
     if (missing.length > 0) {
       throw new BackupEnvError(
-        `R2 backup storage is partially configured — missing: ${missing.join(', ')}. ` +
-        'Set all R2_BACKUP_* variables or none.',
+        `Firebase/GCS backup storage is partially configured — missing: ${missing.join(', ')}. ` +
+        'Set both FIREBASE_STORAGE_BUCKET and FIREBASE_PROJECT_ID, or neither.',
       );
     }
-    const accountId = env.R2_BACKUP_ACCOUNT_ID?.trim();
-    const endpoint = env.R2_BACKUP_ENDPOINT?.trim() ?? (accountId ? `https://${accountId}.r2.cloudflarestorage.com` : undefined);
-    if (!endpoint) {
-      throw new BackupEnvError('R2 backup storage needs R2_BACKUP_ENDPOINT or R2_BACKUP_ACCOUNT_ID.');
-    }
+    const credentialsJson = env.GCS_BACKUP_CREDENTIALS_JSON?.trim();
+    if (credentialsJson) validateCredentialsJson(credentialsJson);
     return {
-      kind: 'r2',
-      accessKeyId: env.R2_BACKUP_ACCESS_KEY_ID,
-      secretAccessKey: env.R2_BACKUP_SECRET_ACCESS_KEY,
-      bucket: env.R2_BACKUP_BUCKET,
-      endpoint,
-      region: env.R2_BACKUP_REGION?.trim() || 'auto',
-      forcePathStyle: env.R2_BACKUP_FORCE_PATH_STYLE?.trim() === '1',
+      kind: 'gcs',
+      bucket: env.FIREBASE_STORAGE_BUCKET!.trim(),
+      projectId: env.FIREBASE_PROJECT_ID!.trim(),
+      ...(credentialsJson ? { credentialsJson } : {}),
+      ...(env.GCS_BACKUP_API_ENDPOINT?.trim() ? { apiEndpoint: env.GCS_BACKUP_API_ENDPOINT.trim() } : {}),
     };
   }
   const localDir = env.BACKUP_LOCAL_DIR?.trim();
   if (localDir) return { kind: 'local', localDir };
   throw new BackupEnvError(
-    'No backup destination configured. Set the R2_BACKUP_* variables (production) ' +
-    'or BACKUP_LOCAL_DIR (local/rehearsal). A backup with nowhere to go is not a backup.',
+    'No backup destination configured. Set FIREBASE_STORAGE_BUCKET and FIREBASE_PROJECT_ID ' +
+    '(production, Google Cloud Storage / Firebase Cloud Storage) or BACKUP_LOCAL_DIR (local/rehearsal). ' +
+    'A backup with nowhere to go is not a backup.',
   );
 }
 

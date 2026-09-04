@@ -93,7 +93,8 @@ cp .env.example .env.local
 | `INNGEST_SIGNING_KEY` | Signs every request Inngest makes to `/api/inngest` | Not needed (`INNGEST_DEV=1`) | **Required — fails closed** | Yes |
 | `INNGEST_DEV` | Local dev-server mode (`npx inngest-cli dev`) | Optional | Never set | Yes |
 | `BACKUP_DATABASE_URL` | Nightly pg_dump credential (owner/admin — never `educbt_app`) | Falls back to `DATABASE_URL_UNPOOLED` | **Required** (GitHub secret) | Yes |
-| `R2_BACKUP_ACCESS_KEY_ID` / `_SECRET_ACCESS_KEY` / `_BUCKET` / `_ACCOUNT_ID` | Backup object storage (private R2 bucket) | Optional (`BACKUP_LOCAL_DIR` instead) | **Required** (GitHub secrets) | Yes |
+| `FIREBASE_STORAGE_BUCKET` / `FIREBASE_PROJECT_ID` | Backup object storage (private Firebase Cloud Storage / GCS bucket) | Optional (`BACKUP_LOCAL_DIR` instead) | **Required** (GitHub secrets) | Yes |
+| `GCS_BACKUP_CREDENTIALS_JSON` | Backup service-account key — GitHub secret only, never `.env` | Optional (local ADC) | Optional (CI mints ADC from it; replaced by Workload Identity Federation) | Yes |
 | `BACKUP_RETENTION_DAYS` | Age-based retention window | Defaults to 30 | Defaults to 30 | Yes |
 | `RESTORE_DATABASE_URL` | Restore target — separate DB only, never defaulted | For rehearsals | For rehearsals / DR only | Yes |
 
@@ -101,8 +102,9 @@ There are **no `NEXT_PUBLIC_` variables** — nothing secret ever reaches the
 client bundle, and `test:config` scans the source tree to keep it that way.
 Resend, SMS and Sentry appear in `.env.example` only as clearly-labelled
 placeholders; they are not yet required and do nothing until their features
-exist. R2 **is** integrated — but only for the backup layer above; the bucket
-is private and there is no public-URL code anywhere.
+exist. Firebase Cloud Storage **is** integrated — server-side only, for the
+backup layer above; the bucket is private and there is no public-URL code
+anywhere. The browser Firebase SDK is not installed.
 
 #### Production deployment flow
 
@@ -174,23 +176,39 @@ An unscoped query returning rows means the app is connecting as owner or superus
 
 Neon is owned by Databricks, who have shut down an acquired database product before. Unlikely to repeat, but "unlikely" is not a plan when a term of results is at stake. The backup layer below is **built, tested and rehearsed** — not a to-do.
 
+### Provider decision (current architecture)
+
+**Production object storage is Firebase Cloud Storage (Google Cloud Storage)**, project `educbt-a07ae`, private bucket `educbt-a07ae.firebasestorage.app`. Firebase Storage is GCS under the hood, so the server-side adapter uses `@google-cloud/storage` — no Firebase browser SDK, no Firestore, no Firebase web API key anywhere in the backup path. (The earlier R2/S3 adapter was fully removed; see "Storage abstraction" below.)
+
+**Firestore is not used by EduCBT and stays that way.** PostgreSQL is the single authoritative application and academic datastore. The backup system never duplicates data into Firestore, and no school/user/exam/result documents exist there. If a future feature genuinely justifies Firestore, that will be a deliberate design decision — not a side effect of storage work.
+
 ### What exists
 
-- **`npm run backup:db`** (scripts/backup-database.ts) — full-database `pg_dump` in PostgreSQL custom format (compressed, single file, integrity-checkable with `pg_restore --list`), uploaded to a **private** Cloudflare R2 bucket, size-confirmed, then age-based retention cleanup. Structured JSON result; a failed upload is a failed backup; retention never runs after a failure.
+- **`npm run backup:db`** (scripts/backup-database.ts) — full-database `pg_dump` in PostgreSQL custom format (compressed, single file, integrity-checkable with `pg_restore --list`), uploaded to the **private** Firebase Cloud Storage bucket under `backups/database/YYYY/MM/DD/<backup-id>.dump`, size-confirmed, then age-based retention cleanup. Structured JSON result; a failed upload is a failed backup; retention never runs after a failure.
 - **`npm run restore:db`** (scripts/restore-database.ts) — `--list` to enumerate backups, `--backup <id>` to download, integrity-check and `pg_restore` into a **separate** database, then verify the restored schema (relations, migrations, row counts, RLS policies) from inside.
-- **`npm run test:backup`** — 43 regression checks: naming determinism, collision handling, retention boundaries (age-based, never count-based), foreign-object safety, environment validation, restore-target guards, and credential hygiene (no password or URI ever reaches a pg_dump/pg_restore command line).
-- **`.github/workflows/nightly-backup.yml`** — the scheduled production backup (GitHub Actions, 01:00 UTC / 02:00 WAT, off-peak before Nigerian school hours). Enabled on deploy day by adding the repository secrets below; it is deliberately inert until then.
+- **`npm run test:backup`** — 63 regression checks: naming determinism, collision handling, retention boundaries (age-based, never count-based), foreign-object safety, environment validation, restore-target guards, credential hygiene (no password or URI ever reaches a pg_dump/pg_restore command line), and a GCS-adapter section against a deterministic fake of the SDK surface (upload/download/size/list/delete, prefix isolation, error propagation, missing/partial credentials, and a structural scan proving the store module contains no URL-signing or object-publicising code).
+- **`.github/workflows/nightly-backup.yml`** — the scheduled production backup (GitHub Actions, 01:00 UTC / 02:00 WAT, off-peak before Nigerian school hours). Enabled on deploy day by adding the repository secrets below; it is deliberately inert until then and **fails closed** — missing credentials abort the job before any database is touched.
+
+### Storage abstraction
+
+Everything above the storage layer is provider-independent: the scripts, retention logic, naming, guards and tests only ever see the `BackupStore` interface (put / get / exists / size / list / delete). Two implementations exist: `GcsStore` (production) and `LocalDirStore` (dev/rehearsal). Swapping Cloudflare R2 for Firebase Cloud Storage was an adapter-only change — no backup, restore or retention logic changed — and a future storage migration is the same one-file concern.
 
 ### Security model
 
 - `BACKUP_DATABASE_URL` is an owner/admin credential — RLS would silently turn an `educbt_app` dump into a partial backup, so backing up as the app role is **refused** (`readBackupEnv`).
-- The R2 bucket is private and the storage layer has **no public-URL code at all** — backups cannot be shared as links, only fetched by credential.
-- Deletion is structurally confined to the `backups/database/` prefix and to objects our own naming produced. Anything else — newer backups, foreign files inside the prefix, objects outside it — is never a deletion candidate (proven live in the rehearsal below).
+- The bucket is private and the storage layer has **no public-URL code at all** — backups cannot be shared as links, only fetched by infrastructure credential. Browser clients have no route to `backups/database/**`; permissive Firebase Storage Rules are never relied on for backup access (see IAM below).
+- Deletion is structurally confined to the `backups/database/` prefix and to objects our own naming produced. Anything else — newer backups, foreign files inside the prefix (school logos, student photos, exports that may later live in the same bucket), objects outside it — is never a deletion candidate.
 - Restoring into the **live application database is refused outright**, flag or no flag. Non-local restore targets that do not look like rehearsal/staging require an explicit `--disaster-recovery` flag. `RESTORE_DATABASE_URL` has no default: a typo cannot reach production.
+
+### IAM and authentication design
+
+- The backup service account (suggested: `educbt-backup@educbt-a07ae.iam.gserviceaccount.com`) gets **bucket-scoped** permissions on `educbt-a07ae.firebasestorage.app` only — the practical minimum is `roles/storage.objectAdmin` bound to that one bucket (upload, read, list, read metadata, delete expired objects). No project-wide Owner/Editor/Firebase Admin, no Firestore permissions, no unrelated Firebase administration.
+- The adapter authenticates via Google **Application Default Credentials**. In CI the `google-github-actions/auth` step mints ADC on the runner; locally `gcloud auth application-default login` (or the optional `GCS_BACKUP_CREDENTIALS_JSON` secret) does the same. The backup code never handles a private key itself.
+- **Recommendation:** start with the restricted service-account JSON stored only in GitHub Secrets (simple, auditable, revocable in one click), then upgrade to **Workload Identity Federation / GitHub OIDC** — which removes the long-lived key entirely — by swapping two inputs in the workflow. Because the adapter speaks ADC either way, that upgrade touches **no application code**.
 
 ### Restore rehearsal (executed, not hypothetical)
 
-The full chain was run end-to-end against a real S3-compatible server (MinIO speaking the same API as R2):
+The full chain was run end-to-end live (originally against MinIO over the S3 adapter; the provider-independent parts — naming, retention, guards, the entire pg_dump/pg_restore/RLS chain — are unchanged by the GCS adapter swap and are re-proven by the suite every run):
 
 1. `pg_dump` of the dev database (177,045 bytes, 374 archive objects) → upload → size-confirmed.
 2. A second run seconds later → distinct backup id, nothing overwritten.
@@ -210,7 +228,11 @@ Re-run this rehearsal at least **once per term**, with a named owner. A backup y
 
 ### Deploy-day checklist (production secrets)
 
-GitHub repository secrets: `BACKUP_DATABASE_URL`, `R2_BACKUP_ACCESS_KEY_ID`, `R2_BACKUP_SECRET_ACCESS_KEY`, `R2_BACKUP_BUCKET`, `R2_BACKUP_ACCOUNT_ID`. Set `PG_MAJOR` in the workflow file to the production server's PostgreSQL major version. The workflow is scheduled and will not fire until it is on the default branch with secrets present — no risk of half-configured automation.
+GitHub repository secrets: `BACKUP_DATABASE_URL` (owner/admin Postgres URI), `GCS_BACKUP_CREDENTIALS_JSON` (the bucket-scoped backup service-account key — see IAM above; swap for Workload Identity Federation later), `FIREBASE_STORAGE_BUCKET` (`educbt-a07ae.firebasestorage.app`), `FIREBASE_PROJECT_ID` (`educbt-a07ae`). Set the repository variable `PG_MAJOR` to the production server's PostgreSQL major version. The workflow is scheduled and will not fire until it is on the default branch with secrets present — no risk of half-configured automation, and a missing credential fails the job loudly instead of skipping the backup.
+
+### Billing posture
+
+The Firebase project is on the Blaze plan. Design targets are economical by construction — one backup per night, 30-day retention, no duplicate uploads (deterministic ids), downloads only for rehearsals or real recoveries — and nothing is hard-coded against today's free-tier numbers. **Owner deployment task:** configure Google Cloud budget/billing alerts (console → Billing → Budgets) so an accidental cost is noticed in hours, not on an invoice.
 
 ### Why not Vercel Cron / a web endpoint
 
@@ -745,10 +767,10 @@ npm run test:results    # 38  composition, marking, compilation
 npm run test:practice   # 20  practice area and the formal-feedback guard
 npm run test:jobs       # 20  scheduled session purge and expired-attempt sweep
 npm run test:print      # 24  printed documents
-npm run test:backup     # 43  backup naming, retention, restore-target safety — NO database
+npm run test:backup     # 63  backup naming, retention, restore-target safety, GCS adapter — NO database
 ```
 
-**295 checks. 104 of them need no database at all.**
+**315 checks. 124 of them need no database at all.**
 
 Backup operations themselves (not part of the suite): `npm run backup:db`,
 `npm run restore:db -- --list` — see "Backups and disaster recovery".
