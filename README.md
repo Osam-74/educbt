@@ -230,6 +230,10 @@ Re-run this rehearsal at least **once per term**, with a named owner. A backup y
 
 GitHub repository secrets: `BACKUP_DATABASE_URL` (owner/admin Postgres URI), `GCS_BACKUP_CREDENTIALS_JSON` (the bucket-scoped backup service-account key — see IAM above; swap for Workload Identity Federation later), `FIREBASE_STORAGE_BUCKET` (`educbt-a07ae.firebasestorage.app`), `FIREBASE_PROJECT_ID` (`educbt-a07ae`). Set the repository variable `PG_MAJOR` to the production server's PostgreSQL major version. The workflow is scheduled and will not fire until it is on the default branch with secrets present — no risk of half-configured automation, and a missing credential fails the job loudly instead of skipping the backup.
 
+### Real-bucket verification
+
+`.github/workflows/firebase-storage-verify.yml` is a manual (workflow-dispatch) job that proves the actual storage path against the real bucket with the real infrastructure credential — upload → metadata → size → list → download → byte-integrity → delete, plus privacy and least-privilege negative tests — writing only under `backups/test/`. It requires no `BACKUP_DATABASE_URL` and runs no retention, so the nightly backup's fail-closed behaviour is independent of it. It is the standard way to re-prove storage after credential or bucket changes.
+
 ### Billing posture
 
 The Firebase project is on the Blaze plan. Design targets are economical by construction — one backup per night, 30-day retention, no duplicate uploads (deterministic ids), downloads only for rehearsals or real recoveries — and nothing is hard-coded against today's free-tier numbers. **Owner deployment task:** configure Google Cloud budget/billing alerts (console → Billing → Budgets) so an accidental cost is noticed in hours, not on an invoice.

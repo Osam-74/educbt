@@ -1,0 +1,83 @@
+# Manual, narrowly-scoped REAL Firebase Storage verification.
+#
+# Proves the storage path against the actual bucket using the real
+# infrastructure credential — independent of the (still unconfigured)
+# production database. Deliberately does NOT require BACKUP_DATABASE_URL,
+# so the nightly-backup workflow's fail-closed behaviour is untouched.
+#
+# Required repository secrets (the same ones the nightly backup uses):
+#   GCS_BACKUP_CREDENTIALS_JSON   educbt-backup service-account key (bucket-scoped)
+#   FIREBASE_STORAGE_BUCKET       educbt-a07ae.firebasestorage.app
+#   FIREBASE_PROJECT_ID           educbt-a07ae
+#
+# The verification script writes/deletes ONLY under backups/test/ and lists
+# backups/database/ read-only for the isolation proof. No retention runs.
+# No URL — public or signed — is ever generated (the grep step proves the
+# source cannot).
+
+name: firebase-storage-verify
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: firebase-storage-verify
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Structural source scan — no URL-signing / publicising code
+        run: |
+          if grep -rnE "getSignedUrl|makePublic|publicUrl" scripts/verify-firebase-storage.ts src/lib/backup/store.ts; then
+            echo "::error::URL-signing or object-publicising code found in the storage path — backups must never be linkable."
+            exit 1
+          fi
+          echo "No signed/public URL code exists in the storage path."
+
+      - name: Validate configuration (fail closed)
+        env:
+          GCS_BACKUP_CREDENTIALS_JSON: ${{ secrets.GCS_BACKUP_CREDENTIALS_JSON }}
+          FIREBASE_STORAGE_BUCKET: ${{ secrets.FIREBASE_STORAGE_BUCKET }}
+          FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
+        run: |
+          missing=0
+          for v in GCS_BACKUP_CREDENTIALS_JSON FIREBASE_STORAGE_BUCKET FIREBASE_PROJECT_ID; do
+            if [ -z "$(printenv "$v")" ]; then
+              echo "::error::Missing required secret: $v"
+              missing=1
+            fi
+          done
+          if [ "$missing" -ne 0 ]; then
+            echo "::error::Firebase storage verification is NOT configured."
+            exit 1
+          fi
+          echo "All required credentials present."
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Mints Application Default Credentials on the runner from the GitHub
+      # secret. The key is consumed here — the verification script only ever
+      # sees ADC, and never echoes credential material.
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCS_BACKUP_CREDENTIALS_JSON }}
+
+      - name: Real Firebase Storage verification (backups/test/ only)
+        env:
+          FIREBASE_STORAGE_BUCKET: ${{ secrets.FIREBASE_STORAGE_BUCKET }}
+          FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
+        run: npx tsx scripts/verify-firebase-storage.ts
