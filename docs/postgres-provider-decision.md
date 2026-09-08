@@ -1,6 +1,6 @@
 # Production PostgreSQL Provider & Region Decision — EduCBT
 
-**Date:** 2026-09-04 · **Status:** RECOMMENDED, pending owner confirmation and Nigeria benchmark validation · **No production database provisioned yet.**
+**Date:** 2026-09-04 (audit) · **Updated:** 2026-09-08 · **Status:** CONFIRMED by owner — Neon `aws-eu-west-2` London, PostgreSQL 18. Production project exists (Free plan); first initialisation done via the Actions path. See “Production status” below for the exam-readiness gates that remain open.
 
 EduCBT serves Nigerian schools with latency-sensitive examinations (initial bursts ≈ 500 concurrent candidates). The frontend runs on Vercel. This audit selects the production PostgreSQL provider and region before any account is created. All facts were verified against provider documentation in September 2026; pricing is approximate and usage-dependent.
 
@@ -62,18 +62,59 @@ Provider regions relevant to Nigeria (2026):
 
 500 browser sessions ≠ 500 PostgreSQL connections. Candidates talk to Vercel functions; each function instance holds a constrained pool (max 1 connection per instance, by design), and those go through Neon's PgBouncer (transaction mode). Expected concurrent DB clients: ~20–60; expected peak query rate: ~50–200/s (question loads, idempotent answer saves, submits). The app's `SET LOCAL` transaction pattern is pooling-safe by construction — verified by the benchmark script's transaction probe and the existing test battery. 0.5 CU min (2 GB RAM) with autoscale to 4 CU handles this comfortably; min 0.25 CU would likely also cope but leaves less headroom for submit storms.
 
-## Nigeria benchmark (owner-run, before finalising)
+## Nigeria benchmark — RUN, results (2026-09-06, owner-run from Nigeria)
 
-The sandbox is not in Nigeria, so no numbers here are presented as Nigeria latency. Run from a Nigeria connection (school/home network, no VPN):
+| Target | Direct SELECT median | Pooled SELECT median | Failures | `SET LOCAL` via pool |
+|---|---|---|---|---|
+| **Neon London (`aws-eu-west-2`)** | **≈ 145 ms** | **≈ 152 ms** | **0** | **works** |
+| Neon Frankfurt (`aws-eu-central-1`) | ≈ 205 ms | — (ECONNRESET) | pooled run failed | not reached |
 
-```bash
-# For each candidate: create a small trial project, then:
-DATABASE_URL='<direct connection string>' \
-POOLED_DATABASE_URL='<pooled connection string>' \
-npm run benchmark:db -- --rounds 200 --conc 20
-```
+Interpretation against the audit thresholds: London sits inside the “acceptable” band (≤150 ms direct) with zero failures and proven pooled `SET LOCAL` compatibility — the exact pattern the runtime uses for tenant pinning. Frankfurt breached the >200 ms “pick another region” line and its pooled run reset connections outright. **London is the selected production region.** The ~5–7 ms pool premium is the price of PgBouncer transaction mode and is irrelevant against a ~145 ms WAN baseline.
 
-Suggested targets: Neon trial in London AND Frankfurt (and optionally Supabase trial in London). Interpretation: `select` median ≤100 ms good, ≤150 ms acceptable, >200 ms pick another region; `transaction` must pass on the pooled target (SET LOCAL compatibility). Pick the region with the best medians; London is expected to win.
+Benchmark tooling note: node-postgres ≥ 8.23 emits a deprecation warning for `sslmode=require` — see “TLS policy” below; the benchmark connected with full certificate verification throughout (`rejectUnauthorized: true`), which simultaneously proved Neon's certificates validate against public CAs with hostname checking.
+
+## Production status (2026-09-08)
+
+The production Neon project exists and is initialised (migrations, RLS, `educbt_app` role, verified, backed up, restore rehearsed — see the initialisation workflows). Current plan is **Neon Free**, which means:
+
+| Item | Current state |
+|---|---|
+| Compute | Autoscaling **0.25–2 CU** |
+| Scale-to-zero | **ON — cannot be disabled on the Free plan** |
+| Region | `aws-eu-west-2` London |
+| PostgreSQL | 18 |
+| Planned Vercel function region | `lhr1` |
+
+**This configuration is suitable for:** development, integration, deployment preparation, and controlled pilot testing.
+
+**It is NOT approved for live school examination use** until the production gate below is passed. Scale-to-zero means the first request after an idle period pays a cold start measured in seconds — acceptable while poking at the app, disqualifying when 500 candidates hit “Start exam” at 8:00.
+
+### Production gate (before the first real examination)
+
+1. Upgrade the Neon plan (Launch or equivalent).
+2. Disable scale-to-zero — compute stays warm 24/7.
+3. Start at ≈ 0.5–2 CU always-on.
+4. Run the realistic 500-candidate load test from the gate above.
+5. Raise the autoscale ceiling toward 4 CU **only if measurements justify it** — do not pre-buy headroom the load test disproves.
+
+## TLS policy (all production connections)
+
+Every production connection string uses **`sslmode=verify-full`** — not `require`. This is deliberate and driver-enforced, not stylistic:
+
+- **postgres.js 3.x** (the runtime driver) maps `sslmode=require/allow/prefer` to `rejectUnauthorized: false`: the connection is encrypted but the server certificate is **never verified**, so a man-in-the-middle intercepts silently. `verify-full` keeps strict chain + hostname verification.
+- **node-postgres ≥ 8.23** (tooling) deprecates `sslmode=require` with a warning on every connect and requires `verify-full` for verified TLS.
+- **libpq** (`psql`, `pg_dump`, `pg_restore`) honours `verify-full` natively; passwords and SSL mode travel via the process environment (`PGPASSWORD` / `PGSSLMODE`), never argv.
+
+Neon endpoints present publicly-trusted certificates, so `verify-full` works unchanged — proven empirically by the Nigeria benchmark (which connected with `rejectUnauthorized: true`) and re-proven by the preflight script's `pg_stat_ssl` check on every initialisation run.
+
+Enforcement in code:
+
+- `src/db/connection.ts` → `sslVerifiesCertificates()` (pure, unit-tested in `test:config`) — only `verify-full` returns true.
+- `src/db/index.ts` logs a loud security error at boot if a production `DATABASE_URL_APP` uses anything weaker.
+- `scripts/preflight-production.ts` refuses to touch a production database whose migration credential is not `verify-full`.
+- `.env.example` documents `verify-full` on all four connection URLs.
+
+Never weaken a mode to silence a warning — the warning is the point.
 
 ## Recovery posture (unchanged)
 
