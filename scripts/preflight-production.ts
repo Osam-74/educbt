@@ -156,7 +156,12 @@ async function main() {
     // password never appears. The maintainer composes the app-role secret from
     // these + the role password held in the secret store.
     if (!isLocal) {
-      const pooledHost = uri.host.includes('-pooler') ? uri.host : `${uri.host.replace(/\.neon\.tech$/, '')}-pooler.neon.tech`;
+      // Pooled host = endpoint ID + "-pooler" (Neon docs) — see provision-app-role.ts
+      // for the format note on the new c-2 host style.
+      const endpointId = uri.host.split('.')[0];
+      const pooledHost = uri.host.includes('-pooler')
+        ? uri.host
+        : `${endpointId}-pooler.${uri.host.split('.').slice(1).join('.')}`;
       console.log('\nEndpoint report (hostnames only — no credentials):');
       console.log(`  direct (migrations/tooling): ${uri.host}`);
       console.log(`  pooled (application runtime): ${pooledHost}`);

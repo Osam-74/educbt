@@ -123,9 +123,17 @@ async function main() {
     } else {
       // Production: compose the app-role URL from the secret + these hosts.
       // Hostnames are not credentials; the password is never printed.
+      // Pooled host = endpoint ID + "-pooler" (Neon docs: "Add -pooler to your
+      // endpoint ID"). The endpoint ID is the ep-... label: for the new host
+      // format ep-xxx.c-2.<region>.aws.neon.tech this yields
+      // ep-xxx-pooler.c-2.<region>.aws.neon.tech — NOT the pre-2025
+      // ep-xxx.c-2.<region>.aws-pooler.neon.tech (verified empirically:
+      // that zone does not resolve — getaddrinfo ENOTFOUND, verify run
+      // 34226495461).
+      const endpointId = uri.host.split('.')[0];
       const pooledHost = uri.host.includes('-pooler')
         ? uri.host
-        : `${uri.host.replace(/\.neon\.tech$/, '')}-pooler.neon.tech`;
+        : `${endpointId}-pooler.${uri.host.split('.').slice(1).join('.')}`;
       console.log('\nEndpoint report (hostnames only — no credentials):');
       console.log(`  pooled (runtime):   postgresql://educbt_app:<password>@${pooledHost}/${uri.dbname}?sslmode=verify-full`);
       console.log(`  direct (tooling):  postgresql://educbt_app:<password>@${uri.host}/${uri.dbname}?sslmode=verify-full`);
