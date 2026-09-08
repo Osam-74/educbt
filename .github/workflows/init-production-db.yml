@@ -36,12 +36,12 @@ name: init-production-db
 
 on:
   workflow_dispatch:
-  inputs:
-    continue:
-      description: 'Re-run after a partial initialisation by this workflow (skips ONLY the empty-schema gate; version/TLS/endpoint checks still apply)'
-      type: boolean
-      required: false
-      default: false
+    inputs:
+      continue:
+        description: 'Re-run after a partial initialisation by this workflow (skips ONLY the empty-schema gate; version/TLS/endpoint checks still apply)'
+        type: boolean
+        required: false
+        default: false
 
 permissions:
   contents: read
