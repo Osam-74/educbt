@@ -170,7 +170,8 @@ async function main() {
       this.lastListPrefix = options.prefix;
       // Only objects under the requested prefix are ever visible — same as
       // a real prefix-scoped listing.
-      return [...this.files.keys()].filter((k) => k.startsWith(options.prefix)).map((name) => ({ name }));
+      const names = [...this.files.keys()].filter((k) => k.startsWith(options.prefix)).map((name) => ({ name }));
+      return [names, {}, {}] as [{ name: string }[], unknown, unknown];
     }
   }
   {

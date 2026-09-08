@@ -164,8 +164,13 @@ export interface GcsFileApi {
 
 export interface GcsBucketApi {
   file(name: string): GcsFileApi;
-  /** Prefix-scoped listing (the SDK aggregates pagination). */
-  getFiles(options: { prefix: string; autoPaginate: true }): Promise<{ name: string }[]>;
+  /**
+   * Prefix-scoped listing (the SDK aggregates pagination). Resolves to the
+   * SDK's [files, queryInfo, response] tuple — a bare array here once made
+   * list() yield [undefined, undefined] and crash retention's
+   * key.startsWith(). Match the SDK exactly.
+   */
+  getFiles(options: { prefix: string; autoPaginate: true }): Promise<[{ name: string }[], unknown, unknown]>;
 }
 
 export class GcsStore implements BackupStore {
@@ -241,7 +246,7 @@ export class GcsStore implements BackupStore {
   async list(): Promise<string[]> {
     // Listing is deliberately prefix-scoped: unrelated objects in the same
     // bucket (school logos, photos, exports…) are not even visible here.
-    const files = await this.bucket.getFiles({ prefix: BACKUP_PREFIX, autoPaginate: true });
+    const [files] = await this.bucket.getFiles({ prefix: BACKUP_PREFIX, autoPaginate: true });
     return files.map((f) => f.name).sort();
   }
 
