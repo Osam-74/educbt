@@ -257,6 +257,8 @@ async function main() {
   const restoreArgs = pgRestoreArgs(uri, '/tmp/x.dump');
   const asString = [...dumpArgs, ...restoreArgs].join(' ');
   check('no password appears on the pg_dump/pg_restore command line', !asString.includes('s3cret'));
+  check('restore drops ownership so missing production roles cannot fail it', restoreArgs.includes('--no-owner'));
+  check('restore drops privileges so missing grantee roles cannot fail it', restoreArgs.includes('--no-privileges'));
   check('no connection URI appears on the command line (ps-safe)', !asString.includes('://'));
   check('pg tools default to PATH lookup', pgToolPath('pg_dump', {}) === 'pg_dump');
   check('PG_BINDIR pins the exact client version (Ubuntu wrapper pitfall)', pgToolPath('pg_restore', { PG_BINDIR: '/usr/lib/postgresql/18/bin' }) === '/usr/lib/postgresql/18/bin/pg_restore');

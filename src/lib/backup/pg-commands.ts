@@ -37,9 +37,18 @@ export function pgDumpArgs(uri: ParsedPgUri, outFile: string): string[] {
   ];
 }
 
-/** pg_restore into a target database. No --clean: the target must be EMPTY. */
+/**
+ * pg_restore into a target database. No --clean: the target must be EMPTY.
+ * --no-owner / --no-privileges: dumps taken in production name roles that
+ * only exist there (neondb_owner, educbt_app). Restoring into any other
+ * database must not fail on missing roles — objects become owned by the
+ * restoring user, and app-role grants are re-established by the
+ * provision-app-role step immediately after.
+ */
 export function pgRestoreArgs(uri: ParsedPgUri, inFile: string): string[] {
   return [
+    '--no-owner',
+    '--no-privileges',
     '--no-password',
     '--host', uri.host,
     '--port', String(uri.port),
