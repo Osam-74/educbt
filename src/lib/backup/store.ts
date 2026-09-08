@@ -155,7 +155,10 @@ export interface GcsFileApi {
   save(data: Buffer, options?: { contentType?: string; resumable?: boolean }): Promise<unknown>;
   download(): Promise<[Buffer, unknown]>;
   exists(): Promise<[boolean]>;
-  getMetadata(): Promise<{ size?: number | string }>;
+  // The real client resolves getMetadata to [metadata, apiResponse] — a bare
+  // object here once cost a false "upload confirmation failed" (array .size
+  // is undefined). Match the SDK exactly.
+  getMetadata(): Promise<[{ size?: number | string }, unknown]>;
   delete(): Promise<unknown>;
 }
 
@@ -228,8 +231,8 @@ export class GcsStore implements BackupStore {
 
   async size(backupId: string): Promise<number | null> {
     try {
-      const meta = await this.bucket.file(keyFor(backupId)).getMetadata();
-      return meta.size == null ? null : Number(meta.size);
+      const [meta] = await this.bucket.file(keyFor(backupId)).getMetadata();
+      return meta?.size == null ? null : Number(meta.size);
     } catch {
       return null; // absent object — the backup script treats null as missing
     }

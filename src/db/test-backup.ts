@@ -157,7 +157,7 @@ async function main() {
         async getMetadata() {
           const f = self.files.get(name);
           if (!f) throw new Error('not found');
-          return { size: f.byteLength };
+          return [{ size: f.byteLength }, {}] as [{ size: number }, unknown];
         },
         async delete() {
           if (!self.files.has(name)) throw new Error('not found');
