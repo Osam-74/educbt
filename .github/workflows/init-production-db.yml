@@ -2,15 +2,20 @@
 #
 # Executes, IN ORDER, as the owner via DATABASE_URL_UNPOOLED:
 #   1. preflight  — safe-connect proof: PostgreSQL major matches PG_MAJOR,
-#                   TLS is active AND verified (sslmode=verify-full), the
-#                   endpoint is direct (not -pooler), the public schema is
+#                   TLS is active AND verified client-side (sslmode=verify-full),
+#                   the endpoint is direct (not -pooler), the public schema is
 #                   empty (first-migration suitability)
-#   2. migrations  — drizzle migrations, committed in git, never hand-edited
-#   3. RLS         — the exact rls.sql the local/CI environment verified
+#   2. provision  — least-privilege educbt_app role with a strong password from
+#                   the EDUCBT_APP_PASSWORD secret. MUST run before migrations:
+#                   rls.sql policies (applied by the migration runner) reference
+#                   the role. Table grants at this point bind to nothing yet.
+#   3. migrations  — drizzle migrations, committed in git, never hand-edited;
+#                   tables created here inherit the role's default privileges
+#   4. RLS         — the exact rls.sql the local/CI environment verified
 #                   (FORCE RLS, tenant policies, audit immutability)
-#   4. provision  — least-privilege educbt_app role (not superuser, no
-#                   BYPASSRLS, audit UPDATE/DELETE revoked) with a strong
-#                   password from the EDUCBT_APP_PASSWORD secret
+#   5. provision again — re-apply grants/revokes to the now-existing tables
+#                   (incl. audit_log UPDATE/DELETE revoke) and re-assert the
+#                   least-privilege posture. Idempotent by design.
 #
 # FAIL CLOSED: a missing secret aborts before any database is touched.
 #
@@ -79,6 +84,12 @@ jobs:
           PG_MAJOR: ${{ vars.PG_MAJOR }}
         run: npx tsx scripts/preflight-production.ts
 
+      - name: Provision educbt_app role (before migrations — rls.sql policies reference it)
+        env:
+          DATABASE_URL_UNPOOLED: ${{ secrets.DATABASE_URL_UNPOOLED }}
+          EDUCBT_APP_PASSWORD: ${{ secrets.EDUCBT_APP_PASSWORD }}
+        run: npm run db:provision-app-role
+
       - name: Migrations (drizzle, as owner via direct endpoint)
         env:
           DATABASE_URL_UNPOOLED: ${{ secrets.DATABASE_URL_UNPOOLED }}
@@ -89,7 +100,7 @@ jobs:
           DATABASE_URL_UNPOOLED: ${{ secrets.DATABASE_URL_UNPOOLED }}
         run: npm run db:rls
 
-      - name: Provision educbt_app (least privilege, strong password, never logged)
+      - name: Re-apply grants to migrated tables + re-assert posture (idempotent)
         env:
           DATABASE_URL_UNPOOLED: ${{ secrets.DATABASE_URL_UNPOOLED }}
           EDUCBT_APP_PASSWORD: ${{ secrets.EDUCBT_APP_PASSWORD }}

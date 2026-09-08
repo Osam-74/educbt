@@ -89,6 +89,14 @@ async function main() {
     await owner`GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO educbt_app`;
     await owner`GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO educbt_app`;
 
+    // Tables created LATER by this same owner (i.e. migrations run after
+    // provisioning) inherit the same grants — documented in rls.sql's comment
+    // block. Idempotent.
+    await owner`ALTER DEFAULT PRIVILEGES IN SCHEMA public
+      GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO educbt_app`;
+    await owner`ALTER DEFAULT PRIVILEGES IN SCHEMA public
+      GRANT USAGE, SELECT ON SEQUENCES TO educbt_app`;
+
     // Append-only audit: the application can insert and read the audit log,
     // never rewrite it.
     await owner`REVOKE UPDATE, DELETE ON audit_log FROM educbt_app`;
