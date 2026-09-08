@@ -34,7 +34,9 @@ jobs:
       - name: Print dependencies
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y python3-weasyprint python3-pypdf
+          sudo apt-get install -y python3-venv libpango-1.0-0 libpangoft2-1.0-0
+          python3 -m venv /tmp/educbt-print
+          /tmp/educbt-print/bin/pip install weasyprint==66.0
       - name: Prepare disposable database
         run: |
           psql "$DATABASE_URL_UNPOOLED" -v ON_ERROR_STOP=1 -c 'CREATE ROLE educbt_app LOGIN;'
@@ -42,6 +44,7 @@ jobs:
           npm run db:provision-app-role
           npm run db:rls
           npm run db:seed
+          npx tsx scripts/db-verify-fixtures.ts --setup
       - name: Typecheck and production build
         run: |
           npm run typecheck
@@ -66,7 +69,7 @@ jobs:
               verify) command=(npm run db:verify) ;;
               ca-validation) command=(npx tsx src/lib/ca/validation.test.ts) ;;
               ca) command=(npx tsx src/db/test-ca.ts) ;;
-              print) command=(/usr/bin/python3 scripts/test-print.py) ;;
+              print) command=(/tmp/educbt-print/bin/python scripts/test-print.py) ;;
               *) command=(npm run "test:$suite") ;;
             esac
             if "${command[@]}" > "baseline-logs/$suite.log" 2>&1; then
@@ -76,6 +79,7 @@ jobs:
               failed=1
             fi
             cat "baseline-logs/$suite.log"
+            if grep -Eq '^SKIP[[:space:]]' "baseline-logs/$suite.log"; then failed=1; fi
           done
           exit "$failed"
       - uses: actions/upload-artifact@v4
