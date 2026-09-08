@@ -87,7 +87,10 @@ jobs:
       - name: Preflight — safe to migrate?
         env:
           DATABASE_URL_UNPOOLED: ${{ secrets.DATABASE_URL_UNPOOLED }}
-          ALLOW_EXISTING_SCHEMA: ${{ inputs.continue && '1' || '' }}
+          # inputs.continue (UI/API) or a temporary repository variable of the
+          # same name — the variable path lets automation trigger the re-run
+          # before the dispatch-input schema has propagated.
+          ALLOW_EXISTING_SCHEMA: ${{ inputs.continue && '1' || vars.ALLOW_EXISTING_SCHEMA || '' }}
           PG_MAJOR: ${{ vars.PG_MAJOR }}
         run: npx tsx scripts/preflight-production.ts
 
