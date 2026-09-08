@@ -18,9 +18,13 @@ import { forSchool, schema } from '@/db';
 import { subjectResults } from '@/db/schema/results';
 import {
   gradeFor, rank, computeTotal, canTransition, requiresReason,
-  WAEC_NINE_POINT, DEFAULT_RANKING,
+  WAEC_NINE_POINT, DEFAULT_RANKING, isEditable,
   type GradingScale, type RankingPolicy, type ResultState,
 } from '@/domain/academic';
+
+import { caScoreSchema, type CaScoreInput } from '@/lib/ca/validation';
+import { validateCaContext } from '@/lib/ca/access';
+import { lockResultTerm } from '@/lib/ca/lock';
 
 export { gradeFor };
 import type { Actor } from '@/lib/session';
@@ -148,6 +152,7 @@ export async function compileSubject(
   const policy = args.policy ?? DEFAULT_RANKING;
 
   return forSchool(actor.schoolId, async (tx) => {
+    await lockResultTerm(tx, actor.schoolId, args.sessionId, args.termId);
     const students = await tx
       .select({ id: schema.students.id })
       .from(schema.enrollments)
@@ -330,6 +335,7 @@ export async function transitionResults(
   reason = '',
 ): Promise<{ ok: boolean; moved: number; error?: string }> {
   return forSchool(actor.schoolId, async (tx) => {
+    await lockResultTerm(tx, actor.schoolId, sessionId, termId);
     const rows = await tx
       .select({ id: subjectResults.id, state: subjectResults.state })
       .from(subjectResults)
@@ -397,32 +403,36 @@ export async function transitionResults(
 /** Enter or update a continuous assessment score. */
 export async function enterScore(
   actor: Actor,
-  args: {
-    studentId: number; subjectId: number; sessionId: number; termId: number;
-    componentKey: string; score: number; maxScore: number;
-  },
+  args: CaScoreInput,
 ): Promise<{ ok: boolean; error?: string }> {
+  if (!caScoreSchema.safeParse(args).success) return { ok: false, error: 'Enter a valid score and academic scope (at most two decimal places).' };
   if (args.score < 0 || args.score > args.maxScore) {
     return { ok: false, error: `Score must be between 0 and ${args.maxScore}.` };
   }
 
   return forSchool(actor.schoolId, async (tx) => {
+    await lockResultTerm(tx, actor.schoolId, args.sessionId, args.termId);
+    const error = await validateCaContext(tx, actor, args);
+    if (error) return { ok: false, error };
+
     // A published term is closed to score entry. Changing a mark underneath a
     // result a family has already seen is exactly what the lifecycle prevents.
     const [existing] = await tx
-      .select({ state: subjectResults.state })
+      .select({ id: subjectResults.id, state: subjectResults.state, published: subjectResults.published })
       .from(subjectResults)
       .where(and(
+        eq(subjectResults.schoolId, actor.schoolId),
+        eq(subjectResults.sessionId, args.sessionId),
         eq(subjectResults.studentId, args.studentId),
         eq(subjectResults.subjectId, args.subjectId),
         eq(subjectResults.termId, args.termId),
       ))
-      .limit(1);
+      .limit(1).for('update');
 
-    if (existing && (existing.state === 'published' || existing.state === 'locked')) {
+    if (existing && (!isEditable(existing.state) || existing.published)) {
       return {
         ok: false,
-        error: 'These results are published. Unpublish the term before changing a score.',
+        error: 'These results are reviewed, published or locked. Reopen them through the result lifecycle before changing a score.',
       };
     }
 
@@ -456,6 +466,12 @@ export async function enterScore(
       },
     });
 
+    // A changed score makes a prior compilation stale. It must be compiled again
+    // before review/publication; preserve the historical totals until then.
+    if (existing?.state === 'compiled') {
+      await tx.update(subjectResults).set({ state: 'draft', complete: false })
+        .where(eq(subjectResults.id, existing.id));
+    }
     return { ok: true };
   });
 }
