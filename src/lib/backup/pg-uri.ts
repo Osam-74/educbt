@@ -88,5 +88,17 @@ export function describePgUri(raw: string | undefined): string {
  * they cannot appear in `ps` listings or shell error echoes.
  */
 export function pgToolEnv(uri: ParsedPgUri, inherit?: Record<string, string | undefined>): Record<string, string | undefined> {
-  return { ...(inherit ?? process.env), PGPASSWORD: uri.password, PGSSLMODE: uri.sslmode };
+  const env: Record<string, string | undefined> = {
+    ...(inherit ?? process.env),
+    PGPASSWORD: uri.password,
+    PGSSLMODE: uri.sslmode,
+  };
+  // verify-full/verify-ca make libpq look for ~/.postgresql/root.crt, which
+  // does not exist on runners/containers. Use the system trust store instead
+  // (sslrootcert=system, libpq >= 16 — we ship postgresql-client-18) so
+  // verification stays ON, never weakened. An explicit PGSSLROOTCERT wins.
+  if ((uri.sslmode === 'verify-full' || uri.sslmode === 'verify-ca') && !env.PGSSLROOTCERT) {
+    env.PGSSLROOTCERT = 'system';
+  }
+  return env;
 }

@@ -259,6 +259,10 @@ async function main() {
   check('no connection URI appears on the command line (ps-safe)', !asString.includes('://'));
   check('the password travels through the process environment instead', pgToolEnv(uri, {}).PGPASSWORD === 's3cret');
   check('sslmode travels through the process environment', pgToolEnv(uri, {}).PGSSLMODE === 'require');
+  const vuri = { ...uri, sslmode: 'verify-full' as typeof uri.sslmode };
+  check('verify-full gets the system trust store (no missing ~/.postgresql/root.crt)', pgToolEnv(vuri, {}).PGSSLROOTCERT === 'system');
+  check('an explicit PGSSLROOTCERT always wins', pgToolEnv(vuri, { PGSSLROOTCERT: '/custom/root.crt' }).PGSSLROOTCERT === '/custom/root.crt');
+  check('no root cert path is added for non-verify modes', pgToolEnv(uri, {}).PGSSLROOTCERT === undefined);
   check('describePgUri never includes the password or full URL', !describePgUri('postgresql://u:s3cret@db.example.com:5432/educbt').includes('s3cret'));
 
   console.log(failures === 0 ? '\nAll backup checks passed.' : `\n${failures} FAILURES`);
