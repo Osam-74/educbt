@@ -10,7 +10,8 @@
  *   2. the server is the expected PostgreSQL major (PG_MAJOR)
  *   3. the endpoint is the DIRECT host, not the -pooler one (DDL needs a
  *      real session; PgBouncer cannot run session-level statements)
- *   4. TLS is actually in use AND the certificate is verified
+ *   4. TLS is actually in use AND the certificate is verified — proven
+ *      CLIENT-SIDE on the live socket (see TLS note below)
  *   5. the database is EMPTY of user tables (suitable for first migration)
  *   6. the educbt_app role does not exist yet (or already-provisioned is
  *      reported, so a re-run is a no-op rather than a surprise)
@@ -21,6 +22,8 @@
  *   DATABASE_URL_UNPOOLED=... PG_MAJOR=18 npx tsx scripts/preflight-production.ts
  */
 
+import { Client } from 'pg';
+import type { TLSSocket } from 'node:tls';
 import postgres from 'postgres';
 import { parsePgUri, describePgUri } from '../src/lib/backup/pg-uri';
 
@@ -78,11 +81,48 @@ async function main() {
     }
     info(`server version: PostgreSQL ${serverMajor} (matches PG_MAJOR=${pgMajor})`);
 
-    // ── 2. TLS is real and verified ───────────────────────────────────────────
+    // ── 2. TLS is real and verified (client-side proof) ────────────────────────
+    // pg_stat_ssl on the SERVER is not authoritative on Neon: Neon's proxy
+    // terminates TLS and forwards plaintext to the compute, so pg_stat_ssl can
+    // report the internal hop as non-SSL even when the client connection is
+    // fully encrypted (observed on the production endpoint, 2026-09-08 —
+    // Neon rejects unencrypted connections outright). The client-side socket
+    // is where encryption and verification actually happen, so prove it there:
+    // connect with rejectUnauthorized:true — the semantics libpq applies to
+    // sslmode=verify-full, which the URL already mandates above — and inspect
+    // the live TLS stream.
+    const tlsClient = new Client({
+      host: uri.host,
+      port: uri.port,
+      database: uri.dbname,
+      user: uri.user,
+      password: uri.password,
+      ssl: { rejectUnauthorized: true },
+    });
+    await tlsClient.connect();
+    const stream = tlsClient.connection?.stream as TLSSocket | undefined;
+    if (!stream || typeof stream.getPeerCertificate !== 'function') {
+      await tlsClient.end().catch(() => {});
+      fail('TLS proof: the live connection is NOT a TLS socket — encryption is not in use.');
+    }
+    if (!stream.authorized) {
+      await tlsClient.end().catch(() => {});
+      fail('TLS proof: connected, but the server certificate was NOT verified. Must never happen with rejectUnauthorized — investigate.');
+    }
+    const cert = stream.getPeerCertificate();
+    info(`TLS proven client-side: ${stream.getProtocol()} — chain verified against system CAs, hostname checked`);
+    if (cert && Object.keys(cert).length > 0) {
+      info(`server certificate: CN=${(cert.subject as { CN?: string } | undefined)?.CN ?? 'unknown'}, issuer=${(cert.issuer as { O?: string; CN?: string } | undefined)?.O ?? (cert.issuer as { CN?: string } | undefined)?.CN ?? 'unknown'}, valid_to=${cert.valid_to}`);
+    }
+    await tlsClient.end();
+
+    // Informational only (NOT a gate): the server-side view of TLS. Behind
+    // Neon's proxy this commonly reports the internal hop, i.e. ssl=false —
+    // that is expected and does not reflect the client connection (proven
+    // above). On a self-managed server it confirms end-to-end TLS.
     const [ssl] = await sql<{ ssl: boolean; version: string }[]>`
       SELECT ssl, version FROM pg_stat_ssl WHERE pid = pg_backend_pid()`;
-    if (!ssl?.ssl) fail('connection is NOT using TLS. Production requires sslmode=verify-full.');
-    info(`TLS: active (${ssl.version}), certificate verification enforced by verify-full`);
+    info(`server-side pg_stat_ssl: ssl=${ssl?.ssl ?? 'no row'} (${ssl?.version ?? '—'}) — informational only behind a TLS-terminating proxy`);
 
     // ── 3. Empty database (first-migration suitability) ──────────────────────
     const [tables] = await sql<{ n: number }[]>`

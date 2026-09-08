@@ -116,6 +116,8 @@ Enforcement in code:
 
 Never weaken a mode to silence a warning — the warning is the point.
 
+**Verifying TLS on Neon:** `pg_stat_ssl` on the compute node is NOT an authoritative TLS check on Neon — Neon's proxy terminates TLS and forwards plaintext to the compute, so `pg_stat_ssl` can report `ssl=false` while the client connection is fully encrypted (observed on the production endpoint, 2026-09-08; Neon rejects unencrypted connections outright, so a successful connect itself proves encryption). `scripts/preflight-production.ts` therefore proves TLS **client-side**: it connects with `rejectUnauthorized: true` (the semantics `verify-full` maps to) and inspects the live TLS socket — `authorized` (chain + hostname verified), protocol version, and the peer certificate's CN/issuer/validity — while logging `pg_stat_ssl` as informational only.
+
 ## Recovery posture (unchanged)
 
 Nightly `pg_dump` → Firebase Storage (verified) + Neon PITR/branch-restore + restore-rehearsal tooling. Disaster-recovery order remains as documented in the README runbook; Neon adds a provider-level instant-restore option for the "dropped table, minutes ago" class of incident.
