@@ -71,12 +71,15 @@ async function main() {
 
   try {
     // Role body without the password — password is applied separately below so
-    // the secret never sits inside a DO block string or a logged statement.
-    await owner`DO $$ BEGIN
-      IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'educbt_app') THEN
-        CREATE ROLE educbt_app LOGIN;
-      END IF;
-    END $$`;
+    // the secret never sits inside any statement text we could ever log.
+    // Plain conditional SQL, not a plpgsql DO block: the local embedded PG is a
+    // minimal build without plpgsql (see rls.sql — DO-loops are unrolled for
+    // the same reason), and this must run on both local and production.
+    const [existing] = await owner<{ exists: number }[]>`
+      SELECT count(*)::int AS exists FROM pg_roles WHERE rolname = 'educbt_app'`;
+    if ((existing?.exists ?? 0) === 0) {
+      await owner`CREATE ROLE educbt_app LOGIN`;
+    }
 
     // Password application. postgres.js cannot parameterise utility DDL, so
     // this is the one place a literal is unavoidable — it is escaped, the
