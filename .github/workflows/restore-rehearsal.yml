@@ -121,6 +121,11 @@ jobs:
           echo "Restoring newest backup: $latest"
           echo "backup_id=$latest" >> "$GITHUB_OUTPUT"
 
+      - name: Pre-create educbt_app (dump RLS policies are TO educbt_app)
+        env:
+          DATABASE_URL_UNPOOLED: postgresql://postgres:rehearsal@localhost:5432/educbt_rehearsal?sslmode=disable
+        run: npm run db:provision-app-role
+
       - name: Restore backup into the rehearsal database
         env:
           FIREBASE_STORAGE_BUCKET: ${{ secrets.FIREBASE_STORAGE_BUCKET }}
