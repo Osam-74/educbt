@@ -1,0 +1,91 @@
+# Production database verification — proves the security posture of the
+# REAL production database, as the least-privilege educbt_app role.
+#
+# Runs the repository's db:verify suite (tenant isolation, FORCE RLS,
+# unknown-tenant fails closed, cross-tenant writes rejected, audit-log
+# immutability, catalog-driven RLS coverage) against production.
+#
+# db:verify needs at least two schools with students and one argon2id user
+# to prove isolation — production must NOT hold demo data, so this workflow
+# creates the minimal deterministic fixture set (scripts/db-verify-fixtures.ts,
+# every row marked VFY-), runs the suite, then ALWAYS removes the fixtures
+# and fails the job if anything marked VFY- survived.
+#
+# Required repository secrets:
+#   DATABASE_URL_UNPOOLED   owner/direct endpoint (fixture setup + teardown)
+#   DATABASE_URL_APP         pooled educbt_app endpoint (what RLS applies to)
+#
+# Production is NOT called ready if this workflow fails.
+
+name: verify-production-db
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-db-verify
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Fail closed on missing configuration
+        env:
+          DATABASE_URL_UNPOOLED: ${{ secrets.DATABASE_URL_UNPOOLED }}
+          DATABASE_URL_APP: ${{ secrets.DATABASE_URL_APP }}
+        run: |
+          missing=0
+          for v in DATABASE_URL_UNPOOLED DATABASE_URL_APP; do
+            if [ -z "$(printenv "$v")" ]; then
+              echo "::error::Missing required secret: $v"
+              missing=1
+            fi
+          done
+          if [ "$missing" -ne 0 ]; then
+            echo "::error::Production verification is NOT configured. Never weaken the check to get green — configure the secrets."
+            exit 1
+          fi
+          echo "All required credentials present."
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Fixture setup (temporary VFY- rows; rerun-safe)
+        env:
+          DATABASE_URL_UNPOOLED: ${{ secrets.DATABASE_URL_UNPOOLED }}
+        run: npx tsx scripts/db-verify-fixtures.ts --setup
+
+      - name: Production db:verify (as educbt_app — RLS actually applies)
+        env:
+          DATABASE_URL_UNPOOLED: ${{ secrets.DATABASE_URL_UNPOOLED }}
+          DATABASE_URL_APP: ${{ secrets.DATABASE_URL_APP }}
+        run: npm run db:verify
+
+      - name: Fixture teardown (always — production must keep no fixtures)
+        if: always()
+        env:
+          DATABASE_URL_UNPOOLED: ${{ secrets.DATABASE_URL_UNPOOLED }}
+        run: npx tsx scripts/db-verify-fixtures.ts --teardown
+
+      - name: Job summary
+        if: always()
+        run: |
+          {
+            echo "## Production db:verify"
+            echo
+            echo "Verified as educbt_app over the pooled endpoint: not superuser, no BYPASSRLS,"
+            echo "FORCE RLS, tenant isolation, audit immutability, catalog-driven coverage."
+            echo "Temporary VFY- fixtures were removed and their absence asserted."
+            echo "If any step above failed, production is NOT ready — investigate, do not skip."
+          } >> $GITHUB_STEP_SUMMARY

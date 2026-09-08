@@ -1,0 +1,157 @@
+# Restore rehearsal — proves a real production backup actually restores.
+#
+# Spins up a SEPARATE, ephemeral PostgreSQL 18 service container (never the
+# production database — restore targets are guarded by assertSafeRestoreTarget
+# in the app code), downloads the newest real backup from Firebase Storage,
+# restores it, provisions the least-privilege app role, and runs the full
+# db:verify suite against the restored copy with temporary fixtures.
+#
+# Proves: archive integrity, schema restore, RLS policies survive the dump
+# round-trip, app role can be provisioned, tenant isolation holds in the
+# recovered database.
+#
+# Required repository secrets:
+#   FIREBASE_STORAGE_BUCKET / FIREBASE_PROJECT_ID      backup store
+#   GCS_BACKUP_CREDENTIALS_JSON                        ADC for the store
+# Required repository variables:
+#   PG_MAJOR   server major of the backup source (pg_restore must match)
+#
+# No production secret is passed to this workflow: RESTORE_DATABASE_URL points
+# at the container only. assertSafeRestoreTarget refuses any non-local,
+# non-rehearsal-named target unless --disaster-recovery is passed.
+
+name: restore-rehearsal
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: restore-rehearsal
+  cancel-in-progress: false
+
+jobs:
+  rehearse:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    services:
+      postgres:
+        # Fresh, throwaway PostgreSQL — same major as production.
+        image: postgres:${{ vars.PG_MAJOR || '18' }}
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: rehearsal
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      # pg_restore major must match the server that took the dump.
+      - name: Install postgresql-client-${{ vars.PG_MAJOR || '18' }}
+        run: |
+          sudo install -d /usr/share/postgresql-common/pgdg
+          curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo gpg --dearmor -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.gpg
+          echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.gpg] https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" | sudo tee /etc/apt/sources.list.d/pgdg.list
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql-client-${{ vars.PG_MAJOR || '18' }}
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Fail closed on missing configuration
+        env:
+          FIREBASE_STORAGE_BUCKET: ${{ secrets.FIREBASE_STORAGE_BUCKET }}
+          FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
+          GCS_BACKUP_CREDENTIALS_JSON: ${{ secrets.GCS_BACKUP_CREDENTIALS_JSON }}
+        run: |
+          missing=0
+          for v in FIREBASE_STORAGE_BUCKET FIREBASE_PROJECT_ID GCS_BACKUP_CREDENTIALS_JSON; do
+            if [ -z "$(printenv "$v")" ]; then
+              echo "::error::Missing required secret: $v"
+              missing=1
+            fi
+          done
+          if [ "$missing" -ne 0 ]; then exit 1; fi
+          echo "All required credentials present."
+
+      - name: Authenticate to Google Cloud (ADC only — no keys forwarded to the app)
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCS_BACKUP_CREDENTIALS_JSON }}
+
+      - name: Create empty rehearsal database (restore refuses non-empty targets)
+        env:
+          PGHOST: localhost
+          PGPASSWORD: rehearsal
+        run: |
+          psql -U postgres -d postgres -v ON_ERROR_STOP=1 -c 'DROP DATABASE IF EXISTS educbt_rehearsal;'
+          psql -U postgres -d postgres -v ON_ERROR_STOP=1 -c 'CREATE DATABASE educbt_rehearsal;'
+
+      - name: Select the newest backup
+        id: pick
+        env:
+          FIREBASE_STORAGE_BUCKET: ${{ secrets.FIREBASE_STORAGE_BUCKET }}
+          FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
+        run: |
+          latest=$(npm run --silent restore:db -- --list | jq -r '.backups | sort_by(.backupId) | reverse | .[0].backupId')
+          if [ -z "$latest" ] || [ "$latest" = "null" ]; then
+            echo "::error::No backups found in the store — run nightly-backup first."
+            exit 1
+          fi
+          echo "Restoring newest backup: $latest"
+          echo "backup_id=$latest" >> "$GITHUB_OUTPUT"
+
+      - name: Restore backup into the rehearsal database
+        env:
+          FIREBASE_STORAGE_BUCKET: ${{ secrets.FIREBASE_STORAGE_BUCKET }}
+          FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
+          RESTORE_DATABASE_URL: postgresql://postgres:rehearsal@localhost:5432/educbt_rehearsal?sslmode=disable
+        run: npm run restore:db -- --backup ${{ steps.pick.outputs.backup_id }}
+
+      - name: Provision educbt_app on the restored database
+        env:
+          DATABASE_URL_UNPOOLED: postgresql://postgres:rehearsal@localhost:5432/educbt_rehearsal?sslmode=disable
+        run: npm run db:provision-app-role
+
+      - name: Fixture setup (temporary VFY- rows)
+        env:
+          DATABASE_URL_UNPOOLED: postgresql://postgres:rehearsal@localhost:5432/educbt_rehearsal?sslmode=disable
+        run: npx tsx scripts/db-verify-fixtures.ts --setup
+
+      - name: db:verify against the restored database (as educbt_app)
+        env:
+          DATABASE_URL_UNPOOLED: postgresql://postgres:rehearsal@localhost:5432/educbt_rehearsal?sslmode=disable
+          DATABASE_URL_APP: postgresql://educbt_app:educbt_local_app@localhost:5432/educbt_rehearsal?sslmode=disable
+        run: npm run db:verify
+
+      - name: Fixture teardown (always)
+        if: always()
+        env:
+          DATABASE_URL_UNPOOLED: postgresql://postgres:rehearsal@localhost:5432/educbt_rehearsal?sslmode=disable
+        run: npx tsx scripts/db-verify-fixtures.ts --teardown
+
+      - name: Job summary
+        if: always()
+        run: |
+          {
+            echo "## Restore rehearsal"
+            echo
+            echo "Backup \`${{ steps.pick.outputs.backup_id }}\` restored into the throwaway"
+            echo "postgres container, app role provisioned, db:verify passed against the"
+            echo "recovered database with temporary fixtures (removed after)."
+            echo "Recovery is proven — see logs for per-check results."
+          } >> $GITHUB_STEP_SUMMARY

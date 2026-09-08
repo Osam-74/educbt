@@ -1,0 +1,112 @@
+# Production database initialisation — run once per production database.
+#
+# Executes, IN ORDER, as the owner via DATABASE_URL_UNPOOLED:
+#   1. preflight  — safe-connect proof: PostgreSQL major matches PG_MAJOR,
+#                   TLS is active AND verified (sslmode=verify-full), the
+#                   endpoint is direct (not -pooler), the public schema is
+#                   empty (first-migration suitability)
+#   2. migrations  — drizzle migrations, committed in git, never hand-edited
+#   3. RLS         — the exact rls.sql the local/CI environment verified
+#                   (FORCE RLS, tenant policies, audit immutability)
+#   4. provision  — least-privilege educbt_app role (not superuser, no
+#                   BYPASSRLS, audit UPDATE/DELETE revoked) with a strong
+#                   password from the EDUCBT_APP_PASSWORD secret
+#
+# FAIL CLOSED: a missing secret aborts before any database is touched.
+#
+# Required repository secrets:
+#   DATABASE_URL_UNPOOLED      Neon DIRECT owner endpoint (sslmode=verify-full)
+#   EDUCBT_APP_PASSWORD         strong generated password for educbt_app
+#                              (the value is masked by GitHub in all logs)
+# Required repository variables:
+#   PG_MAJOR                    must equal the server's PostgreSQL major (18)
+#
+# After this run: set the DATABASE_URL_APP repository secret (pooled endpoint
+# of educbt_app, sslmode=verify-full — see the job summary), then dispatch
+# verify-production-db.yml.
+#
+# NO application traffic is deployed by this workflow. No seed data is written.
+
+name: init-production-db
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-db-init
+  cancel-in-progress: false
+
+jobs:
+  init:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Fail closed on missing configuration
+        env:
+          DATABASE_URL_UNPOOLED: ${{ secrets.DATABASE_URL_UNPOOLED }}
+          EDUCBT_APP_PASSWORD: ${{ secrets.EDUCBT_APP_PASSWORD }}
+          PG_MAJOR: ${{ vars.PG_MAJOR }}
+        run: |
+          missing=0
+          for v in DATABASE_URL_UNPOOLED EDUCBT_APP_PASSWORD; do
+            if [ -z "$(printenv "$v")" ]; then
+              echo "::error::Missing required secret: $v"
+              missing=1
+            fi
+          done
+          if [ -z "${PG_MAJOR}" ]; then
+            echo "::error::Missing repository variable: PG_MAJOR"
+            missing=1
+          fi
+          if [ "$missing" -ne 0 ]; then exit 1; fi
+          echo "All required configuration present."
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Preflight — safe to migrate?
+        env:
+          DATABASE_URL_UNPOOLED: ${{ secrets.DATABASE_URL_UNPOOLED }}
+          PG_MAJOR: ${{ vars.PG_MAJOR }}
+        run: npx tsx scripts/preflight-production.ts
+
+      - name: Migrations (drizzle, as owner via direct endpoint)
+        env:
+          DATABASE_URL_UNPOOLED: ${{ secrets.DATABASE_URL_UNPOOLED }}
+        run: npm run db:migrate
+
+      - name: RLS / security (rls.sql, FORCE RLS + tenant policies + audit immutability)
+        env:
+          DATABASE_URL_UNPOOLED: ${{ secrets.DATABASE_URL_UNPOOLED }}
+        run: npm run db:rls
+
+      - name: Provision educbt_app (least privilege, strong password, never logged)
+        env:
+          DATABASE_URL_UNPOOLED: ${{ secrets.DATABASE_URL_UNPOOLED }}
+          EDUCBT_APP_PASSWORD: ${{ secrets.EDUCBT_APP_PASSWORD }}
+        run: npm run db:provision-app-role
+
+      - name: Job summary
+        if: always()
+        run: |
+          {
+            echo "## Production DB initialisation"
+            echo
+            echo "Order executed: preflight → migrations → RLS → educbt_app provisioning."
+            echo "A non-zero exit anywhere above means the database was NOT fully initialised —"
+            echo "each step is idempotent/rerunnable, so fix the cause and re-dispatch."
+            echo
+            echo "NEXT (maintainer):"
+            echo "1. From the provisioning step's endpoint report, set the repository secret"
+            echo "   DATABASE_URL_APP = pooled endpoint of educbt_app with sslmode=verify-full."
+            echo "2. Dispatch verify-production-db.yml (fixtures → db:verify → guaranteed teardown)."
+          } >> $GITHUB_STEP_SUMMARY
