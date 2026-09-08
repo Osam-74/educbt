@@ -1,0 +1,84 @@
+name: full-baseline
+on:
+  push:
+    branches: [main, feat/ca-score-entry-ui]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  baseline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_PASSWORD: baseline
+          POSTGRES_DB: educbt_ca_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      DATABASE_URL_UNPOOLED: postgresql://postgres:baseline@127.0.0.1:5432/educbt_ca_test
+      DATABASE_URL_APP: postgresql://educbt_app:educbt_local_app@127.0.0.1:5432/educbt_ca_test
+      NEXT_TELEMETRY_DISABLED: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: Print dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y python3-weasyprint python3-pypdf
+      - name: Prepare disposable database
+        run: |
+          npm run db:migrate
+          npm run db:provision-app-role
+          npm run db:rls
+          npm run db:seed
+      - name: Typecheck and production build
+        run: |
+          npm run typecheck
+          npm run build
+      - name: Full baseline and CA HTTP checks
+        shell: bash
+        run: |
+          mkdir -p baseline-logs
+          npm run start -- -p 3017 > baseline-logs/server.log 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid" || true' EXIT
+          ready=0
+          for i in {1..60}; do
+            if curl -fsS http://127.0.0.1:3017/sign-in >/dev/null; then ready=1; break; fi
+            sleep 1
+          done
+          test "$ready" = 1
+          export CA_TEST_HTTP_URL=http://127.0.0.1:3017
+          failed=0
+          for suite in verify scope auth leak vault engine authoring results practice jobs domain config backup platform ca-validation ca print; do
+            case "$suite" in
+              verify) command=(npm run db:verify) ;;
+              ca-validation) command=(npx tsx src/lib/ca/validation.test.ts) ;;
+              ca) command=(npx tsx src/db/test-ca.ts) ;;
+              print) command=(/usr/bin/python3 scripts/test-print.py) ;;
+              *) command=(npm run "test:$suite") ;;
+            esac
+            if "${command[@]}" > "baseline-logs/$suite.log" 2>&1; then
+              echo "$suite: PASS"
+            else
+              echo "$suite: FAIL"
+              failed=1
+            fi
+            cat "baseline-logs/$suite.log"
+          done
+          exit "$failed"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: baseline-logs
+          path: baseline-logs/
