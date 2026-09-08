@@ -36,6 +36,12 @@ jobs:
   rehearse:
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    env:
+      # Pin the client binaries to the server major: /usr/bin wrappers
+      # resolve to the preinstalled 16 for server-less tools, and
+      # pg_restore 16 rejects PG 18 archive headers ("unsupported version
+      # (1.16)"). Applies to psql and every pg tool this job runs.
+      PG_BINDIR: /usr/lib/postgresql/${{ vars.PG_MAJOR || '18' }}/bin
 
     services:
       postgres:

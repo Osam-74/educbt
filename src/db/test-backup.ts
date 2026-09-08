@@ -28,7 +28,7 @@ import { backupId, backupFilename, backupKey, parseBackupKey, nextAvailableId, B
 import { selectRetention } from '@/lib/backup/retention';
 import { readBackupEnv, readStoreConfig, assertSafeRestoreTarget, BackupEnvError } from '@/lib/backup/env';
 import { parsePgUri, describePgUri, pgToolEnv } from '@/lib/backup/pg-uri';
-import { pgDumpArgs, pgRestoreArgs } from '@/lib/backup/pg-commands';
+import { pgDumpArgs, pgRestoreArgs, pgToolPath } from '@/lib/backup/pg-commands';
 import { LocalDirStore, GcsStore, storeFromConfig, type GcsBucketApi } from '@/lib/backup/store';
 
 let failures = 0;
@@ -257,7 +257,9 @@ async function main() {
   const asString = [...dumpArgs, ...restoreArgs].join(' ');
   check('no password appears on the pg_dump/pg_restore command line', !asString.includes('s3cret'));
   check('no connection URI appears on the command line (ps-safe)', !asString.includes('://'));
-  check('the password travels through the process environment instead', pgToolEnv(uri, {}).PGPASSWORD === 's3cret');
+  check('pg tools default to PATH lookup', pgToolPath('pg_dump', {}) === 'pg_dump');
+  check('PG_BINDIR pins the exact client version (Ubuntu wrapper pitfall)', pgToolPath('pg_restore', { PG_BINDIR: '/usr/lib/postgresql/18/bin' }) === '/usr/lib/postgresql/18/bin/pg_restore');
+check('the password travels through the process environment instead', pgToolEnv(uri, {}).PGPASSWORD === 's3cret');
   check('sslmode travels through the process environment', pgToolEnv(uri, {}).PGSSLMODE === 'require');
   const vuri = { ...uri, sslmode: 'verify-full' as typeof uri.sslmode };
   check('verify-full gets the system trust store (no missing ~/.postgresql/root.crt)', pgToolEnv(vuri, {}).PGSSLROOTCERT === 'system');

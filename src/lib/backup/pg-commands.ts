@@ -12,6 +12,7 @@
  */
 
 import { spawn } from 'node:child_process';
+import { join } from 'node:path';
 import type { ParsedPgUri } from './pg-uri';
 import { pgToolEnv } from './pg-uri';
 
@@ -59,6 +60,18 @@ export interface ToolResult {
   stderr: string;
 }
 
+/**
+ * Resolve a pg client tool binary. On hosts with several client versions
+ * (Ubuntu runners ship 16, PGDG installs 18) the /usr/bin wrappers do NOT
+ * reliably pick the newest for server-less tools — pg_restore 16 rejects
+ * PG 18 archive headers ("unsupported version (1.16)"). PG_BINDIR pins the
+ * exact version; without it we fall back to PATH lookup (local dev).
+ */
+export function pgToolPath(tool: 'pg_dump' | 'pg_restore', env: Record<string, string | undefined> = process.env): string {
+  const bindir = env.PG_BINDIR;
+  return bindir ? join(bindir, tool) : tool;
+}
+
 export function runPgTool(
   tool: 'pg_dump' | 'pg_restore',
   args: string[],
@@ -67,7 +80,7 @@ export function runPgTool(
 ): Promise<ToolResult> {
   const max = opts.maxStderrChars ?? 4000;
   return new Promise((resolve, reject) => {
-    const child = spawn(tool, args, {
+    const child = spawn(pgToolPath(tool), args, {
       env: pgToolEnv(uri) as unknown as NodeJS.ProcessEnv,
       stdio: ['ignore', 'pipe', 'pipe'],
     });

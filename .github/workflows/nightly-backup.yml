@@ -99,6 +99,10 @@ jobs:
 
       - name: Backup (pg_dump → integrity check → upload → size confirm → retention)
         env:
+          # Pin the client 18 binaries: /usr/bin wrappers resolve to the
+          # preinstalled 16 for server-less tools, and pg_restore 16 rejects
+          # PG 18 archive headers ("unsupported version (1.16)").
+          PG_BINDIR: /usr/lib/postgresql/18/bin
           BACKUP_DATABASE_URL: ${{ secrets.BACKUP_DATABASE_URL }}
           FIREBASE_STORAGE_BUCKET: ${{ secrets.FIREBASE_STORAGE_BUCKET }}
           FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
