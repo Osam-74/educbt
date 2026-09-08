@@ -6,6 +6,17 @@ import { auth, signIn } from '@/lib/auth';
 // Never cached: the page is per-hostname and reflects session state.
 export const dynamic = 'force-dynamic';
 
+/**
+ * Where a valid session already belongs.
+ *
+ * Platform administrators own no school, so /portal cannot serve them — and
+ * its layout would bounce them straight back. Route by role instead of
+ * assuming every session is a school session.
+ */
+function homeFor(role: string): string {
+  return role === 'platform_admin' ? '/platform' : '/portal';
+}
+
 export default async function SignInPage({
   searchParams,
 }: {
@@ -14,21 +25,70 @@ export default async function SignInPage({
   const params = await searchParams;
   const session = await auth();
 
-  if (session) redirect('/portal');
+  if (session) redirect(homeFor(session.role));
 
   const host = (await headers()).get('host');
   const school = await tenantFromHost(host);
 
   // The hostname identifies the school. If it resolves to nothing, there is no
-  // school to sign in to — and we say so plainly rather than presenting a form
-  // that cannot succeed.
+  // school to sign in to — so this is the PLATFORM host, and the only account
+  // that can sign in here is a platform administrator (whose account owns no
+  // school; see the platform_admin_lookup policy).
   if (!school) {
+    async function platformSignIn(formData: FormData) {
+      'use server';
+
+      try {
+        await signIn({
+          loginId: String(formData.get('loginId') ?? '').trim(),
+          password: String(formData.get('password') ?? ''),
+          // null: the platform-admin sign-in path. The credential decision in
+          // credentials.ts resolves ONLY platform-admin accounts with this.
+          schoolId: null,
+        });
+      } catch (error) {
+        if (error instanceof Error && error.message) {
+          redirect(`/sign-in?error=${encodeURIComponent(error.message)}`);
+        }
+        throw error;
+      }
+
+      redirect('/platform');
+    }
+
     return (
       <main className="auth-shell">
         <div className="auth-card">
-          <h1>School not found</h1>
-          <p className="sub">
-            This address is not linked to a school. Check the link your school gave you.
+          <h1>EduCBT Platform</h1>
+          <p className="sub">Platform administration sign-in</p>
+
+          {params.error ? <p className="error">{params.error}</p> : null}
+
+          <form action={platformSignIn}>
+            <label htmlFor="loginId">Platform sign-in ID</label>
+            <input
+              id="loginId"
+              name="loginId"
+              type="text"
+              autoComplete="username"
+              required
+            />
+
+            <label htmlFor="password">Password</label>
+            <input
+              id="password"
+              name="password"
+              type="password"
+              autoComplete="current-password"
+              required
+            />
+
+            <button type="submit">Sign in</button>
+          </form>
+
+          <p className="hint">
+            This address is not linked to a school. School staff and students
+            sign in at their school&apos;s own address.
           </p>
         </div>
       </main>

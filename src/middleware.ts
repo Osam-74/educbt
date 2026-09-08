@@ -2,7 +2,7 @@
  * Request gate.
  *
  * Three jobs, in order:
- *   1. require a session cookie for anything under /portal
+ *   1. require a session cookie for anything under /portal or /platform
  *   2. set security headers on every response
  *
  * What deliberately does NOT happen here: tenant resolution and the forced
@@ -30,7 +30,14 @@ export function middleware(req: NextRequest) {
   // middleware has no database; a cookie check is the only safe thing to do.
   const sessionCookie = req.cookies.get('educbt.session');
 
-  if (pathname.startsWith('/portal') && !sessionCookie) {
+  // /platform is gated exactly like /portal: cookie PRESENCE here, validity
+  // per request on the server. The platform layout refuses every role except
+  // platform_admin, so a school user's (perfectly valid) session cookie gets
+  // them a redirect, never a platform page.
+  if (
+    (pathname.startsWith('/portal') || pathname.startsWith('/platform')) &&
+    !sessionCookie
+  ) {
     const url = req.nextUrl.clone();
     url.pathname = '/sign-in';
     url.searchParams.set('next', pathname);

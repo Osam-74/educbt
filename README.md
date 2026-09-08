@@ -158,6 +158,31 @@ An unscoped query returning rows means the app is connecting as owner or superus
 
 ---
 
+## Platform administration (/platform)
+
+Schools are created — with their first principal — through the platform admin
+area at `/platform`, not by hand in the database. Only `platform_admin` users
+reach it; every school role is refused at the route AND at the service
+(`src/lib/platform/schools.ts`).
+
+The FIRST platform account is provisioned out of band:
+
+    npm run bootstrap:platform-admin   # uses the OWNER credential (provisioning)
+
+It prints the one-time temporary password, which must be changed at first
+sign-in. Sign in on the platform host (a school-less hostname) — the sign-in
+page switches to platform mode when the hostname resolves to no school.
+
+Onboarding rules the service enforces: unique school code/subdomain (friendly
+errors, not database messages), subdomain reserved-list and format validation,
+Argon2id-only temp passwords (shown ONCE to the platform admin, never stored or
+audited), `must_change_password` forced, and school + principal + staff +
+audit created in ONE transaction — no half-built tenants. Suspension/reactivation
+are confirmed, audited actions; existing sessions die on the next request via
+the live school-status re-read.
+
+`npm run test:platform` is the regression suite for all of it.
+
 ## Rules this codebase enforces
 
 **Never import `db` directly in feature code.** Use `forSchool(schoolId, tx => …)`. The tenant is set with `SET LOCAL`, which ends at COMMIT — and that matters, because PgBouncer hands the same connection to the next school's request.

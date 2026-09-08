@@ -5,12 +5,11 @@ import { changeOwnPassword, PasswordChangeError } from '@/lib/auth/change-passwo
 export const dynamic = 'force-dynamic';
 
 /**
- * School-portal password change, now running on the shared service
- * (src/lib/auth/change-password.ts) that also serves platform accounts.
- * Same rules as before: current password verified even on a forced change,
- * every other session destroyed afterwards.
+ * Platform-account password change — the /platform counterpart of
+ * /portal/account/password, running on the same shared service. Reached by
+ * any platform admin whose password is still the issued temporary one.
  */
-export default async function ChangePasswordPage({
+export default async function PlatformChangePasswordPage({
   searchParams,
 }: {
   searchParams: Promise<{ error?: string }>;
@@ -19,6 +18,7 @@ export default async function ChangePasswordPage({
   const session = await auth();
 
   if (!session) redirect('/sign-in');
+  if (session.role !== 'platform_admin') redirect('/portal');
 
   const forced = session.mustChangePassword;
 
@@ -26,20 +26,19 @@ export default async function ChangePasswordPage({
     'use server';
 
     const inner = await auth();
-
-    if (!inner) redirect('/sign-in');
+    if (!inner || inner.role !== 'platform_admin') redirect('/sign-in');
 
     const current = String(formData.get('current') ?? '');
     const next = String(formData.get('next') ?? '');
     const confirm = String(formData.get('confirm') ?? '');
 
     const fail = (msg: string) =>
-      redirect(`/portal/account/password?error=${encodeURIComponent(msg)}`);
+      redirect(`/platform/account/password?error=${encodeURIComponent(msg)}`);
 
     if (next !== confirm) fail('The new passwords do not match.');
 
     try {
-      await changeOwnPassword({ id: inner.id, schoolId: inner.schoolId }, current, next);
+      await changeOwnPassword({ id: inner.id, schoolId: null }, current, next);
     } catch (error) {
       fail(error instanceof PasswordChangeError ? error.message : 'The password could not be changed.');
     }
@@ -53,7 +52,7 @@ export default async function ChangePasswordPage({
         <h1>{forced ? 'Set your password' : 'Change your password'}</h1>
         <p className="sub">
           {forced
-            ? 'Your school issued you a temporary password. Choose your own to continue.'
+            ? 'Your account was created with a temporary password. Choose your own to continue.'
             : 'You will be signed out of all devices afterwards.'}
         </p>
 

@@ -33,7 +33,9 @@
     "benchmark:db": "tsx scripts/benchmark-db-latency.ts",
     "backup:db": "tsx scripts/backup-database.ts",
     "restore:db": "tsx scripts/restore-database.ts",
-    "test:backup": "tsx src/db/test-backup.ts"
+    "test:backup": "tsx src/db/test-backup.ts",
+    "test:platform": "tsx src/db/test-platform.ts",
+    "bootstrap:platform-admin": "tsx scripts/bootstrap-platform-admin.ts"
   },
   "dependencies": {
     "@google-cloud/storage": "^7.22.0",
