@@ -21,7 +21,7 @@
 import { drizzle } from 'drizzle-orm/postgres-js';
 import postgres from 'postgres';
 import { sql as dsql } from 'drizzle-orm';
-import { resolveRuntimeDatabaseUrl } from './connection';
+import { resolveRuntimeDatabaseUrl, sslVerifiesCertificates } from './connection';
 import * as core from './schema/core';
 import * as people from './schema/people';
 import * as questionBank from './schema/questions';
@@ -42,6 +42,16 @@ if (!resolved.ok) {
 }
 
 const connectionString = resolved.url;
+
+// Fail loudly (well, loudly for a log line) if a production connection would
+// silently skip certificate verification — see sslVerifiesCertificates.
+if (resolved.production && !sslVerifiesCertificates(connectionString)) {
+  console.error(
+    '[db] SECURITY: DATABASE_URL_APP does not use sslmode=verify-full. ' +
+    'postgres.js maps weaker modes to rejectUnauthorized:false — TLS without ' +
+    'certificate verification, i.e. interceptable. Set sslmode=verify-full.',
+  );
+}
 
 /**
  * `prepare: false` is required by PgBouncer transaction mode — prepared

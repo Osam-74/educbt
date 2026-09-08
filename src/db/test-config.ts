@@ -21,7 +21,7 @@
 
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
-import { resolveRuntimeDatabaseUrl } from './connection';
+import { resolveRuntimeDatabaseUrl, sslVerifiesCertificates } from './connection';
 
 let failures = 0;
 
@@ -151,6 +151,26 @@ function walk(dir: string, exts: string[]): string[] {
   check('application code never touches the migration credential',
     offenders.length === 0,
     offenders.slice(0, 3).map((f) => f.split('/src/')[1]).join(', '));
+}
+
+{
+  // TLS verification is a property of the URL, checked the same way in every
+  // environment. Only sslmode=verify-full counts — the drivers silently skip
+  // certificate verification for sslmode=require (see connection.ts).
+  const u = (host: string, ssl: string) =>
+    `postgresql://educbt_app:x@${host}/educbt${ssl}`;
+  check('sslVerifiesCertificates: verify-full accepted',
+    sslVerifiesCertificates(u('a-pooler.neon.tech', '?sslmode=verify-full')));
+  check('sslVerifiesCertificates: sslmode=require rejected (driver skips cert verification)',
+    !sslVerifiesCertificates(u('a-pooler.neon.tech', '?sslmode=require')));
+  check('sslVerifiesCertificates: no sslmode rejected',
+    !sslVerifiesCertificates(u('a-pooler.neon.tech', '')));
+  check('sslVerifiesCertificates: disable rejected',
+    !sslVerifiesCertificates(u('localhost', '?sslmode=disable')));
+  check('sslVerifiesCertificates: undefined rejected',
+    !sslVerifiesCertificates(undefined));
+  check('sslVerifiesCertificates: first param wins when sslmode repeats',
+    sslVerifiesCertificates(u('a-pooler.neon.tech', '?sslmode=verify-full&sslmode=require')));
 }
 
 console.log(

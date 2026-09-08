@@ -27,6 +27,30 @@
 // it without a cast and tests can pass plain literal objects.
 export type ConnectionEnv = Record<string, string | undefined>;
 
+/**
+ * Whether a connection URL enforces VERIFIED TLS.
+ *
+ * Only sslmode=verify-full counts. The drivers in use make anything weaker a
+ * silent hole:
+ *
+ *   postgres.js 3.x maps sslmode=require/allow/prefer to
+ *                rejectUnauthorized:false — encrypted, but the server
+ *                certificate is never checked, so the connection is open to
+ *                man-in-the-middle interception.
+ *   node-postgres ≥8.23 deprecates sslmode=require for the same reason
+ *                (and warns on every connect).
+ *   libpq (psql / pg_dump) honours verify-full natively.
+ *
+ * Neon endpoints present publicly-trusted certificates, so verify-full costs
+ * nothing and has been proven against production by the region benchmark.
+ * See docs/postgres-provider-decision.md → TLS.
+ */
+export function sslVerifiesCertificates(url: string | undefined): boolean {
+  if (!url) return false;
+  const match = /[?&]sslmode=([^&\s]*)/.exec(url);
+  return match?.[1] === 'verify-full';
+}
+
 export type ResolvedRuntimeConnection =
   | { ok: true; url: string; viaAppRole: boolean; production: boolean }
   | { ok: false; error: string };
