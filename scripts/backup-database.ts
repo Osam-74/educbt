@@ -80,7 +80,7 @@ async function main() {
     const list = await runPgTool('pg_restore', pgRestoreListArgs(tmpFile), env.sourceUri, { maxStderrChars: 2000 });
     const objectCount = list.stdout.split('\n').filter((l) => / (TABLE|DATABASE|SEQUENCE|FK|INDEX|CONSTRAINT) /i.test(l)).length;
     if (list.code !== 0 || objectCount === 0) {
-      fail('backup archive failed the pg_restore --list integrity check', { backupId: id, pgExitCode: list.code, archiveObjects: objectCount });
+      fail('backup archive failed the pg_restore --list integrity check', { backupId: id, pgExitCode: list.code, archiveObjects: objectCount, pgStderr: list.stderr });
     }
 
     // 6—7: upload and CONFIRM it (existence + exact byte-size match).
