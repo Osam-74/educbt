@@ -128,9 +128,19 @@ async function main() {
     const [tables] = await sql<{ n: number }[]>`
       SELECT count(*)::int AS n FROM pg_tables WHERE schemaname = 'public'`;
     if ((tables?.n ?? 0) > 0) {
-      fail(`expected an empty public schema for first migration, found ${tables?.n} table(s). Refusing to run against a database that was not created for this purpose — investigate manually.`);
+      if (process.env.ALLOW_EXISTING_SCHEMA === '1') {
+        // Explicit, logged opt-in — used ONLY to re-run after a partial
+        // initialisation by this same workflow (e.g. migrations applied but
+        // RLS provisioning failed). Migrations are journaled (drizzle skips
+        // applied ones) and rls.sql/provisioning are idempotent, so this is
+        // safe against OUR OWN partial state — never against foreign data.
+        info(`public schema already has ${tables?.n} table(s); continuing because ALLOW_EXISTING_SCHEMA=1 was set explicitly (assumes our own partial initialisation — re-applying journaled migrations + idempotent RLS/grants)`);
+      } else {
+        fail(`expected an empty public schema for first migration, found ${tables?.n} table(s). Refusing to run against a database that was not created for this purpose — investigate manually. If this is a partial initialisation by this workflow, re-dispatch with the "continue" input.`);
+      }
+    } else {
+      info('public schema has 0 user tables — suitable for first migration');
     }
-    info('public schema has 0 user tables — suitable for first migration');
 
     // ── 4. App role status ────────────────────────────────────────────────────
     const [role] = await sql<{ n: number }[]>`
