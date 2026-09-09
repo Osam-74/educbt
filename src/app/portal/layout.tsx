@@ -16,15 +16,6 @@ import { signOut } from '@/lib/auth';
  */
 export const dynamic = 'force-dynamic';
 
-const ROLE_LABEL: Record<string, string> = {
-  principal: 'Principal',
-  vice_principal: 'Vice Principal',
-  exam_officer: 'Examination Officer',
-  teacher: 'Teacher',
-  student: 'Student',
-  parent: 'Parent',
-};
-
 export default async function PortalLayout({ children }: { children: React.ReactNode }) {
   const actor = await requireSchoolSession();
 

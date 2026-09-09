@@ -305,6 +305,7 @@ async function main() {
             assert(await page.locator('.ps-sidebar').isVisible());
             assert.equal(await page.locator('.ps-sidebar [aria-current="page"]').innerText(), 'Overview');
             assert(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth));
+            await page.mouse.move(1400, 0);
             await page.screenshot({ path: 'baseline-logs/portal-desktop.png', fullPage: true });
           });
           await check('portal Areas switcher exposes working examination links', async () => {
@@ -375,4 +376,3 @@ async function main() {
   }
 }
 main().catch(error => { console.error(error); process.exitCode = 1; });
-
