@@ -263,11 +263,11 @@ def veil_probe(failures):
     ::before - painted once, clipped at the page-1 fragment - so page two
     printed the crest at 100% opacity behind the closing block, and the
     region after the results table on page one showed it raw too. The crest
-    now lives on a position:fixed layer with opacity .10 - the one
+    now lives on a position:fixed layer with opacity .15 - the one
     positioned-box mode that repeats on EVERY page in both print engines. Asserted at the pixel
     level: the crest tile's centre on EVERY page of a 19-subject (2-page)
     sheet must be the veiled tone - dark green #14532d seen through 90%
-    white is ~(235,240,234), luminance ~236; the raw crest is ~49 and bare
+    white is ~(219,229,223), luminance ~224; the raw crest is ~49 and bare
     paper is 255. A veiled-AND-present window of 200-250 proves both."""
     import io
     import pypdfium2 as pdfium
@@ -295,7 +295,7 @@ def veil_probe(failures):
         if not ok:
             failures += 1
         print(f'{"PASS" if ok else "FAIL"}  veil page {i + 1:<10}(crest-centre luminance '
-              f'{lum:.0f}; veiled is ~236, raw crest ~49)')
+              f'{lum:.0f}; veiled is ~224, raw crest ~49)')
     return failures
 
 
