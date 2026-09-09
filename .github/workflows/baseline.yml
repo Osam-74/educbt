@@ -1,7 +1,7 @@
 name: full-baseline
 on:
   push:
-    branches: [main, feat/ca-score-entry-ui, feat/results-lifecycle-ui, feat/portal-shell-parity]
+    branches: [main, feat/ca-score-entry-ui, feat/results-lifecycle-ui, feat/portal-shell-parity, integrate/report-card-parity]
   pull_request:
   workflow_dispatch:
 permissions:
@@ -36,7 +36,7 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y python3-venv libpango-1.0-0 libpangoft2-1.0-0
           python3 -m venv /tmp/educbt-print
-          /tmp/educbt-print/bin/pip install weasyprint==66.0
+          /tmp/educbt-print/bin/pip install weasyprint==66.0 pypdfium2==4.30.0
       - name: Prepare disposable database
         run: |
           psql "$DATABASE_URL_UNPOOLED" -v ON_ERROR_STOP=1 -c 'CREATE ROLE educbt_app LOGIN;'
@@ -88,6 +88,18 @@ jobs:
             if grep -Eq '^SKIP[[:space:]]' "baseline-logs/$suite.log"; then failed=1; fi
           done
           exit "$failed"
+      - name: Report-card PDF evidence
+        if: always()
+        run: |
+          /tmp/educbt-print/bin/python scripts/sample-report-cards.py --out baseline-logs/report-samples
+          /tmp/educbt-print/bin/python - <<'PY'
+          import pathlib
+          import pypdfium2 as pdfium
+          for path in pathlib.Path('baseline-logs/report-samples').glob('*.pdf'):
+              pdf = pdfium.PdfDocument(str(path))
+              for i, page in enumerate(pdf):
+                  page.render(scale=1.5).to_pil().save(str(path.with_suffix('')) + f'-page-{i+1}.png')
+          PY
       - uses: actions/upload-artifact@v4
         if: always()
         with:
