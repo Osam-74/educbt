@@ -16,12 +16,12 @@ export function ResultActions({ scope, stage, principal, configured }: {
     {Object.entries(scope).map(([key, value]) => <input key={key} type="hidden" name={key} value={value} />)}
     <fieldset disabled={pending}>
       <legend>Class result actions</legend>
-      {['draft', 'compiled', 'mixed'].includes(stage) && <button name="operation" value="compile" disabled={!configured}>Compile / recompile class</button>}
-      {principal && forward[stage] && <button name="operation" value={forward[stage]![0]}>{forward[stage]![1]}</button>}
+      {['draft', 'compiled', 'mixed'].includes(stage) && <button type="submit" name="operation" value="compile" disabled={!configured}>Compile / recompile class</button>}
+      {principal && forward[stage] && <button type="submit" name="operation" value={forward[stage]![0]}>{forward[stage]![1]}</button>}
       {principal && backward[stage] && <div className="result-correction">
         <label htmlFor="result-reason">Written correction reason</label>
         <textarea id="result-reason" name="reason" rows={2} maxLength={2000} placeholder="Explain the correction (at least 10 characters)." />
-        <button name="operation" value={backward[stage]![0]}>{backward[stage]![1]}</button>
+        <button type="submit" name="operation" value={backward[stage]![0]}>{backward[stage]![1]}</button>
         <p>Each reversal is audited. Unlocking keeps results published; withdraw publication, then reopen before changing scores.</p>
       </div>}
     </fieldset>
