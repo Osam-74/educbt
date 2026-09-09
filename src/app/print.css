@@ -110,12 +110,18 @@
        showed it raw.
 
    The veil is the layer's own opacity — safe because the watermark owns its
-   element; content never inherits it. Opacity .10 over white gives the same
-   veiled tone as the legacy white-90% overlay (crest #14532d → ~(231,237,
-   234)). The layer spans the paper (inset: 0; fixed boxes anchor to the page
-   box) and the crest tiles down it exactly as before: 11cm tiles, centred,
-   starting 70mm from the paper top (10mm margin + legacy 6cm). Content is
-   lifted above the layer with z-index — see the rule below.
+   element; content never inherits it. Legacy veiled the crest with a white
+   90% overlay (10% strength); review found that unreadably faint on screen
+   previews of multi-page sheets, so the veil now sits at 15% — crest #14532d
+   reads ~(220,229,224) over white, clearly visible at a glance yet far from
+   the 100% raw crest review caught before it. The layer spans the paper
+   (inset: 0) and the crest tiles down it exactly as before: 11cm tiles,
+   centred, starting 70mm from the paper top (10mm margin + legacy 6cm).
+   Engine note: WeasyPrint anchors fixed boxes to the page box, Chrome's
+   print pipeline anchors them to the content area inside the @page margin —
+   so the Chrome grid rides 10mm lower. Both engines repeat the layer on
+   every page; only the 10mm offset differs. Content is lifted above the
+   layer with z-index — see the rule below.
 
    `--doc-wm-crest` is inherited from the sheet and set inline by the page
    when (and only when) the school has a crest; the text fallback below
@@ -127,7 +133,7 @@
   background-repeat: repeat-y;
   background-position: center 70mm;
   background-size: 11cm auto;
-  opacity: .10;
+  opacity: .15;
   z-index: 0;
   pointer-events: none;
 }
