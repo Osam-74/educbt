@@ -9,7 +9,7 @@
  */
 
 import {
-  gradeFor, WAEC_NINE_POINT, computeTotal, rank, DEFAULT_RANKING,
+  gradeFor, WAEC_NINE_POINT, computeTotal, rank, DEFAULT_RANKING, ordinal as ordinalPosition,
   canTransition, requiresReason, isVisibleToFamily, isEditable,
   type GradingScale, type RankingPolicy,
 } from './academic';
@@ -185,8 +185,17 @@ check('a locked result remains visible', isVisibleToFamily('locked'));
 check('a compiled result may still be edited', isEditable('compiled'));
 check('a published result may not be edited', !isEditable('published'));
 
+// ── Ordinals ────────────────────────────────────────────────────────────────
+check('ordinal: 1st/2nd/3rd', ordinalPosition(1) === '1st' && ordinalPosition(2) === '2nd' && ordinalPosition(3) === '3rd');
+check('ordinal: 4th through 10th', ordinalPosition(4) === '4th' && ordinalPosition(10) === '10th');
+check('ordinal: 11th/12th/13th take the teen exception', ordinalPosition(11) === '11th' && ordinalPosition(12) === '12th' && ordinalPosition(13) === '13th');
+check('ordinal: 21st/22nd/23rd resume', ordinalPosition(21) === '21st' && ordinalPosition(22) === '22nd' && ordinalPosition(23) === '23rd');
+check('ordinal: 111th keeps the teen exception', ordinalPosition(111) === '111th');
+check('ordinal: zero is a stated absence, not 0th', ordinalPosition(0) === '—');
+check('ordinal: negative is a stated absence', ordinalPosition(-1) === '—');
+check('ordinal: fractional positions are refused, not rounded', ordinalPosition(1.5) === '—');
+
 console.log(failures === 0
   ? '\nDomain rules hold — verified with no database.'
-  : `\n${failures} check(s) FAILED.`);
-
+  : `\n${failures} DOMAIN CHECK(S) FAILED`);
 process.exit(failures === 0 ? 0 : 1);

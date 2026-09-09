@@ -9,17 +9,26 @@
    The old system rasterised the page with html2canvas and sliced the image at
    fixed intervals. That approach cannot paginate: it has no idea where a
    document ends, so report cards started halfway down a page, bled into the
-   next, and left blank leaves behind. Because the output was a picture, table
-   rules and signature lines came out as whatever the rasteriser managed to
-   redraw. There is no configuration that fixes this — the technique is wrong.
+   next, and left blank leaves behind them. Because the output was a picture,
+   table rules and signature lines came out as whatever the rasteriser managed
+   to redraw. There is no configuration that fixes this — the technique is wrong.
 
    The browser understands the page box and the break rules below, and prints
    real vector text with real borders.
+
+   THE VISUAL REFERENCE: the legacy DocumentBrandingService.php stylesheet
+   (WordPress plugin, includes/Services/DocumentBrandingService.php). The
+   document identity — Times New Roman 11pt, ink #1a1a1a, muted #555, rules
+   #6b6b6b, school name in green #14532d, crest centred above the name — is
+   ported from there because it is what the schools' printed stationery has
+   looked like for years. Ported intent, not PHP.
    ════════════════════════════════════════════════════════════════════════════ */
 
 @page {
   size: A4 portrait;
-  margin: 12mm 12mm 14mm;
+  /* Legacy margin: 10mm all round. The density thresholds below were measured
+     against this page box; widening it silently moves the one-page boundary. */
+  margin: 10mm;
 }
 
 /* ── Hiding the application chrome ──────────────────────────────────────────
@@ -47,7 +56,8 @@
   .doc { margin: 0; padding: 0; background: #fff; }
 
   /* Backgrounds and borders must survive. Browsers strip them by default to
-     save ink, which turns a bordered result table into floating text. */
+     save ink, which turns a bordered result table into floating text — and
+     silently removes the crest watermark from every printed copy. */
   .doc, .doc * {
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
@@ -64,10 +74,11 @@
   overflow: visible;
   padding: 0;
   background: #fff;
-  color: #111;
-  font-family: Georgia, 'Times New Roman', serif;
-  font-size: 10.5pt;
-  line-height: 1.4;
+  color: #1a1a1a;
+  font-family: "Times New Roman", Georgia, serif;
+  font-size: 11pt;
+  line-height: 1.35;
+  position: relative;
 }
 
 /* Break BEFORE each sheet rather than after it.
@@ -84,50 +95,157 @@
   page-break-inside: auto;
 }
 
-/* ── Header ─────────────────────────────────────────────────────────────── */
-.doc__head {
-  text-align: center;
-  border-bottom: 2pt solid #1f4a2f;
-  padding-bottom: 4mm;
-  margin-bottom: 4mm;
+/* ── Watermark ───────────────────────────────────────────────────────────────
+   ONE watermark: the school crest, painted as a REPEATING BACKGROUND on the
+   sheet. A positioned watermark element is painted once and does not repeat
+   across printed pages — page two of a batch comes out bare. A background
+   image on the sheet repeats per page box, so this is what actually reaches
+   paper.
+
+   The crest is faded with a white veil (::before) rather than an opacity
+   property, which would fade the content sitting on top of it too. Content
+   children are lifted above the veil with z-index.
+
+   `--doc-wm-crest` is set inline by the page when (and only when) the school
+   has a crest; the text fallback below handles schools without one. A custom
+   property rather than background-image directly so nothing can accidentally
+   win the cascade over it. */
+.doc__sheet {
+  background-image: var(--doc-wm-crest, none);
+  background-repeat: repeat-y;
+  background-position: center 6cm;
+  background-size: 11cm auto;
 }
 
-.doc__crest { max-height: 18mm; margin-bottom: 2mm; }
-.doc__school { font-size: 16pt; font-weight: bold; margin: 0 0 1mm; color: #1f4a2f; }
-.doc__address { font-size: 9pt; margin: 0 0 2mm; color: #444; }
-.doc__title { font-size: 12pt; font-weight: bold; margin: 2mm 0 0; text-transform: uppercase; letter-spacing: 0.5pt; }
+.doc__sheet::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: #fff;
+  opacity: .90;
+  z-index: 0;
+  pointer-events: none;
+}
 
-/* ── Candidate details ──────────────────────────────────────────────────────
-   Labels carry a colon and do not wrap. A label column sized as a percentage
-   made "Admission No." break onto a second line while the value beside it sat
-   half empty. */
+.doc__sheet > * { position: relative; z-index: 1; }
+
+/* No crest: fall back to the school name as slanted text, so a document is
+   never printed with no watermark at all. The slant belongs to the text
+   fallback — a crest is a designed mark, and rotating it reads as a printing
+   fault rather than as a watermark. */
+.doc__wm-fallback {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 85%;
+  transform: translate(-50%, -50%) rotate(-32deg);
+  z-index: 0;
+  pointer-events: none;
+  text-align: center;
+}
+
+.doc__wm-fallback span {
+  display: block;
+  font-size: 44pt;
+  font-weight: bold;
+  text-transform: uppercase;
+  letter-spacing: 4px;
+  line-height: 1.1;
+  color: #000;
+  opacity: .07;
+}
+
+/* ── Letterhead ──────────────────────────────────────────────────────────────
+   Crest CENTRED ABOVE the name, then the name, then address, then contact —
+   the layout every Nigerian school letterhead uses. The crest beside the name
+   reads as a web header, not as a document.
+
+   The crest is sized in millimetres, not pixels: this markup is going to
+   paper, and a pixel size that looks right on a 1080p screen is wrong on A4. */
+.doc__head {
+  text-align: center;
+  border-bottom: 2px solid #1a1a1a;
+  padding-bottom: 4mm;
+}
+
+.doc__crest {
+  width: 24mm;
+  height: 24mm;
+  object-fit: contain;
+  display: block;
+  margin: 0 auto 2mm;
+}
+
+.doc__school {
+  margin: 0;
+  font-size: 17pt;
+  font-weight: bold;
+  letter-spacing: .5px;
+  text-transform: uppercase;
+  color: #14532d;
+}
+
+.doc__address,
+.doc__contact {
+  margin: 1mm 0 0;
+  font-size: 9.5pt;
+  color: #555;
+}
+
+.doc__title {
+  margin: 4mm 0 5mm;
+  text-align: center;
+  font-size: 12pt;
+  font-weight: bold;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+}
+
+/* ── Student identity block ───────────────────────────────────────────────────
+   Legacy "bio" rows: dotted underlines, labels sized to content (a percentage
+   label column wrapped "Admission No.:" onto a second line while the value
+   beside it sat half empty), and a passport-photo cell ONLY when a photo
+   exists — with no photo the cell is omitted entirely so the table starts at
+   the Name column with no empty 27mm gap on the left. */
 .doc__bio { width: 100%; border-collapse: collapse; margin-bottom: 5mm; font-size: 10pt; }
-.doc__bio td { padding: 1.5mm 0; vertical-align: top; }
-.doc__bio .label { color: #555; white-space: nowrap; width: 1%; padding-right: 3mm; }
+.doc__bio td { padding: 1.5mm 2mm; border-bottom: 1px dotted #6b6b6b; vertical-align: top; }
+.doc__bio .label { color: #555; width: 1%; white-space: nowrap; padding-right: 3mm; }
 .doc__bio td:not(.label) { padding-right: 6mm; }
+.doc__photo-cell { width: 27mm; text-align: center; }
+.doc__photo { width: 25mm; height: 30mm; object-fit: cover; border: 1px solid #6b6b6b; }
 
 /* ── Results table ──────────────────────────────────────────────────────────
-   Borders in POINTS, stated literally.
+   Borders in POINTS, stated literally in the print block below.
 
    Widths in mm rounded to zero in some engines and the table printed without
    rules. Colours held in custom properties were dropped entirely. Both are
-   stated as literal pt values here for that reason. */
+   restated as literal pt values there for that reason.
+
+   All cells centre EXCEPT the subject name — the legacy sheet's geometry. */
 .doc__table { width: 100%; border-collapse: collapse; font-size: 9.5pt; }
 
 .doc__table th,
 .doc__table td {
-  border: 0.75pt solid #333;
-  padding: 1.4mm 2mm;
-  text-align: left;
+  border: 1px solid #6b6b6b;
+  padding: 1.6mm 2mm;
+  text-align: center;
 }
 
 .doc__table thead th {
-  background: #eef2e8;
-  font-weight: bold;
+  background: #ececec;
   font-size: 8.5pt;
+  font-weight: bold;
   text-transform: uppercase;
-  letter-spacing: 0.3pt;
+  letter-spacing: 0;
 }
+
+.doc__table td.subject,
+.doc__table th.subject { text-align: left; }
+
+/* Registered but never scored: the legacy sheet states the absence with an
+   em-dash, never a zero (which reads as a mark of 0) and never a blank cell
+   (which reads as an oversight). Muted so the dash reads as punctuation. */
+.doc__table td.dash { color: #999; }
 
 /* Repeat the headings on every page. A results table running to a second page
    without them is a grid of unlabelled numbers. */
@@ -147,28 +265,43 @@
    onto a nearly empty second page.
 
    The page cannot feed a wide Subject column AND a wide remark column from
-   the numeric columns at their old sizes, so the number columns (12mm each,
-   holding values like "1/32" with room to spare) fund the difference.
+   the numeric columns, so the number columns (10mm each, holding values like
+   "68.4" with room to spare) fund the difference.
 
-   With fixed layout the Subject column is 88mm: long names wrap to at most
-   two readable lines instead of three. Single-line rows are governed by the
-   other cells' line-height, so their height does not move, and the honest
-   boundary — nineteen subjects on one page, twenty on two — is untouched.
+   The nine-column legacy sheet (CA / Exam / Total / Grade / Pos. / Class
+   Avg / Highest / Remark) spends slightly more width on numbers, so the
+   Subject column is 70mm with the numeric columns at 10mm: realistic
+   subject names then hold ONE line (a two-line row costs the same as two
+   rows, and a 34-character name wrapped at 58mm measured as +33mm — the
+   difference between a roomy 9-subject sheet closing on one page and its
+   signature block spilling onto a near-empty second one).
    Scoped away from the broadsheet, whose vertical subject column has its
    own geometry. */
-.doc__table .num { text-align: center; width: 12mm; }
-.doc__table .grade { text-align: center; width: 14mm; font-weight: bold; }
-
+/* In fixed layout the FIRST ROW (the header) owns the widths — body-cell
+   classes are ignored for sizing. Every header column is therefore given an
+   explicit width; the Remark column takes the remainder. Measured without
+   this: "Class Avg" and friends sized themselves from their header text,
+   the Remark column collapsed to ~10mm, "Very Good" wrapped, and EVERY row
+   in the sheet stood two lines tall — +40mm of pure markup bug. */
+/* border-box: the widths above are the final column widths. With the
+   default content-box each column silently grew by its padding and borders
+   (8 columns x ~4.7mm of chrome), the table overran the page width, and the
+   Remark column computed at NEGATIVE width — every remark wrapped and every
+   row stood two lines tall. */
 .doc:not(.doc--broadsheet) .doc__table { table-layout: fixed; }
-/* The number columns are generous for their content ("1/32" sits in 12mm);
-   in PORTRAIT they fund the wide Subject column. The broadsheet keeps the
-   original 12mm/14mm above, so its landscape geometry does not move. */
-.doc:not(.doc--broadsheet) .doc__table .num { width: 9.5mm; }
-.doc:not(.doc--broadsheet) .doc__table .grade { width: 12mm; }
-.doc:not(.doc--broadsheet) .doc__table th:first-child,
+.doc:not(.doc--broadsheet) .doc__table th,
+.doc:not(.doc--broadsheet) .doc__table td { box-sizing: border-box; }
+.doc:not(.doc--broadsheet) .doc__table th:nth-child(1) { width: 70mm; }  /* Subject   */
+.doc:not(.doc--broadsheet) .doc__table th:nth-child(2) { width: 11mm; }  /* CA        */
+.doc:not(.doc--broadsheet) .doc__table th:nth-child(3) { width: 11mm; }  /* Exam      */
+.doc:not(.doc--broadsheet) .doc__table th:nth-child(4) { width: 11mm; }  /* Total     */
+.doc:not(.doc--broadsheet) .doc__table th:nth-child(5) { width: 11mm; }  /* Grade     */
+.doc:not(.doc--broadsheet) .doc__table th:nth-child(6) { width: 12mm; }  /* Pos.      */
+.doc:not(.doc--broadsheet) .doc__table th:nth-child(7) { width: 15mm; }  /* Class Avg */
+.doc:not(.doc--broadsheet) .doc__table th:nth-child(8) { width: 13mm; }  /* Highest   */
+/* 9th (Remark) takes the remainder (~36mm). */
 .doc:not(.doc--broadsheet) .doc__table td:first-child {
-  width: 88mm;
-  /* Wrapped names sit a touch tighter than the sheet's 1.4; a one-line
+  /* Wrapped names sit a touch tighter than the sheet's 1.35; a one-line
      subject cell is shorter than the row's other cells, so single-line rows
      keep exactly their old height. */
   line-height: 1.3;
@@ -179,7 +312,9 @@
    as an oversight and a zero reads as last place. */
 .not-ranked { font-style: italic; color: #666; font-size: 8.5pt; }
 
-/* ── Summary ────────────────────────────────────────────────────────────── */
+/* ── Summary ──────────────────────────────────────────────────────────────────
+   Legacy summary: Subjects / Total Score / Average % / Position in Class —
+   the position shown as an ORDINAL (1st, 2nd, 3rd), never n/size. */
 .doc__summary {
   display: flex;
   gap: 4mm;
@@ -189,41 +324,165 @@
 
 .doc__stat {
   flex: 1;
-  border: 0.75pt solid #333;
-  padding: 3mm;
+  border: 1px solid #6b6b6b;
+  padding: 2.5mm;
   text-align: center;
 }
 
 .doc__stat b { display: block; font-size: 14pt; }
-.doc__stat span { font-size: 8pt; text-transform: uppercase; letter-spacing: 0.3pt; color: #555; }
+.doc__stat span { font-size: 8.5pt; color: #555; text-transform: uppercase; }
 
-/* ── Remarks and signatures ────────────────────────────────────────────────
-   A signature separated from its own line is the break that makes a document
-   look broken rather than merely long. */
-.doc__remarks { margin: 3mm 0; page-break-inside: avoid; }
-.doc__remarks p { margin: 0 0 2.5mm; }
-.doc__remarks .line { border-bottom: 0.5pt solid #666; display: inline-block; min-width: 60mm; }
+/* ── Remarks ────────────────────────────────────────────────────────────────
+   Legacy remarks sit on an underlined rule with the label spelled out —
+   "Class Teacher's Remark:" — because that is what the printed slip has
+   always said. */
+.doc__remarks { margin-top: 4mm; font-size: 10pt; page-break-inside: avoid; }
+.doc__remarks p { margin: 0 0 3mm; }
+.doc__remark-text { text-decoration: underline; text-underline-offset: 2px; }
 
-/* A signature block that spills alone onto a second page is the commonest
-   waste in a school print run — sixteen subjects fitting the table but pushing
-   two rules and a name over the edge. The margin is sized so an ordinary card
-   closes on one sheet; `break-inside: avoid` still keeps the block whole if a
-   longer paper genuinely needs a second page. */
-.doc__signs {
+/* ── Signatures ───────────────────────────────────────────────────────────────
+   Two 42mm boxes. Above the rule sits the signature MARK (an uploaded/drawn
+   image or a script-font name) when the school has stored one; the printed
+   NAME sits ON the rule and the ROLE in small caps under it.
+
+   A signature block that spills alone onto a second page is the commonest
+   waste in a school print run. `break-inside: avoid` keeps the block whole. */
+.doc__sign {
   display: flex;
   justify-content: space-between;
-  gap: 10mm;
-  margin-top: 6mm;
+  margin-top: 12mm;
+  font-size: 9.5pt;
   page-break-inside: avoid;
   break-inside: avoid;
 }
 
-.doc__sign { flex: 1; text-align: center; }
-.doc__sign .rule { border-top: 0.75pt solid #333; margin-bottom: 1.5mm; }
-.doc__sign .name { font-size: 9pt; font-weight: bold; }
-.doc__sign .role { font-size: 8pt; color: #555; }
+.doc__sign-box { text-align: center; width: 42mm; }
+.doc__sig-area { height: 8.8mm; display: flex; align-items: flex-end; justify-content: center; }
+/* A text signature — a stored name rendered in a script font so it reads as a
+   signature rather than a typed label. Falls back to system script fonts if
+   the webfont doesn't load. Never invented from thin air: without stored
+   signature data the area stays empty and only the printed name shows. */
+.doc__sig-text {
+  font-family: 'Petit Formal Script', 'Brush Script MT', 'Segoe Script', cursive;
+  font-size: 10.5pt;
+  line-height: 1;
+  color: #1a1a1a;
+  display: inline-block;
+  padding-bottom: 2mm;
+}
+.doc__sig-img { max-height: 7.8mm; max-width: 24.5mm; object-fit: contain; }
+.doc__sig-line { border-top: 1px solid #1a1a1a; padding-top: 1.5mm; min-height: 4mm; }
+.doc__sig-role { font-size: 6pt; color: #555; text-transform: uppercase; letter-spacing: .5px; margin-top: 1mm; }
 
-.doc__grading-key { font-size: 7.5pt; color: #444; margin-top: 3mm; line-height: 1.45; }
+/* ── Grading key ─────────────────────────────────────────────────────────────
+   Legacy format: one line, "A1: 75–100 (Excellent) | B2: 70–74 (Very Good) | …" */
+.doc__key { margin-top: 4mm; font-size: 8.5pt; color: #555; }
+
+/* Kept from the interim sheet: the scale annotation explains which scale
+   produced these grades, so a school that revises its bands can still explain
+   last year's B3. */
+.doc__grading-key { font-size: 8.5pt; color: #555; margin-top: 3mm; line-height: 1.45; }
+
+/* ── Toolbar (screen only) ──────────────────────────────────────────────────
+   Legacy wording. The button is the browser's own print dialog — "Download /
+   Print" with a hint to choose Save as PDF, because that is the supported
+   path (see the first rule above). */
+.doc__toolbar {
+  max-width: 210mm;
+  margin: 0 auto 8mm;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.doc__print {
+  font: inherit;
+  padding: 8px 18px;
+  background: #14532d;
+  color: #fff;
+  border: 0;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.doc__hint { color: #555; font-size: 10pt; }
+
+/* ── Fitting the sheet to one page ─────────────────────────────────────────
+   The overhead on a report sheet is fixed: letterhead, bio block, grading
+   key, summary, remarks and signatures. Only the marks table grows. So the
+   table and the blocks around it are set at a density chosen from the subject
+   count, rather than letting a 13-subject sheet spill two rows onto a second
+   page that then carries almost nothing.
+
+   Each step trims padding and type a little further. Nothing below is small
+   enough to be hard to read — beyond the overflow threshold the sheet is
+   allowed a second page instead, because illegible is worse than long.
+
+   The thresholds and trims are the legacy ones, re-measured against this
+   stylesheet (see scripts/test-print.py for the honest page-count record). */
+
+/* fit-snug: a lighter version of the tight trims, so the step between
+   densities is gradual rather than a jump from spacious to cramped. */
+.fit-snug .doc__table th,
+.fit-snug .doc__table td { padding: 1.2mm 1.8mm; }
+.fit-snug .doc__table { font-size: 9pt; }
+.fit-snug .doc__table thead th { font-size: 8.5pt; }
+.fit-snug .doc__bio td { padding: 1.1mm 1.6mm; font-size: 9.5pt; }
+.fit-snug .doc__key { font-size: 8pt; margin: 2.6mm 0; }
+.fit-snug .doc__sign { margin-top: 4mm; }
+.fit-snug .doc__summary { margin: 3mm 0; }
+.fit-snug .doc__stat b { font-size: 12.5pt; }
+.fit-snug .doc__remarks { margin-top: 3mm; font-size: 9.5pt; }
+.fit-snug .doc__remarks p { margin: 0 0 2.2mm; }
+.fit-snug .doc__crest { width: 21mm; height: 21mm; }
+
+/* fit-tight is the readability FLOOR. Legacy wording: "padding and type
+   never shrink below the fit-tight values". Sheets beyond the overflow
+   threshold therefore reuse the SAME floor rather than jumping back to
+   roomy sizes — a roomy overflow sheet spilled its lone signature block
+   onto a second page, the exact waste this stylesheet exists to prevent.
+   Densities are still distinct: only the tight values are shared. */
+.fit-tight .doc__table th,
+.fit-overflow .doc__table th,
+.fit-tight .doc__table td,
+.fit-overflow .doc__table td { padding: .8mm 1.4mm; }
+.fit-tight .doc__table,
+.fit-overflow .doc__table { font-size: 8.4pt; }
+.fit-tight .doc__table thead th,
+.fit-overflow .doc__table thead th { font-size: 8pt; letter-spacing: 0; }
+.fit-tight .doc__summary,
+.fit-overflow .doc__summary { margin: 2.4mm 0; gap: 3mm; }
+.fit-tight .doc__stat,
+.fit-overflow .doc__stat { padding: 1.6mm; }
+.fit-tight .doc__stat b,
+.fit-overflow .doc__stat b { font-size: 11.5pt; }
+.fit-tight .doc__stat span,
+.fit-overflow .doc__stat span { font-size: 7.5pt; }
+.fit-tight .doc__remarks,
+.fit-overflow .doc__remarks { margin-top: 2.4mm; font-size: 9pt; }
+.fit-tight .doc__remarks p,
+.fit-overflow .doc__remarks p { margin: 0 0 1.8mm; }
+.fit-tight .doc__head,
+.fit-overflow .doc__head { padding-bottom: 3mm; }
+.fit-tight .doc__crest,
+.fit-overflow .doc__crest { width: 18mm; height: 18mm; margin-bottom: 1.2mm; }
+.fit-tight .doc__school,
+.fit-overflow .doc__school { font-size: 15pt; }
+.fit-tight .doc__address,
+.fit-tight .doc__contact,
+.fit-overflow .doc__address,
+.fit-overflow .doc__contact { font-size: 8.5pt; }
+.fit-tight .doc__bio td,
+.fit-overflow .doc__bio td { padding: .9mm 1.4mm; font-size: 9pt; }
+.fit-tight .doc__key,
+.fit-overflow .doc__key { font-size: 8pt; margin: 2mm 0; }
+.fit-tight .doc__sign,
+.fit-overflow .doc__sign { margin-top: 3mm; }
+.fit-tight .doc__sig-area,
+.fit-overflow .doc__sig-area { height: 7.4mm; }
+.fit-tight .doc__title,
+.fit-overflow .doc__title { margin: 3mm 0 3.5mm; }
 
 /* ── Broadsheet ─────────────────────────────────────────────────────────────
    Landscape, because a class of thirty against fifteen subjects does not fit
@@ -235,6 +494,42 @@
 .doc--broadsheet .doc__table th,
 .doc--broadsheet .doc__table td { padding: 1mm 1.2mm; }
 .doc--broadsheet .subject-col { writing-mode: vertical-rl; text-orientation: mixed; white-space: nowrap; }
+
+/* ── Print-engine overrides ──────────────────────────────────────────────────
+   Everything below restates, in the print rendering context, the rules that
+   some engines drop there. */
+@media print {
+  /* THE DISAPPEARING RULES. Cell borders were declared with a custom property
+     in the legacy system; where a print engine resolves custom properties
+     late, the rules came out missing. Stated literally here, and forced to
+     print. Point sizes, because they are real on paper. */
+  .doc__table,
+  .doc__table th,
+  .doc__table td,
+  .doc__stat,
+  .doc__photo {
+    border-color: #333 !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  .doc__table th, .doc__table td { border: 1pt solid #333 !important; }
+  .doc__table thead th { background: #ececec !important; }
+  .doc__stat { border: 1pt solid #333 !important; }
+  .doc__photo { border: 1pt solid #333 !important; }
+  .doc__bio td { border-bottom: .75pt dotted #555 !important; }
+  .doc__head { border-bottom: 2pt solid #000 !important; }
+  .doc__sig-line { border-top: 1pt solid #000 !important; }
+
+  /* The signature line is the whole point of a signature block. */
+  .doc__sign, .doc__summary, .doc__remarks { break-inside: avoid; page-break-inside: avoid; }
+
+  /* A row divider went missing between two subjects when a renderer decided
+     one row was a break candidate and dropped the shared collapsed edge.
+     Stating the row's own bottom edge as well means the line survives however
+     the cells collapse. */
+  .doc__table tbody tr { border-bottom: 1pt solid #333 !important; }
+  .doc__table tbody tr td { border-bottom: 1pt solid #333 !important; }
+}
 
 /* ── Screen preview ─────────────────────────────────────────────────────────
    The sheet is shown at its printed size on screen, so what a user checks is
@@ -249,7 +544,7 @@
     width: 210mm;
     min-height: 297mm;
     margin: 0 auto 20px;
-    padding: 12mm;
+    padding: 10mm;
     box-shadow: 0 2px 12px rgba(0, 0, 0, 0.15);
   }
 }
