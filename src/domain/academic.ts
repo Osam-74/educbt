@@ -393,3 +393,21 @@ function compareAdmission(a: Rankable, b: Rankable): number {
 function round2(n: number): number {
   return Math.round(n * 100) / 100;
 }
+
+/**
+ * 1 → 1st, 2 → 2nd, 3 → 3rd, 4 → 4th, 11 → 11th, 12 → 12th, 13 → 13th.
+ *
+ * The legacy report sheet prints "Pos." as an ordinal ("2nd"), never a bare
+ * number or a fraction — "2/32" reads as a score to a parent. Zero and
+ * negatives return the em-dash: no position is a stated absence, not last
+ * place.
+ */
+export function ordinal(n: number): string {
+  if (!Number.isFinite(n) || n <= 0 || !Number.isInteger(n)) return '—';
+
+  const mod100 = n % 100;
+  if (mod100 >= 11 && mod100 <= 13) return `${n}th`;
+
+  const suffix: Record<number, string> = { 1: 'st', 2: 'nd', 3: 'rd' };
+  return `${n}${suffix[n % 10] ?? 'th'}`;
+}
