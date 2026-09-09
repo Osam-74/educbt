@@ -71,6 +71,7 @@ def sheet(n, name=SHORT_NAME, crest=True, photo=False, remark='Very Good',
           unscored=0, not_ranked=0, long_names=False):
     crest_img = f'<img class="doc__crest" src="{CREST_URL}" alt="">' if crest else ''
     wm_var = f' style="--doc-wm-crest:url({CREST_URL})"' if crest else ''
+    wm_layer = '<div class="doc__wm"></div>' if crest else ''
     wm_text = '' if crest else \
         '<div class="doc__wm-fallback" aria-hidden="true"><span>Demo International School</span></div>'
     photo_cell = ('<td rowspan="3" class="doc__photo-cell">'
@@ -87,7 +88,7 @@ def sheet(n, name=SHORT_NAME, crest=True, photo=False, remark='Very Good',
             rows += row(subject, remark=remark)
 
     graded = n - unscored
-    return (f'<div class="doc__sheet {density(n)}"{wm_var}>{wm_text}'
+    return (f'<div class="doc__sheet {density(n)}"{wm_var}>{wm_layer}{wm_text}'
             f'<header class="doc__head">{crest_img}'
             '<p class="doc__school">Demo International School</p>'
             '<p class="doc__address">12 Ring Road, Ibadan, Oyo State</p>'
