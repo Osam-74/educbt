@@ -53,7 +53,7 @@ def sheet(n, not_ranked=0, subject_name=None, student_name=None,
     head_school = 'Demo International School'
     crest_img = f'<img class="doc__crest" src="{CREST_URL}" alt="">' if crest else ''
     wm_var = f' style="--doc-wm-crest:url({CREST_URL})"' if crest else ''
-    wm_layer = '<div class="doc__wm"></div>' if crest else ''
+    wm_layer = ('<div class="doc__wm">' + f'<img src="{CREST_URL}" alt="">' * 3 + '</div>') if crest else ''
     wm_text = '' if crest else \
         f'<div class="doc__wm-fallback" aria-hidden="true"><span>{head_school}</span></div>'
     photo_cell = ('<td rowspan="3" class="doc__photo-cell">'

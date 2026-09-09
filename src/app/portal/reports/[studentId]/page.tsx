@@ -3,9 +3,10 @@ import { and, eq, asc, inArray } from 'drizzle-orm';
 import { requireSchoolSession } from '@/lib/session';
 import { forSchool, schema } from '@/db';
 import { subjectResults } from '@/db/schema/results';
-import { isVisibleToFamily, ordinal, rank, DEFAULT_RANKING, WAEC_NINE_POINT,
-  type RankingPolicy, type Rankable } from '@/domain/academic';
+import { isVisibleToFamily, ordinal, DEFAULT_RANKING,
+  type RankingPolicy } from '@/domain/academic';
 import { reportAudience } from '@/lib/results/report-access';
+import { reportPositions, reportAverage, reportGradingKey } from '@/lib/reports/summary';
 import { PrintToolbar } from './PrintToolbar';
 import '../../../print.css';
 
@@ -198,6 +199,9 @@ export default async function ReportCard({
           ))
       : [];
 
+    const cohortRegistrations = cohortIds.length && term ? await tx.select({ studentId: schema.studentSubjects.studentId, subjectId: schema.studentSubjects.subjectId })
+      .from(schema.studentSubjects).where(and(inArray(schema.studentSubjects.studentId, cohortIds), eq(schema.studentSubjects.sessionId, Number(term.sessionId)))) : [];
+
     // The class teacher whose name belongs on the sheet — the staff member
     // actually holding this class, not "any teacher".
     const [classTeacher] = enrolment?.classId
@@ -214,17 +218,17 @@ export default async function ReportCard({
           .limit(1)
       : [];
 
-    return { student, school, enrolment, term, results, registered, cohort, cohortRows,
+    return { student, school, enrolment, term, results, registered, cohort, cohortRows, cohortRegistrations,
       classTeacher: classTeacher ?? null };
   });
 
   if (!data) notFound();
 
-  const { student, school, enrolment, term, results, registered, cohort, cohortRows, classTeacher } = data;
+  const { student, school, enrolment, term, results, registered, cohort, cohortRows, cohortRegistrations, classTeacher } = data;
 
   // ── Cohort statistics, computed once ──────────────────────────────────────
   const perSubject = new Map<number, { totals: number[]; examTotals: number[] }>();
-  const perStudent = new Map<number, { total: number; exam: number; count: number }>();
+
   for (const row of cohortRows) {
     if (!row.complete) continue;
     const total = Number(row.total);
@@ -233,14 +237,10 @@ export default async function ReportCard({
     subject.totals.push(total);
     subject.examTotals.push(exam);
     perSubject.set(row.subjectId, subject);
-    const agg = perStudent.get(row.studentId) ?? { total: 0, exam: 0, count: 0 };
-    agg.total += total;
-    agg.exam += exam;
-    agg.count += 1;
-    perStudent.set(row.studentId, agg);
+
   }
 
-  const classStats = new Map(perSubject.entries().map(([subjectId, s]) => [subjectId, {
+  const classStats = new Map(Array.from(perSubject.entries()).map(([subjectId, s]) => [subjectId, {
     average: s.totals.reduce((a, b) => a + b, 0) / s.totals.length,
     highest: Math.max(...s.totals),
   }]));
@@ -250,22 +250,7 @@ export default async function ReportCard({
   // the stored ranking policy when one exists.
   const storedPolicy = results.find(r => r.rankingPolicy)?.rankingPolicy as RankingPolicy | undefined;
   const policy = storedPolicy?.tiePolicy ? storedPolicy : DEFAULT_RANKING;
-  const rankable: (Rankable & { average: number })[] = [];
-  for (const [studentIdOf, agg] of perStudent) {
-    if (!agg.count) continue;
-    rankable.push({
-      studentId: studentIdOf,
-      admissionNumber: cohort.find(c => c.studentId === studentIdOf)?.admissionNumber,
-      // Scale ×100: rank() compares totals numerically and floats carry
-      // rounding noise at the third decimal — two students one mark apart on
-      // different subject counts must never compare equal.
-      total: Math.round((agg.total / agg.count) * 100),
-      examTotal: Math.round((agg.exam / agg.count) * 100),
-      complete: true,
-      average: agg.total / agg.count,
-    });
-  }
-  const positions = new Map(rank(rankable, policy).map(r => [r.studentId, r.position]));
+  const positions = reportPositions(cohort, cohortRows, cohortRegistrations, policy);
   const classPosition = positions.get(studentId) ?? 0;
 
   // ── Marks rows: registration is the spine; compiled scores join onto it ──
@@ -300,7 +285,7 @@ export default async function ReportCard({
 
   const ranked = results.filter((r) => r.complete);
   const totalMarks = ranked.reduce((s, r) => s + Number(r.total), 0);
-  const average = ranked.length > 0 ? totalMarks / ranked.length : 0;
+  const average = reportAverage(ranked.map(r => Number(r.total)));
 
   // Staff may read a compiled result before it is published; a family may not.
   const anyUnpublished = results.some((r) => !isVisibleToFamily(r.state));
@@ -311,14 +296,7 @@ export default async function ReportCard({
   const classTeacherName = classTeacher
     ? `${classTeacher.firstName} ${classTeacher.lastName}` : '';
 
-  // Grading key: rendered from the domain scale — one line, legacy format
-  // "A1: 75–100 (Excellent) | …". A band's maximum is the next band's
-  // minimum minus one; the top band runs to 100.
-  const bands = [...WAEC_NINE_POINT.bands].sort((a, b) => b.min - a.min);
-  const gradingKey = bands.map((band, i) => {
-    const max = i === 0 ? 100 : bands[i - 1]!.min - 1;
-    return `${band.grade}: ${num(band.min)}\u2013${num(max)} (${band.remark})`;
-  }).join('  |  ');
+  const gradingKey = reportGradingKey(results);
 
   return (
     <>
@@ -327,12 +305,11 @@ export default async function ReportCard({
       <div className="doc">
         <div
           className={`doc__sheet ${density}`}
-          style={hasCrest ? ({ '--doc-wm-crest': `url(${school!.logoUrl})` } as React.CSSProperties) : undefined}
         >
           {/* Crest watermark: a position:fixed layer so it repeats on EVERY
               printed page (a sheet background or a positioned veil is painted
               once and clipped at the first page fragment — see print.css). */}
-          {hasCrest ? <div className="doc__wm" aria-hidden="true" /> : null}
+          {hasCrest ? <div className="doc__wm" aria-hidden="true">{[0, 1, 2].map(n => <img key={n} src={school!.logoUrl!} alt="" />)}</div> : null}
 
           {/* No crest: the school name as a slanted text watermark, so the
               sheet is never printed with no watermark at all. */}
@@ -457,7 +434,7 @@ export default async function ReportCard({
           <div className="doc__summary">
             <div className="doc__stat"><b>{ranked.length}</b><span>Subjects</span></div>
             <div className="doc__stat"><b>{num(totalMarks)}</b><span>Total Score</span></div>
-            <div className="doc__stat"><b>{average > 0 ? `${num(Math.round(average * 10) / 10)}%` : '—'}</b><span>Average</span></div>
+            <div className="doc__stat"><b>{average}</b><span>Average</span></div>
             <div className="doc__stat"><b>{ordinal(classPosition)}</b><span>Position in Class</span></div>
           </div>
 

@@ -71,7 +71,7 @@ def sheet(n, name=SHORT_NAME, crest=True, photo=False, remark='Very Good',
           unscored=0, not_ranked=0, long_names=False):
     crest_img = f'<img class="doc__crest" src="{CREST_URL}" alt="">' if crest else ''
     wm_var = f' style="--doc-wm-crest:url({CREST_URL})"' if crest else ''
-    wm_layer = '<div class="doc__wm"></div>' if crest else ''
+    wm_layer = ('<div class="doc__wm">' + f'<img src="{CREST_URL}" alt="">' * 3 + '</div>') if crest else ''
     wm_text = '' if crest else \
         '<div class="doc__wm-fallback" aria-hidden="true"><span>Demo International School</span></div>'
     photo_cell = ('<td rowspan="3" class="doc__photo-cell">'

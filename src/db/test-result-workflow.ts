@@ -198,8 +198,28 @@ async function main() {
       await db.insert(schema.enrollments).values({ schoolId: a.schoolId, studentId: a.students[0]!.id, classId: a.classes[1]!.id, sessionId: laterSession!.id });
       await db.update(schema.students).set({ firstName: 'WrongSessionStudent' }).where(eq(schema.students.id, a.students[3]!.id));
       await check('HTTP report respects chosen term session enrollment', async () => {
-        const html = await (await fetch(new URL(`/portal/reports/${a.students[0]!.id}?term=${laterTerm!.id}`, base), { headers })).text();
+        const response = await fetch(new URL(`/portal/reports/${a.students[0]!.id}?term=${laterTerm!.id}`, base), { headers });
+        assert.equal(response.status, 200, 'Report route must render on the supported Node runtime');
+        const html = await response.text();
         assert(html.includes('2027/2028')); assert(html.includes('JSS1 B'));
+      });
+      const reportHtml = async (studentId = a.students[0]!.id) => {
+        const response = await fetch(new URL(`/portal/reports/${studentId}?term=${a.scope.termId}`, base), { headers });
+        assert.equal(response.status, 200); return response.text();
+      };
+      await check('HTTP report Node 20 route renders compiled subject statistics', async () => {
+        const html = await reportHtml(); assert(html.includes('Class Avg')); assert(html.includes('Highest')); assert(html.includes('Mathematics'));
+      });
+      await check('HTTP missing registered subject excludes student from class rank', async () => {
+        await db.insert(schema.studentSubjects).values({ schoolId: a.schoolId, sessionId: a.scope.sessionId, studentId: a.students[0]!.id, subjectId: a.subjects[1]!.id });
+        try { assert((await reportHtml()).includes('<b>—</b><span>Position in Class</span>')); }
+        finally { await db.delete(schema.studentSubjects).where(and(eq(schema.studentSubjects.studentId, a.students[0]!.id), eq(schema.studentSubjects.subjectId, a.subjects[1]!.id))); }
+      });
+      await check('HTTP true zero average is printed as zero percent', async () => assert((await reportHtml(a.students[2]!.id)).includes('<b>0%</b><span>Average</span>')));
+      await check('HTTP non-WAEC stored scale does not print WAEC grading key', async () => {
+        await db.update(schema.subjectResults).set({ gradingScaleId: 'custom-scale' }).where(and(eq(schema.subjectResults.schoolId, a.schoolId), eq(schema.subjectResults.studentId, a.students[0]!.id)));
+        try { const html = await reportHtml(); assert(html.includes('Historical grading key unavailable')); assert(!html.includes('A1: 75')); }
+        finally { await db.update(schema.subjectResults).set({ gradingScaleId: 'waec-9' }).where(and(eq(schema.subjectResults.schoolId, a.schoolId), eq(schema.subjectResults.studentId, a.students[0]!.id))); }
       });
       await check('HTTP broadsheet excludes another session enrollment', async () => {
         const html = await (await fetch(new URL(`/portal/broadsheet?class=${a.classes[1]!.id}&term=${laterTerm!.id}`, base), { headers })).text();
@@ -280,6 +300,29 @@ async function main() {
             await page.getByRole('button', { name: 'Unlock results', exact: true }).click();
             await page.getByText('3 subject results moved to published.', { exact: true }).waitFor();
             assert((await rows()).find(r => r.studentId === a.students[0]!.id)!.published);
+            assert.deepEqual(errors, []);
+          });
+          const crest = 'data:image/svg+xml;base64,' + Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64"><circle cx="32" cy="32" r="28" fill="#14532d"/></svg>').toString('base64');
+          await db.update(schema.schools).set({ logoUrl: crest }).where(eq(schema.schools.id, a.schoolId));
+          await page.setViewportSize({ width: 1440, height: 1100 });
+          await check('browser actual report route renders with school crest', async () => {
+            const response = await page.goto(`${base.origin}/portal/reports/${a.students[0]!.id}?term=${a.scope.termId}`, { waitUntil: 'networkidle' });
+            assert.equal(response!.status(), 200); await page.locator('.doc__table').waitFor();
+            assert.equal(await page.locator('.doc__wm img').count(), 3);
+            assert(await page.locator('.doc__wm img').first().evaluate((img: HTMLImageElement) => img.complete && img.naturalWidth > 0));
+            await page.screenshot({ path: 'baseline-logs/report-route-desktop.png', fullPage: true });
+          });
+          await check('browser report mobile preview stays inside portal viewport', async () => {
+            await page.setViewportSize({ width: 390, height: 844 });
+            assert(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth));
+            await page.screenshot({ path: 'baseline-logs/report-route-mobile.png', fullPage: true });
+          });
+          await check('browser printed report excludes shell chrome and toolbar', async () => {
+            await page.emulateMedia({ media: 'print' });
+            for (const selector of ['.ps-sidebar', '.ps-topbar', '.no-print']) assert(!await page.locator(selector).isVisible());
+            assert.equal(await page.locator('.ps-workspace').evaluate((el: HTMLElement) => getComputedStyle(el).marginLeft), '0px');
+            await page.pdf({ path: 'baseline-logs/report-route-chromium.pdf', preferCSSPageSize: true, printBackground: true });
+            await page.emulateMedia({ media: 'screen' });
             assert.deepEqual(errors, []);
           });
           // Portal parity uses only the disposable workflow school and synthetic sessions.

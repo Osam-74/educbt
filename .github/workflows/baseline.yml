@@ -37,6 +37,8 @@ jobs:
           sudo apt-get install -y python3-venv libpango-1.0-0 libpangoft2-1.0-0
           python3 -m venv /tmp/educbt-print
           /tmp/educbt-print/bin/pip install weasyprint==66.0 pypdfium2==4.30.0
+          python3 -m venv /tmp/educbt-print69
+          /tmp/educbt-print69/bin/pip install weasyprint==69.0 pypdfium2==4.30.0
       - name: Prepare disposable database
         run: |
           psql "$DATABASE_URL_UNPOOLED" -v ON_ERROR_STOP=1 -c 'CREATE ROLE educbt_app LOGIN;'
@@ -68,13 +70,15 @@ jobs:
           test "$ready" = 1
           export CA_TEST_HTTP_URL=http://127.0.0.1:3017
           failed=0
-          for suite in verify scope auth leak vault engine authoring results practice jobs domain config backup platform ca-validation ca result-workflow result-workflow-rerun print; do
+          for suite in verify scope auth leak vault engine authoring results practice jobs domain config backup platform ca-validation ca result-workflow result-workflow-rerun report-summary print print69; do
             case "$suite" in
               verify) command=(npm run db:verify) ;;
               ca-validation) command=(npx tsx src/lib/ca/validation.test.ts) ;;
               ca) command=(npx tsx src/db/test-ca.ts) ;;
               result-workflow) command=(env RESULT_BROWSER_MODULE=/tmp/educbt-browser/node_modules/playwright/index.mjs npx tsx src/db/test-result-workflow.ts) ;;
               result-workflow-rerun) command=(npx tsx src/db/test-result-workflow.ts) ;;
+              report-summary) command=(npx tsx src/lib/reports/summary.test.ts) ;;
+              print69) command=(/tmp/educbt-print69/bin/python scripts/test-print.py) ;;
               print) command=(/tmp/educbt-print/bin/python scripts/test-print.py) ;;
               *) command=(npm run "test:$suite") ;;
             esac
@@ -91,11 +95,14 @@ jobs:
       - name: Report-card PDF evidence
         if: always()
         run: |
+          /tmp/educbt-print/bin/python scripts/diagnose-watermark.py > baseline-logs/watermark-diagnosis66.log 2>&1
+          /tmp/educbt-print69/bin/python scripts/diagnose-watermark.py > baseline-logs/watermark-diagnosis69.log 2>&1
           /tmp/educbt-print/bin/python scripts/sample-report-cards.py --out baseline-logs/report-samples
+          /tmp/educbt-print69/bin/python scripts/sample-report-cards.py --out baseline-logs/report-samples69
           /tmp/educbt-print/bin/python - <<'PY'
           import pathlib
           import pypdfium2 as pdfium
-          for path in pathlib.Path('baseline-logs/report-samples').glob('*.pdf'):
+          for path in pathlib.Path('baseline-logs').rglob('*.pdf'):
               pdf = pdfium.PdfDocument(str(path))
               for i, page in enumerate(pdf):
                   page.render(scale=1.5).to_pil().save(str(path.with_suffix('')) + f'-page-{i+1}.png')
