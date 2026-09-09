@@ -373,8 +373,15 @@ export default async function ReportCard({
           </table>
 
           <table className="doc__table">
+            <colgroup>
+              <col className="c-subject" /><col className="c-ca" /><col className="c-exam" />
+              <col className="c-total" /><col className="c-grade" /><col className="c-pos" />
+              <col className="c-avg" /><col className="c-high" /><col className="c-remark" />
+            </colgroup>
             <thead>
               <tr>
+                {/* Only Subject is left-aligned; every other heading —
+                    including Remark — is centred like the legacy sheet. */}
                 <th className="subject">Subject</th>
                 <th>CA</th>
                 <th>Exam</th>
@@ -383,7 +390,7 @@ export default async function ReportCard({
                 <th>Pos.</th>
                 <th>Class Avg</th>
                 <th>Highest</th>
-                <th className="subject">Remark</th>
+                <th>Remark</th>
               </tr>
             </thead>
             <tbody>

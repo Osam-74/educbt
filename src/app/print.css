@@ -255,51 +255,56 @@
 /* A row split across a page break is unreadable. */
 .doc__table tr { page-break-inside: avoid; break-inside: avoid; }
 
-/* ── Column widths, fixed deliberately ────────────────────────────────────
-   Root cause of the long-subject spill (measured on WeasyPrint 69, CSS px):
+/* ── Column widths: explicit colgroup, fixed deliberately ─────────────────
+   The nine-column sheet is sized by the <colgroup> in the page markup
+   (col.c-subject … col.c-remark) — one place, no first-row inference.
+   Every width is measured text + slack (Liberation Serif, WeasyPrint 69):
 
-   auto table layout gave the Subject column ~292px and the remark column
-   ~63px. A realistic 92-character subject name wrapped to THREE lines in
-   that column, so every row stood 64.8px instead of 29.4px — and twelve
-   such rows pushed the final row plus the summary/remarks/signature tail
-   onto a nearly empty second page.
+     headers bold @8.5pt: HIGHEST 13.83  REMARK 13.66  GRADE 10.83  TOTAL
+                     10.22  EXAM 9.16  CLASS 9.67 + AVG 6.28 ("CLASS AVG"
+                     wraps to two lines INSIDE its column — deliberate)
+     body @9.5pt:      "ranked" 9.12  "68.4" 5.86  "100" 5.03  "A1" 4.10
 
-   The page cannot feed a wide Subject column AND a wide remark column from
-   the numeric columns, so the number columns (10mm each, holding values like
-   "68.4" with room to spare) fund the difference.
-
-   The nine-column legacy sheet (CA / Exam / Total / Grade / Pos. / Class
-   Avg / Highest / Remark) spends slightly more width on numbers, so the
-   Subject column is 70mm with the numeric columns at 10mm: realistic
-   subject names then hold ONE line (a two-line row costs the same as two
-   rows, and a 34-character name wrapped at 58mm measured as +33mm — the
-   difference between a roomy 9-subject sheet closing on one page and its
-   signature block spilling onto a near-empty second one).
-   Scoped away from the broadsheet, whose vertical subject column has its
-   own geometry. */
-/* In fixed layout the FIRST ROW (the header) owns the widths — body-cell
-   classes are ignored for sizing. Every header column is therefore given an
-   explicit width; the Remark column takes the remainder. Measured without
-   this: "Class Avg" and friends sized themselves from their header text,
-   the Remark column collapsed to ~10mm, "Very Good" wrapped, and EVERY row
-   in the sheet stood two lines tall — +40mm of pure markup bug. */
-/* border-box: the widths above are the final column widths. With the
-   default content-box each column silently grew by its padding and borders
-   (8 columns x ~4.7mm of chrome), the table overran the page width, and the
-   Remark column computed at NEGATIVE width — every remark wrapped and every
-   row stood two lines tall. */
+   All measurements are BOLD (headers are bold; regular-weight numbers
+   understate them by ~7%). The two failure modes this layout exists to
+   kill, both shipped to review: the single-word HIGHEST header (13.8mm
+   bold) in a 13mm column bled into Remark; decimal body values like
+   "68.4" (5.9mm) overflowed a 10mm column's 5.1mm content box. Header
+   cells carry only .5mm side padding, every width is measured-word +
+   >=0.5mm slack, and the bleed_probe in scripts/test-print.py asserts no
+   line box ever exceeds its cell. Subject names and remarks wrap INSIDE
+   their columns (overflow-wrap); number columns stay compact. */
 .doc:not(.doc--broadsheet) .doc__table { table-layout: fixed; }
 .doc:not(.doc--broadsheet) .doc__table th,
 .doc:not(.doc--broadsheet) .doc__table td { box-sizing: border-box; }
-.doc:not(.doc--broadsheet) .doc__table th:nth-child(1) { width: 70mm; }  /* Subject   */
-.doc:not(.doc--broadsheet) .doc__table th:nth-child(2) { width: 11mm; }  /* CA        */
-.doc:not(.doc--broadsheet) .doc__table th:nth-child(3) { width: 11mm; }  /* Exam      */
-.doc:not(.doc--broadsheet) .doc__table th:nth-child(4) { width: 11mm; }  /* Total     */
-.doc:not(.doc--broadsheet) .doc__table th:nth-child(5) { width: 11mm; }  /* Grade     */
-.doc:not(.doc--broadsheet) .doc__table th:nth-child(6) { width: 12mm; }  /* Pos.      */
-.doc:not(.doc--broadsheet) .doc__table th:nth-child(7) { width: 15mm; }  /* Class Avg */
-.doc:not(.doc--broadsheet) .doc__table th:nth-child(8) { width: 13mm; }  /* Highest   */
-/* 9th (Remark) takes the remainder (~36mm). */
+.doc:not(.doc--broadsheet) .doc__table thead th {
+  /* keep the density rules' vertical padding; the side padding of a header
+     cell is minimal so a single-word heading owns its full column */
+  padding-left: .5mm;
+  padding-right: .5mm;
+}
+.doc__table col.c-subject { width: 62mm; }
+.doc__table col.c-ca     { width: 11.5mm; }
+.doc__table col.c-exam   { width: 12mm; }
+.doc__table col.c-total  { width: 13mm; }
+.doc__table col.c-grade  { width: 13mm; }
+.doc__table col.c-pos    { width: 15mm; }
+.doc__table col.c-avg    { width: 13mm; }
+.doc__table col.c-high   { width: 17mm; }
+/* col.c-remark (no width) takes the remainder: 190mm page content minus
+   156.5mm = 33.5mm; remarks wrap inside it. */
+
+/* A table without its colgroup (defensive) still sizes from the header —
+   the header cells repeat the col widths so the two can never disagree. */
+.doc:not(.doc--broadsheet) .doc__table th:nth-child(1) { width: 62mm; }
+.doc:not(.doc--broadsheet) .doc__table th:nth-child(2) { width: 11.5mm; }
+.doc:not(.doc--broadsheet) .doc__table th:nth-child(3) { width: 12mm; }
+.doc:not(.doc--broadsheet) .doc__table th:nth-child(4) { width: 13mm; }
+.doc:not(.doc--broadsheet) .doc__table th:nth-child(5) { width: 13mm; }
+.doc:not(.doc--broadsheet) .doc__table th:nth-child(6) { width: 15mm; }
+.doc:not(.doc--broadsheet) .doc__table th:nth-child(7) { width: 13mm; }
+.doc:not(.doc--broadsheet) .doc__table th:nth-child(8) { width: 17mm; }
+
 .doc:not(.doc--broadsheet) .doc__table td:first-child {
   /* Wrapped names sit a touch tighter than the sheet's 1.35; a one-line
      subject cell is shorter than the row's other cells, so single-line rows
@@ -437,52 +442,34 @@
 .fit-snug .doc__remarks p { margin: 0 0 2.2mm; }
 .fit-snug .doc__crest { width: 21mm; height: 21mm; }
 
-/* fit-tight is the readability FLOOR. Legacy wording: "padding and type
-   never shrink below the fit-tight values". Sheets beyond the overflow
-   threshold therefore reuse the SAME floor rather than jumping back to
-   roomy sizes — a roomy overflow sheet spilled its lone signature block
-   onto a second page, the exact waste this stylesheet exists to prevent.
-   Densities are still distinct: only the tight values are shared. */
+/* fit-tight is the readability FLOOR — and the ceiling. Legacy wording:
+   "padding and type never shrink below the fit-tight values"; the legacy
+   ladder stops compacting past 14 subjects. Sheets beyond the overflow
+   threshold therefore render at ROOMY sizes and flow to a second page,
+   carrying real rows with them (the header repeats, signatures guard
+   against a lone spill). Readability beats squeezing another row onto
+   sheet one — a 15-24 subject sheet at forced-tight sizes was legible to
+   the layout engine and cramped to the eye that reads it. */
 .fit-tight .doc__table th,
-.fit-overflow .doc__table th,
-.fit-tight .doc__table td,
-.fit-overflow .doc__table td { padding: .8mm 1.4mm; }
-.fit-tight .doc__table,
-.fit-overflow .doc__table { font-size: 8.4pt; }
-.fit-tight .doc__table thead th,
-.fit-overflow .doc__table thead th { font-size: 8pt; letter-spacing: 0; }
-.fit-tight .doc__summary,
-.fit-overflow .doc__summary { margin: 2.4mm 0; gap: 3mm; }
-.fit-tight .doc__stat,
-.fit-overflow .doc__stat { padding: 1.6mm; }
-.fit-tight .doc__stat b,
-.fit-overflow .doc__stat b { font-size: 11.5pt; }
-.fit-tight .doc__stat span,
-.fit-overflow .doc__stat span { font-size: 7.5pt; }
-.fit-tight .doc__remarks,
-.fit-overflow .doc__remarks { margin-top: 2.4mm; font-size: 9pt; }
-.fit-tight .doc__remarks p,
-.fit-overflow .doc__remarks p { margin: 0 0 1.8mm; }
-.fit-tight .doc__head,
-.fit-overflow .doc__head { padding-bottom: 3mm; }
-.fit-tight .doc__crest,
-.fit-overflow .doc__crest { width: 18mm; height: 18mm; margin-bottom: 1.2mm; }
-.fit-tight .doc__school,
-.fit-overflow .doc__school { font-size: 15pt; }
+.fit-tight .doc__table td { padding: .8mm 1.4mm; }
+.fit-tight .doc__table { font-size: 8.4pt; }
+.fit-tight .doc__table thead th { font-size: 8pt; letter-spacing: 0; }
+.fit-tight .doc__summary { margin: 2.4mm 0; gap: 3mm; }
+.fit-tight .doc__stat { padding: 1.6mm; }
+.fit-tight .doc__stat b { font-size: 11.5pt; }
+.fit-tight .doc__stat span { font-size: 7.5pt; }
+.fit-tight .doc__remarks { margin-top: 2.4mm; font-size: 9pt; }
+.fit-tight .doc__remarks p { margin: 0 0 1.8mm; }
+.fit-tight .doc__head { padding-bottom: 3mm; }
+.fit-tight .doc__crest { width: 18mm; height: 18mm; margin-bottom: 1.2mm; }
+.fit-tight .doc__school { font-size: 15pt; }
 .fit-tight .doc__address,
-.fit-tight .doc__contact,
-.fit-overflow .doc__address,
-.fit-overflow .doc__contact { font-size: 8.5pt; }
-.fit-tight .doc__bio td,
-.fit-overflow .doc__bio td { padding: .9mm 1.4mm; font-size: 9pt; }
-.fit-tight .doc__key,
-.fit-overflow .doc__key { font-size: 8pt; margin: 2mm 0; }
-.fit-tight .doc__sign,
-.fit-overflow .doc__sign { margin-top: 3mm; }
-.fit-tight .doc__sig-area,
-.fit-overflow .doc__sig-area { height: 7.4mm; }
-.fit-tight .doc__title,
-.fit-overflow .doc__title { margin: 3mm 0 3.5mm; }
+.fit-tight .doc__contact { font-size: 8.5pt; }
+.fit-tight .doc__bio td { padding: .9mm 1.4mm; font-size: 9pt; }
+.fit-tight .doc__key { font-size: 8pt; margin: 2mm 0; }
+.fit-tight .doc__sign { margin-top: 3mm; }
+.fit-tight .doc__sig-area { height: 7.4mm; }
+.fit-tight .doc__title { margin: 3mm 0 3.5mm; }
 
 /* ── Broadsheet ─────────────────────────────────────────────────────────────
    Landscape, because a class of thirty against fifteen subjects does not fit

@@ -54,7 +54,7 @@ def row(subject, scored=True, complete=True, remark='Very Good'):
     if not scored:
         return (f'<tr><td class="subject">{subject}</td>'
                 + '<td class="dash">—</td>' * 8 + '</tr>')
-    ca, exam, total = 18, 54, 72
+    ca, exam, total = 18.5, 54.5, 72.5
     pos = '<span class="not-ranked">not ranked</span>' if not complete else '3rd'
     grade = '' if not complete else 'B2'
     remark_cell = remark if complete else 'Incomplete'
@@ -100,10 +100,10 @@ def sheet(n, name=SHORT_NAME, crest=True, photo=False, remark='Very Good',
             '<td class="label">Session:</td><td>2026/2027</td></tr>'
             '<tr><td class="label">Term:</td><td>First Term</td>'
             '<td class="label">No. in Class:</td><td>32</td></tr></tbody></table>'
-            '<table class="doc__table"><thead><tr>'
+            '<table class="doc__table"><colgroup><col class="c-subject" /><col class="c-ca" /><col class="c-exam" /><col class="c-total" /><col class="c-grade" /><col class="c-pos" /><col class="c-avg" /><col class="c-high" /><col class="c-remark" /></colgroup><thead><tr>'
             '<th class="subject">Subject</th><th>CA</th><th>Exam</th><th>Total</th>'
             '<th class="grade">Grade</th><th>Pos.</th><th>Class Avg</th><th>Highest</th>'
-            f'<th class="subject">Remark</th></tr></thead><tbody>{rows}</tbody></table>'
+            f'<th>Remark</th></tr></thead><tbody>{rows}</tbody></table>'
             '<div class="doc__summary">'
             f'<div class="doc__stat"><b>{graded}</b><span>Subjects</span></div>'
             f'<div class="doc__stat"><b>{72 * max(graded - not_ranked, 0)}</b><span>Total Score</span></div>'
