@@ -53,6 +53,7 @@ def sheet(n, not_ranked=0, subject_name=None, student_name=None,
     head_school = 'Demo International School'
     crest_img = f'<img class="doc__crest" src="{CREST_URL}" alt="">' if crest else ''
     wm_var = f' style="--doc-wm-crest:url({CREST_URL})"' if crest else ''
+    wm_layer = '<div class="doc__wm"></div>' if crest else ''
     wm_text = '' if crest else \
         f'<div class="doc__wm-fallback" aria-hidden="true"><span>{head_school}</span></div>'
     photo_cell = ('<td rowspan="3" class="doc__photo-cell">'
@@ -111,7 +112,7 @@ def sheet(n, not_ranked=0, subject_name=None, student_name=None,
             'D7: 45\u201349 (Pass)  |  E8: 40\u201344 (Pass)  |  '
             'F9: 0\u201339 (Fail). Scale <em>waec-9</em> v1.</p>')
 
-    return (f'<div class="doc__sheet {density(n)}"{wm_var}>{wm_text}{head}'
+    return (f'<div class="doc__sheet {density(n)}"{wm_var}>{wm_layer}{wm_text}{head}'
             '<table class="doc__table"><colgroup><col class="c-subject" /><col class="c-ca" /><col class="c-exam" /><col class="c-total" /><col class="c-grade" /><col class="c-pos" /><col class="c-avg" /><col class="c-high" /><col class="c-remark" /></colgroup><thead><tr>'
             '<th class="subject">Subject</th><th>CA</th><th>Exam</th><th>Total</th>'
             '<th class="grade">Grade</th><th>Pos.</th><th>Class Avg</th><th>Highest</th>'
@@ -253,6 +254,51 @@ def render_raw(body):
 
 
 
+
+def veil_probe(failures):
+    """The white veil must cover EVERY page of a multi-page sheet.
+
+    The failure this guards against shipped to review twice: the crest is a
+    repeating page background, but the veil was an absolutely-positioned
+    ::before - painted once, clipped at the page-1 fragment - so page two
+    printed the crest at 100% opacity behind the closing block, and the
+    region after the results table on page one showed it raw too. The crest
+    now lives on a position:fixed layer with opacity .10 - the one
+    positioned-box mode that repeats on EVERY page in both print engines. Asserted at the pixel
+    level: the crest tile's centre on EVERY page of a 19-subject (2-page)
+    sheet must be the veiled tone - dark green #14532d seen through 90%
+    white is ~(235,240,234), luminance ~236; the raw crest is ~49 and bare
+    paper is 255. A veiled-AND-present window of 200-250 proves both."""
+    import io
+    import pypdfium2 as pdfium
+    print()
+    print('\u2014 Watermark veil on every page \u2014')
+    doc = render([sheet(19, crest=True)])
+    buf = io.BytesIO(); doc.write_pdf(buf); buf.seek(0)
+    pdf = pdfium.PdfDocument(buf)
+    n_pages = len(pdf)
+    ok_pages = n_pages == 2
+    if not ok_pages:
+        failures += 1
+        print(f'FAIL  veil 19-subject sheet is {n_pages} page(s), expected 2')
+    for i, page in enumerate(pdf):
+        img = page.render(scale=1.5).to_pil().convert('RGB')
+        px = img.load()
+        mm_x = img.width / 210
+        mm_y = img.height / 297
+        # crest tile centre: x = sheet centre (105mm); tile top at the 10mm
+        # margin + 6cm offset, tile is 11cm tall -> centre at 125mm
+        cx, cy = int(105 * mm_x), int(125 * mm_y)
+        patch = [px[cx + dx, cy + dy] for dx in (-4, 0, 4) for dy in (-4, 0, 4)]
+        lum = max(sum(c) / 3 for c in patch)
+        ok = 200 <= lum <= 250
+        if not ok:
+            failures += 1
+        print(f'{"PASS" if ok else "FAIL"}  veil page {i + 1:<10}(crest-centre luminance '
+              f'{lum:.0f}; veiled is ~236, raw crest ~49)')
+    return failures
+
+
 def bleed_probe(failures):
     """No cell content may cross a column edge.
 
@@ -337,6 +383,7 @@ def broadsheet_checks(failures):
 if __name__ == '__main__':
     failures = main()
     failures = bleed_probe(failures)
+    failures = veil_probe(failures)
     failures = broadsheet_checks(failures)
 
     print()

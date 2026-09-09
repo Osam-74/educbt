@@ -329,6 +329,11 @@ export default async function ReportCard({
           className={`doc__sheet ${density}`}
           style={hasCrest ? ({ '--doc-wm-crest': `url(${school!.logoUrl})` } as React.CSSProperties) : undefined}
         >
+          {/* Crest watermark: a position:fixed layer so it repeats on EVERY
+              printed page (a sheet background or a positioned veil is painted
+              once and clipped at the first page fragment — see print.css). */}
+          {hasCrest ? <div className="doc__wm" aria-hidden="true" /> : null}
+
           {/* No crest: the school name as a slanted text watermark, so the
               sheet is never printed with no watermark at all. */}
           {!hasCrest && school?.name ? (

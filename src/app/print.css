@@ -96,38 +96,47 @@
 }
 
 /* ── Watermark ───────────────────────────────────────────────────────────────
-   ONE watermark: the school crest, painted as a REPEATING BACKGROUND on the
-   sheet. A positioned watermark element is painted once and does not repeat
-   across printed pages — page two of a batch comes out bare. A background
-   image on the sheet repeats per page box, so this is what actually reaches
-   paper.
+   ONE watermark: the school crest on a POSITION: FIXED layer — the one
+   positioned-box mode that REPEATS ON EVERY PRINTED PAGE in both engines we
+   print with (WeasyPrint server PDFs AND window.print() in Chrome). Two
+   earlier designs failed exactly here and shipped raw crests to review:
 
-   The crest is faded with a white veil (::before) rather than an opacity
-   property, which would fade the content sitting on top of it too. Content
-   children are lifted above the veil with z-index.
+     - a background image on the sheet fragments in BOX coordinates, so
+       page two shows the tiling CONTINUATION — the crest lands mid-tile,
+       in a different place than page one;
+     - an absolutely-positioned veil over that background paints ONCE,
+       clipped at the first page fragment — page two printed the crest at
+       100% behind the signatures, and the region after the results table
+       showed it raw.
 
-   `--doc-wm-crest` is set inline by the page when (and only when) the school
-   has a crest; the text fallback below handles schools without one. A custom
-   property rather than background-image directly so nothing can accidentally
-   win the cascade over it. */
-.doc__sheet {
+   The veil is the layer's own opacity — safe because the watermark owns its
+   element; content never inherits it. Opacity .10 over white gives the same
+   veiled tone as the legacy white-90% overlay (crest #14532d → ~(231,237,
+   234)). The layer spans the paper (inset: 0; fixed boxes anchor to the page
+   box) and the crest tiles down it exactly as before: 11cm tiles, centred,
+   starting 70mm from the paper top (10mm margin + legacy 6cm). Content is
+   lifted above the layer with z-index — see the rule below.
+
+   `--doc-wm-crest` is inherited from the sheet and set inline by the page
+   when (and only when) the school has a crest; the text fallback below
+   handles schools without one. */
+.doc__wm {
+  position: fixed;
+  inset: 0;
   background-image: var(--doc-wm-crest, none);
   background-repeat: repeat-y;
-  background-position: center 6cm;
+  background-position: center 70mm;
   background-size: 11cm auto;
-}
-
-.doc__sheet::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background: #fff;
-  opacity: .90;
+  opacity: .10;
   z-index: 0;
   pointer-events: none;
 }
 
 .doc__sheet > * { position: relative; z-index: 1; }
+/* .doc__wm must stay FIXED: out-specify the lift rule above (a :not() lift
+   selector is (0,2,0) and would drag the absolutely-positioned text fallback
+   into the flow too, pushing the grading key onto a second page). */
+.doc__sheet > .doc__wm { position: fixed; z-index: 0; }
 
 /* No crest: fall back to the school name as slanted text, so a document is
    never printed with no watermark at all. The slant belongs to the text
