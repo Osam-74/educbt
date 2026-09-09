@@ -282,6 +282,84 @@ async function main() {
             assert((await rows()).find(r => r.studentId === a.students[0]!.id)!.published);
             assert.deepEqual(errors, []);
           });
+          // Portal parity uses only the disposable workflow school and synthetic sessions.
+          await db.update(schema.schools).set({ name: 'Oakfield International School' }).where(eq(schema.schools.id, a.schoolId));
+          await db.update(schema.academicSessions).set({ isCurrent: true }).where(eq(schema.academicSessions.id, a.scope.sessionId));
+          await db.update(schema.terms).set({ isCurrent: true }).where(eq(schema.terms.id, a.scope.termId));
+          await db.insert(schema.staff).values({ schoolId: a.schoolId, userId: principal.userId, role: 'principal', staffNumber: 'PR', firstName: 'Ada', lastName: 'Okafor' });
+          const { schoolDashboard } = await import('@/lib/portal-dashboard');
+          await check('portal rejects forged school-wide identity', () => assert.rejects(schoolDashboard({ ...principal, userId: b.actors.principal!.userId })));
+          await check('portal teacher receives no school-wide dashboard payload', async () => assert.equal(await schoolDashboard(a.actors.teacher!), null));
+          await check('portal pipeline excludes other-session enrollment', async () => {
+            const dash = await schoolDashboard(principal);
+            assert(dash?.pipeline.some(r => r.classId === a.scope.classId));
+            assert(!dash?.pipeline.some(r => r.classId === a.classes[1]!.id && r.students > 1));
+          });
+          await check('portal exam officer receives no recent audit activity', async () => assert.equal((await schoolDashboard(a.actors.exam_officer!))?.activity, null));
+          await page.setViewportSize({ width: 1440, height: 1000 });
+          await page.goto(base.origin + '/portal', { waitUntil: 'networkidle' });
+          await check('portal desktop sidebar and real dashboard panels render', async () => {
+            await page.getByRole('heading', { name: 'Principal’s Dashboard', exact: true }).waitFor();
+            await page.getByRole('heading', { name: 'Results Pipeline', exact: true }).waitFor();
+            await page.getByRole('heading', { name: 'Recent Activity', exact: true }).waitFor();
+            assert(await page.locator('.ps-sidebar').isVisible());
+            assert.equal(await page.locator('.ps-sidebar [aria-current="page"]').innerText(), 'Overview');
+            assert(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth));
+            await page.screenshot({ path: 'baseline-logs/portal-desktop.png', fullPage: true });
+          });
+          await check('portal Areas switcher exposes working examination links', async () => {
+            await page.getByRole('button', { name: 'Examinations', exact: true }).click();
+            await page.getByRole('link', { name: 'Question Bank', exact: true }).waitFor();
+            await page.getByRole('button', { name: 'School', exact: true }).click();
+            await page.getByRole('link', { name: 'Results', exact: true }).waitFor();
+          });
+          await page.setViewportSize({ width: 390, height: 844 });
+          await check('portal mobile dashboard fits viewport', async () => {
+            assert(!await page.locator('.ps-sidebar').isVisible());
+            assert(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth));
+            await page.screenshot({ path: 'baseline-logs/portal-mobile.png', fullPage: true });
+          });
+          await check('portal mobile drawer opens and closes with Escape and restores focus', async () => {
+            await page.getByRole('button', { name: 'Open navigation' }).click();
+            await page.getByRole('dialog').waitFor();
+            await page.screenshot({ path: 'baseline-logs/portal-mobile-menu.png', fullPage: true });
+            await page.keyboard.press('Escape');
+            assert(!await page.getByRole('dialog').isVisible());
+            assert(await page.getByRole('button', { name: 'Open navigation' }).evaluate((el: HTMLElement) => el === document.activeElement));
+          });
+          await check('portal drawer navigation closes and updates active route', async () => {
+            await page.getByRole('button', { name: 'Open navigation' }).click();
+            await page.getByRole('dialog').getByRole('link', { name: 'Results', exact: true }).click();
+            await page.waitForURL('**/portal/results');
+            assert(!await page.getByRole('dialog').isVisible());
+            await page.getByRole('button', { name: 'Open navigation' }).click();
+            assert.equal(await page.getByRole('dialog').locator('[aria-current="page"]').innerText(), 'Results');
+            await page.keyboard.press('Escape');
+          });
+          await page.goto(base.origin + '/portal', { waitUntil: 'networkidle' });
+          await page.setViewportSize({ width: 320, height: 720 });
+          await check('portal narrow mobile has no page overflow', async () => assert(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)));
+          for (const role of ['teacher', 'student', 'parent']) {
+            const roleContext = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
+            try {
+              await roleContext.addCookies([{ name: 'educbt.session', value: roleHeaders[role]!.cookie.split('=')[1]!, url: base.origin }]);
+              const rolePage = await roleContext.newPage();
+              await rolePage.goto(base.origin + '/portal', { waitUntil: 'networkidle' });
+              await check(`portal ${role} does not expose school management or audit`, async () => {
+                assert.equal(await rolePage.getByRole('link', { name: 'Staff', exact: true }).count(), 0);
+                assert.equal(await rolePage.getByRole('heading', { name: 'Recent Activity', exact: true }).count(), 0);
+                assert.equal(await rolePage.getByRole('link', { name: 'Results', exact: true }).count(), 0);
+              });
+            } finally { await roleContext.close(); }
+          }
+          await db.update(schema.academicSessions).set({ isCurrent: false }).where(eq(schema.academicSessions.id, a.scope.sessionId));
+          await page.setViewportSize({ width: 1440, height: 1000 });
+          await page.reload({ waitUntil: 'networkidle' });
+          await check('portal missing current period shows honest empty state', async () => {
+            await page.getByRole('heading', { name: 'No current academic period', exact: true }).waitFor();
+            await page.screenshot({ path: 'baseline-logs/portal-empty-desktop.png', fullPage: true });
+            assert.deepEqual(errors, []);
+          });
         } finally { await browser.close(); }
       }
     }
@@ -297,3 +375,4 @@ async function main() {
   }
 }
 main().catch(error => { console.error(error); process.exitCode = 1; });
+

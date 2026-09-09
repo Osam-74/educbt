@@ -1,7 +1,7 @@
 name: full-baseline
 on:
   push:
-    branches: [main, feat/ca-score-entry-ui, feat/results-lifecycle-ui]
+    branches: [main, feat/ca-score-entry-ui, feat/results-lifecycle-ui, feat/portal-shell-parity]
   pull_request:
   workflow_dispatch:
 permissions:
@@ -93,3 +93,4 @@ jobs:
         with:
           name: baseline-logs
           path: baseline-logs/
+

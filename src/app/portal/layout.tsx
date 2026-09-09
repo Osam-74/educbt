@@ -1,7 +1,10 @@
 import { requireSchoolSession } from '@/lib/session';
 import { forSchool, schema } from '@/db';
 import { eq } from 'drizzle-orm';
-import Link from 'next/link';
+import PortalShell from './PortalShell';
+import './portal-shell.css';
+import { portalCalendar } from '@/lib/portal-dashboard';
+import { and } from 'drizzle-orm';
 import { signOut } from '@/lib/auth';
 
 /**
@@ -53,43 +56,9 @@ export default async function PortalLayout({ children }: { children: React.React
     await signOut({ redirectTo: '/sign-in' });
   }
 
-  return (
-    <div className="portal">
-      <header className="portal__bar">
-        <div>
-          <strong>{school?.name ?? 'School'}</strong>
-          <span className="portal__who">
-            {displayName} · {ROLE_LABEL[actor.role] ?? actor.role}
-          </span>
-        </div>
-        <nav>
-          <Link href="/portal">Dashboard</Link>
-          <Link href="/portal/students">Students</Link>
-          <Link href="/portal/classes">Classes</Link>
-          <Link href="/portal/subjects">Subjects</Link>
-          <Link href="/portal/questions">Questions</Link>
-          <Link href="/portal/marking">Marking</Link>
-          {/* Menu visibility is convenience only. /portal/staff refuses on the
-              server for anyone who is not school-wide, so removing this link is
-              not what protects it. */}
-          {actor.role === 'student' ? (
-            <Link href="/portal/practice">Practice</Link>
-          ) : null}
-          {['principal', 'vice_principal', 'exam_officer'].includes(actor.role) ? (
-            <>
-              <Link href="/portal/exams">Exam office</Link>
-              <Link href="/portal/review">Review</Link>
-              <Link href="/portal/broadsheet">Broadsheet</Link>
-              <Link href="/portal/staff">Staff</Link>
-            </>
-          ) : null}
-          <Link href="/portal/account/password">Password</Link>
-          <form action={endSession} style={{ display: 'inline' }}>
-            <button type="submit" className="linkish">Sign out</button>
-          </form>
-        </nav>
-      </header>
-      <main className="portal__body">{children}</main>
-    </div>
-  );
+  const calendar = await portalCalendar(actor);
+  const assignments = actor.staffId ? await forSchool(actor.schoolId, tx => tx.select({ type: schema.staffAssignments.assignmentType }).from(schema.staffAssignments).where(and(eq(schema.staffAssignments.staffId, actor.staffId!), eq(schema.staffAssignments.status, 'active')))) : [];
+  return <PortalShell school={school?.name ?? 'School'} displayName={displayName} role={actor.role}
+    calendar={`${calendar.session?.title ?? 'No current session'} · ${calendar.term?.title ?? 'No current term'}`}
+    teaching={assignments.length > 0} classTeacher={assignments.some(a => a.type === 'class_teacher')} signOut={endSession}>{children}</PortalShell>;
 }
