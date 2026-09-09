@@ -18,13 +18,13 @@ Ported intent, not PHP. Legacy behaviors deliberately NOT reproduced: html2canva
 - Document identity: Times New Roman 11pt, ink `#1a1a1a`, muted `#555`, rules `#6b6b6b`, school name green `#14532d` at 17pt
 - Letterhead: crest 24mm centred above the name, address line, contact line (" • " joined), 2pt rule
 - Bio block: Name / Admission No. / Class / Session / Term / No. in Class, dotted underlines; passport-photo cell (25×30mm) only when a photo exists, omitted entirely otherwise
-- Marks table: Subject / CA / Exam / Total / Grade / Pos. / Class Avg / Highest / Remark; centred except Subject; ordinal positions (`1st`, `2nd`, `3rd`); em-dashes for registered-but-unscored subjects; "not ranked" stated for incomplete rows
+- Marks table: Subject / CA / Exam / Total / Grade / Pos. / Class Avg / Highest / Remark, every column sized by an explicit `<colgroup>` (col.c-subject … col.c-remark) with measured bold-header widths and ≥0.5mm slack — the `bleed_probe` in `test-print.py` asserts no line box ever crosses a column edge; all headers centred except Subject; ordinal positions; em-dashes for registered-but-unscored subjects; "not ranked" stated for incomplete rows
 - Summary: Subjects / Total Score / Average % / Position in Class (ordinal, competition policy from the stored `rankingPolicy`)
 - Grading key: one-line bands `A1: 75–100 (Excellent) | …` from the domain scale + scale annotation
 - Remarks: "Class Teacher's Remark:" / "Principal's Remark:" on underlined rules
 - Signatures: two 42mm boxes, printed name on the rule, role in small caps; class teacher resolved from the live `class_teacher` assignment, principal from `schools.principalName`
 - Watermark: school crest as a repeating 11cm background (`--doc-wm-crest`, repeat-y, center 6cm) faded by a 90% white veil; school-name text slanted -32° at 7% opacity when no crest exists. Verified tiling in WeasyPrint by pixel-diff (bands at 6cm intervals, veiled green `(231,237,233)`)
-- Density ladder: fit-roomy ≤9 / fit-snug ≤11 / fit-tight ≤14 / fit-overflow >14; overflow reuses the fit-tight floor (legacy: "padding and type never shrink below the fit-tight values") so a 15–24 subject sheet does not spill a lone signature block onto a second page
+- Density ladder: fit-roomy ≤9 / fit-snug ≤11 / fit-tight ≤14; sheets beyond 14 render at ROOMY sizes and flow to a second page (legacy stops compacting at fit-tight; an earlier revision reused the tight floor to force 15–24 subjects onto one page and was reverted on review — readability beats paper)
 - Print engine: A4 portrait, 10mm margins, literal pt borders in `@media print`, `print-color-adjust: exact`, header repeat, row/signature break guards
 - Toolbar: "Download / Print" + "Choose Save as PDF" hint (legacy wording; browser print engine is the supported path)
 
@@ -43,7 +43,8 @@ No. in Class, Class Avg, Highest and Position in Class are computed read-time fr
 ## Measurement notes (WeasyPrint 66 and 69, Liberation Serif — CI parity)
 
 - Fixed-layout column widths are on the HEADER cells (`nth-child`), with `box-sizing: border-box`. Measured failure modes fixed: content-box widths overflowed the page and computed the Remark column at negative width (every remark wrapped, +40mm); unclassed header cells sized from header text and collapsed Remark to 10mm.
-- The one-page boundary is recorded in `scripts/test-print.py`: ≤24 subjects on one page (was 19 on the interim sheet; the parity letterhead is taller, but the density floor and column fixes more than pay for it). 40 subjects legitimately spans 2 pages with a half page of rows.
+- The one-page boundary is the LEGACY ladder: ≤14 subjects on one page; 15–40 span two pages at roomy sizes with real rows (not a lone signature spill) carried onto page 2. The one-line/short-row guarantee holds: a realistic subject name wraps once at most.
+- Column bleed is asserted, not eyeballed: `bleed_probe` renders roomy/tight/overflow sheets with decimals ("68.4"), "not ranked" and long names, then fails if any th/td line box exceeds its cell's content width. Both shipped bugs would have been caught: bold HIGHEST (13.8mm) in a 13mm column, and "68.4" overflowing a 10mm column's 5.1mm content box.
 - Samples for visual inspection: `python3 scripts/sample-report-cards.py` → `.qa-samples/` (not committed).
 
 ## Tests

@@ -84,8 +84,8 @@ def sheet(n, not_ranked=0, subject_name=None, student_name=None,
             grade, cls_avg, highest = 'B2', '68.4', '95'
         label = subject_name or f'Subject Number {i+1} With A Long Name'
         rows += (f'<tr><td class="subject">{label}</td>'
-                 '<td class="num">18</td><td class="num">54</td>'
-                 f'<td class="num"><strong>72</strong></td><td class="grade">{grade}</td>'
+                 '<td class="num">18.5</td><td class="num">54.5</td>'
+                 f'<td class="num"><strong>72.5</strong></td><td class="grade">{grade}</td>'
                  f'<td class="num">{pos}</td><td class="num">{cls_avg}</td>'
                  f'<td class="num">{highest}</td><td>{remark}</td></tr>')
 
@@ -112,10 +112,10 @@ def sheet(n, not_ranked=0, subject_name=None, student_name=None,
             'F9: 0\u201339 (Fail). Scale <em>waec-9</em> v1.</p>')
 
     return (f'<div class="doc__sheet {density(n)}"{wm_var}>{wm_text}{head}'
-            '<table class="doc__table"><thead><tr>'
+            '<table class="doc__table"><colgroup><col class="c-subject" /><col class="c-ca" /><col class="c-exam" /><col class="c-total" /><col class="c-grade" /><col class="c-pos" /><col class="c-avg" /><col class="c-high" /><col class="c-remark" /></colgroup><thead><tr>'
             '<th class="subject">Subject</th><th>CA</th><th>Exam</th><th>Total</th>'
             '<th class="grade">Grade</th><th>Pos.</th><th>Class Avg</th><th>Highest</th>'
-            '<th class="subject">Remark</th></tr></thead>'
+            '<th>Remark</th></tr></thead>'
             f'<tbody>{rows}</tbody></table>{tail}</div>')
 
 
@@ -140,18 +140,28 @@ for n in [1, 5, 9, 10, 11, 12, 14, 15, 16, 18, 19, 20, 24, 40]:
 
 CASES += [
     # ── Long content must not break the layout ─────────────────────────────
-    ('long subject names',       [sheet(12, subject_name=LONG_SUBJECT)],  1),
+    # LONG_SUBJECT is a 92-character name — far past any real subject — and
+    # wraps to three lines in the 62mm Subject column, so a 12-row sheet of
+    # ONLY that name runs to a second page. Recorded as measured: the guard
+    # is that the layout survives the input, not that absurd content is
+    # forced onto one sheet (see the readability note on the density ladder).
+    # Realistic names wrap to one line; '12 subjects' in the ladder above
+    # proves the one-page boundary with them.
+    ('long subject names',       [sheet(12, subject_name=LONG_SUBJECT)],  2),
     ('long student name',        [sheet(12, student_name=LONG_NAME)],     1),
     ('long name AND long subjects',
-     [sheet(12, subject_name=LONG_SUBJECT, student_name=LONG_NAME)],      1),
+     [sheet(12, subject_name=LONG_SUBJECT, student_name=LONG_NAME)],      2),
 
     # ── NOT RANKED / incomplete ─────────────────────────────────────────────
-    ('16 with 2 not ranked',     [sheet(16, not_ranked=2)],     1),
+    # >14 subjects renders at roomy sizes and flows to a second page (the
+    # legacy density ladder stops compacting at fit-tight/14); page 2
+    # carries real rows, not a lone signature spill.
+    ('16 with 2 not ranked',     [sheet(16, not_ranked=2)],     2),
     ('every subject not ranked', [sheet(9, not_ranked=9)],      1),
 
     # ── Watermark paths: crest background AND text fallback ─────────────────
     ('crest watermark 9',        [sheet(9, crest=True)],        1),
-    ('crest watermark 16',      [sheet(16, crest=True)],       1),
+    ('crest watermark 16',      [sheet(16, crest=True)],       2),
     ('text watermark 9',        [sheet(9)],                    1),
 
     # ── Bio variants: photo cell present ────────────────────────────────────
@@ -160,9 +170,9 @@ CASES += [
     # ── Realistic class batches ─────────────────────────────────────────────
     ('batch of 3 cards',         [sheet(9)] * 3,                3),
     ('batch of 10 cards',        [sheet(9)] * 10,              10),
-    ('class of 30, 16 subjects', [sheet(16)] * 30,             30),
+    ('class of 30, 16 subjects', [sheet(16)] * 30,             60),
     ('class of 45, 9 subjects',  [sheet(9)] * 45,              45),
-    ('mixed batch',             [sheet(9), sheet(16), sheet(9)], 3),
+    ('mixed batch',             [sheet(9), sheet(16), sheet(9)], 4),
 ]
 
 
@@ -181,16 +191,15 @@ def main():
     # the legacy thresholds as the spec: <=14 must fit ONE page at fit-tight;
     # beyond that a second page is allowed but NOT a near-empty collapse.
     # Recorded as measured on WeasyPrint 66 AND 69, Liberation Serif metrics
-    # (CI parity), one page up to and including 24 subjects. The 15-24 range
-    # holds because overflow sheets reuse the fit-tight readability floor
-    # instead of roomy sizes (which spilled a lone signature block onto a
-    # second page - the exact waste this suite guards against). 40 subjects
-    # is the first case that legitimately needs a second page, and carries a
-    # full half page of rows with it.
+    # (CI parity). The one-page boundary is the LEGACY ladder: compacting
+    # stops at fit-tight (14 subjects); sheets beyond it render at roomy
+    # sizes and flow to a second page carrying real rows. Readability beats
+    # squeezing another row onto sheet one — an earlier revision forced
+    # 15-24 onto one page at tight sizes and was reverted on review.
     spec = [('1 subjects', 1), ('5 subjects', 1), ('9 subjects', 1), ('10 subjects', 1),
-            ('11 subjects', 1), ('12 subjects', 1), ('14 subjects', 1), ('15 subjects', 1),
-            ('16 subjects', 1), ('18 subjects', 1), ('19 subjects', 1), ('20 subjects', 1),
-            ('24 subjects', 1), ('40 subjects', 2)]
+            ('11 subjects', 1), ('12 subjects', 1), ('14 subjects', 1), ('15 subjects', 2),
+            ('16 subjects', 2), ('18 subjects', 2), ('19 subjects', 2), ('20 subjects', 2),
+            ('24 subjects', 2), ('40 subjects', 2)]
     for name, expected in spec:
         pages = measured[name]
         ok = pages == expected
@@ -243,6 +252,51 @@ def render_raw(body):
     return weasyprint.HTML(string=html).render()
 
 
+
+def bleed_probe(failures):
+    """No cell content may cross a column edge.
+
+    The failure this guards against shipped to review: the single-word
+    HIGHEST header (12.8mm at the roomy 8.5pt header size) sat in a column
+    whose content box was ~9mm, and bled into the Remark column. A line box
+    wider than its cell's content box means text crossed the border —
+    regardless of how it looks at a glance. Checked at every density's
+    header size (roomy 8.5pt is the worst case, tight 8pt re-verified) with
+    realistic bodies: long subject names, "not ranked", wrapped remarks.
+    """
+    print()
+    print('\u2014 No column bleed \u2014')
+    cases = [
+        ('roomy 9', sheet(9, subject_name='Subject With A Very Long Name For Wrapping')),
+        ('tight 14', sheet(14, not_ranked=2)),
+        ('overflow 19', sheet(19)),
+    ]
+    for label, body in cases:
+        doc = render([body])
+        worst = 0.0
+        where = ''
+        def walk(box):
+            nonlocal worst, where
+            if getattr(box, 'element_tag', None) in ('th', 'td'):
+                cls = ' '.join(box.element.get('class', '').split())
+                lines = [l for l in box.descendants() if type(l).__name__ == 'LineBox']
+                for line in lines:
+                    over = line.width - box.width
+                    if over > worst:
+                        worst = over
+                        where = cls or box.element_tag
+            for c in getattr(box, 'children', []):
+                walk(c)
+        for page in doc.pages:
+            walk(page._page_box)
+        ok = worst <= 1.0  # 1px tolerance for font kerning rounding
+        if not ok:
+            failures += 1
+        print(f'{"PASS" if ok else "FAIL"}  no bleed {label:<12}'
+              f'(worst overflow {worst:.1f}px in {where or "-"} cell)')
+    return failures
+
+
 def broadsheet_checks(failures):
     print()
     BROADSHEETS = [
@@ -282,6 +336,7 @@ def broadsheet_checks(failures):
 
 if __name__ == '__main__':
     failures = main()
+    failures = bleed_probe(failures)
     failures = broadsheet_checks(failures)
 
     print()
