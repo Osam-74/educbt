@@ -95,26 +95,35 @@
   page-break-inside: auto;
 }
 
-/* Actual images in a fixed box repeat on every printed page. Explicit
-   physical offsets work in WeasyPrint 66 and 69 without inset shorthand or
-   CSS-variable backgrounds. Page margin 10mm + top 60mm = paper top 70mm.
-   Each 110mm crest is faded independently of the report text. */
-.doc__wm {
+/* Fixed replaced images repeat independently on each printed page. Putting
+   several in normal flow inside one fixed block lets that block fragment and
+   duplicates tiles on continuation pages in WeasyPrint. Physical offsets also
+   avoid inset shorthand, unsupported by version 66 (its empty box was 0x0). */
+.doc__wm { pointer-events: none; }
+.doc__wm img {
   position: fixed;
   top: 60mm;
   left: 50%;
-  width: 110mm;
   margin-left: -55mm;
+  width: 110mm;
+  height: 110mm;
+  object-fit: contain;
   opacity: .15;
   z-index: 0;
-  pointer-events: none;
 }
-.doc__wm img { display: block; width: 110mm; height: 110mm; object-fit: contain; }
+.doc__wm img:nth-child(2) { top: 170mm; }
+.doc__wm img:nth-child(3) { top: 280mm; }
 .doc__sheet > * { position: relative; z-index: 1; }
-.doc__sheet > .doc__wm { position: fixed; z-index: 0; }
+.doc__sheet > .doc__wm { position: static; z-index: auto; }
 @media screen {
   .doc { overflow-x: auto; }
-  .doc__sheet > .doc__wm { position: absolute; top: 70mm; bottom: 0; overflow: hidden; }
+  .doc__sheet > .doc__wm { position: absolute; top: 0; bottom: 0; left: 0; right: 0; overflow: hidden; z-index: 0; }
+  .doc__wm img { position: absolute; top: 70mm; }
+  .doc__wm img:nth-child(2) { top: 180mm; }
+  .doc__wm img:nth-child(3) { top: 290mm; }
+}
+@media print {
+  .portal-shell:has(.doc) { background: #fff; min-height: 0; }
 }
 
 /* No crest: fall back to the school name as slanted text, so a document is

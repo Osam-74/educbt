@@ -20,17 +20,17 @@ Ported intent, not PHP. Legacy behaviors deliberately NOT reproduced: html2canva
 - Bio block: Name / Admission No. / Class / Session / Term / No. in Class, dotted underlines; passport-photo cell (25×30mm) only when a photo exists, omitted entirely otherwise
 - Marks table: Subject / CA / Exam / Total / Grade / Pos. / Class Avg / Highest / Remark, every column sized by an explicit `<colgroup>` (col.c-subject … col.c-remark) with measured bold-header widths and ≥0.5mm slack — the `bleed_probe` in `test-print.py` asserts no line box ever crosses a column edge; all headers centred except Subject; ordinal positions; em-dashes for registered-but-unscored subjects; "not ranked" stated for incomplete rows
 - Summary: Subjects / Total Score / Average % / Position in Class (ordinal, competition policy from the stored `rankingPolicy`)
-- Grading key: one-line bands `A1: 75–100 (Excellent) | …` from the domain scale + scale annotation
+- Grading key: known immutable WAEC v1 bands only when all compiled rows identify that version. Other/mixed/missing historical scales show an explicit unavailable-key message, never substituted WAEC bands; stored grades remain unchanged.
 - Remarks: "Class Teacher's Remark:" / "Principal's Remark:" on underlined rules
 - Signatures: two 42mm boxes, printed name on the rule, role in small caps; class teacher resolved from the live `class_teacher` assignment, principal from `schools.principalName`
-- Watermark: school crest on a `position: fixed` layer (`--doc-wm-crest` inherited from the sheet, 11cm tiles, repeat-y, centered, 70mm from paper top) faded by the layer's own `opacity: .15` (legacy used a 90% white veil ≈ 10% strength; review found 10% unreadably faint in screen previews of multi-page sheets, so the veil now sits at 15%: crest `#14532d` → `(219,229,223)`); school-name text slanted -32° at 7% opacity when no crest exists. Fixed-position is the one positioned-box mode that REPEATS ON EVERY PRINTED PAGE in both engines (WeasyPrint server PDFs and window.print in Chrome). Two rejected designs, both shipped raw crests to review on multi-page sheets: a sheet background fragments in box coordinates (page two shows the tiling continuation, crest mid-tile in the wrong place) and an absolutely-positioned veil paints once, clipped at the first page fragment (page two bare of veil behind the signatures). Guarded by the `veil_probe` in `test-print.py`: pixel-samples the crest centre on EVERY page of a 19-subject sheet — luminance must sit in the veiled window 200–250 (measured 234 on both pages; raw crest is ~49)
+- Watermark: independently fixed crest `<img>` elements with explicit top/left/width offsets and 15% opacity. Three 110mm tiles repeat on every printed page. The 10mm page margin plus 60mm top offset preserves the 70mm paper position. Screen preview uses a sheet-local absolute layer, so the crest cannot float over the sidebar. No `inset` shorthand or CSS-variable image backgrounds are required. The original per-page luminance assertion remains 200–250; both pinned WeasyPrint 66 and 69 run it.
 - Density ladder: fit-roomy ≤9 / fit-snug ≤11 / fit-tight ≤14; sheets beyond 14 render at ROOMY sizes and flow to a second page (legacy stops compacting at fit-tight; an earlier revision reused the tight floor to force 15–24 subjects onto one page and was reverted on review — readability beats paper)
 - Print engine: A4 portrait, 10mm margins, literal pt borders in `@media print`, `print-color-adjust: exact`, header repeat, row/signature break guards
 - Toolbar: "Download / Print" + "Choose Save as PDF" hint (legacy wording; browser print engine is the supported path)
 
 ## Derived honestly (no invented values)
 
-No. in Class, Class Avg, Highest and Position in Class are computed read-time from the SAME `subject_results` rows the lifecycle compiled — complete rows only, cohort = active enrollments in the class. The stored `subjectPosition` is shown as stored; nothing is recomputed per subject.
+No. in Class, Class Avg, Highest and Position in Class are computed read-time from the SAME `subject_results` rows the lifecycle compiled — complete rows only, cohort = active enrollments in the class. Class-ranking eligibility checks every registered subject and every stored result; the stored rankIncomplete policy remains authoritative. Missing subjects cannot silently mark a student complete. The stored `subjectPosition` is shown as stored; nothing is recomputed per subject.
 
 ## Schema/data gaps still blocking exact parity
 
@@ -52,12 +52,23 @@ No. in Class, Class Avg, Highest and Position in Class are computed read-time fr
 ```text
 npm run typecheck
 npm run build                       # needs DATABASE_URL_APP (fails closed by design)
-npm run test:domain                 # no database — 55 checks incl. 8 new ordinal checks
-npm run test:print                  # WeasyPrint — 14 density spec + 15 fixed + 4 broadsheet
+npm run test:domain                 # no database — 56 checks including ordinal cases
+npm run test:print                  # 41 assertions under each pinned WeasyPrint 66.0 and 69.0
 ```
 
-Integration suites (`src/db/test-*.ts`) are unchanged and need the disposable Postgres fixtures per their own docs; this change touches no migration, RLS, or service they cover beyond the report page's read-only queries.
+Integration suites use disposable Postgres fixtures per their own docs; this change touches no migration, RLS, or service they cover beyond the report page's read-only queries.
 
 ## Out of scope (per handoff)
 
 Portal sidebar/navigation, CA entry, results lifecycle transitions (only READ the rows it stores), broadsheet Pos column/CSV (P1 backlog), bulk report pack.
+
+## Integration regression coverage
+
+- Node 20: Map entries are explicitly converted to an Array before mapping. The real HTTP report response is asserted 200 and contains compiled statistics; the full first/repeated workflow and browser report path exercise it on Linux Node 20.
+- Incomplete-cohort ranking was a bug: the old aggregation discarded incomplete rows then marked every remaining student complete. Report-layer eligibility now checks the full registered subject set. Explicit stored rankIncomplete=true is still respected. This remains a read-time estimate, not an immutable term-results snapshot.
+- Zero average was a bug: completed zero totals now print 0%; only an empty scored set prints an em-dash.
+- Fixed WAEC key was a bug for another stored scale. Since historical custom band snapshots do not exist, the report explicitly says that key is unavailable and preserves the stored grades. It does not use today's mutable school settings to explain old grades.
+- Thirteen narrow report-summary tests cover completeness, stored policy, zero/missing/decimal averages and scale versions. Additional HTTP checks cover the real report data, and Chromium verifies the report route, mobile containment, hidden print chrome and PDF output.
+- Header alignment, colgroup widths, density thresholds and the original watermark threshold were not changed. Supported-engine differences are checked, not waived as Windows limitations.
+
+Watermark root cause confirmed by a minimal renderer probe: WeasyPrint 66 gives the legacy inset-only fixed layer a 0×0 box; WeasyPrint 69 gives it 718.11×1046.93 CSS px. Explicit physical offsets size correctly in both. Each crest is an independently fixed replaced image, preventing normal-flow children of a fixed block from fragmenting and producing overlapping copies. The original per-page center threshold is unchanged; new second-tile and clear-gap probes catch that overlap. Report print mode also removes the portal canvas wash below short sheets.

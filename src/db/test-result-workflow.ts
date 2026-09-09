@@ -321,6 +321,7 @@ async function main() {
             await page.emulateMedia({ media: 'print' });
             for (const selector of ['.ps-sidebar', '.ps-topbar', '.no-print']) assert(!await page.locator(selector).isVisible());
             assert.equal(await page.locator('.ps-workspace').evaluate((el: HTMLElement) => getComputedStyle(el).marginLeft), '0px');
+            assert.equal(await page.locator('.portal-shell').evaluate((el: HTMLElement) => getComputedStyle(el).backgroundColor), 'rgb(255, 255, 255)');
             await page.pdf({ path: 'baseline-logs/report-route-chromium.pdf', preferCSSPageSize: true, printBackground: true });
             await page.emulateMedia({ media: 'screen' });
             assert.deepEqual(errors, []);

@@ -296,6 +296,15 @@ def veil_probe(failures):
             failures += 1
         print(f'{"PASS" if ok else "FAIL"}  veil page {i + 1:<10}(crest-centre luminance '
               f'{lum:.0f}; veiled is ~224, raw crest ~49)')
+        # Verify the second tile and the clear gap between circular test
+        # crests. Presence at one point alone missed overlapping copies on page 2.
+        for label, y, minimum, maximum in [('second tile', 235, 200, 250), ('tile gap', 180, 250, 255)]:
+            tx, ty = int(105 * mm_x), int(y * mm_y)
+            tile_lum = sum(px[tx, ty]) / 3
+            ok = minimum <= tile_lum <= maximum
+            if not ok:
+                failures += 1
+            print(f'{"PASS" if ok else "FAIL"}  {label} page {i + 1} (luminance {tile_lum:.0f})')
     return failures
 
 
