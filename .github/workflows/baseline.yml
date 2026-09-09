@@ -1,7 +1,7 @@
 name: full-baseline
 on:
   push:
-    branches: [main, feat/ca-score-entry-ui]
+    branches: [main, feat/ca-score-entry-ui, feat/results-lifecycle-ui]
   pull_request:
   workflow_dispatch:
 permissions:
@@ -64,11 +64,12 @@ jobs:
           test "$ready" = 1
           export CA_TEST_HTTP_URL=http://127.0.0.1:3017
           failed=0
-          for suite in verify scope auth leak vault engine authoring results practice jobs domain config backup platform ca-validation ca print; do
+          for suite in verify scope auth leak vault engine authoring results practice jobs domain config backup platform ca-validation ca result-workflow result-workflow-rerun print; do
             case "$suite" in
               verify) command=(npm run db:verify) ;;
               ca-validation) command=(npx tsx src/lib/ca/validation.test.ts) ;;
               ca) command=(npx tsx src/db/test-ca.ts) ;;
+              result-workflow|result-workflow-rerun) command=(npx tsx src/db/test-result-workflow.ts) ;;
               print) command=(/tmp/educbt-print/bin/python scripts/test-print.py) ;;
               *) command=(npm run "test:$suite") ;;
             esac

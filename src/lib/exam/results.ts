@@ -13,17 +13,14 @@
  * deriving them on every read.
  */
 
-import { and, eq, sql, asc, desc, inArray, isNull } from 'drizzle-orm';
+import { and, eq, sql, asc, inArray, isNull } from 'drizzle-orm';
 import { forSchool, schema } from '@/db';
 import { subjectResults } from '@/db/schema/results';
-import {
-  gradeFor, rank, computeTotal, canTransition, requiresReason,
-  WAEC_NINE_POINT, DEFAULT_RANKING, isEditable,
-  type GradingScale, type RankingPolicy, type ResultState,
-} from '@/domain/academic';
+import { gradeFor, isEditable, type ResultState } from '@/domain/academic';
+import { compileClassResults, transitionClassResults, ResultError } from '@/lib/results/workflow';
 
 import { caScoreSchema, type CaScoreInput } from '@/lib/ca/validation';
-import { validateCaContext } from '@/lib/ca/access';
+import { validateCaContext, caAssignment } from '@/lib/ca/access';
 import { lockResultTerm } from '@/lib/ca/lock';
 
 export { gradeFor };
@@ -98,28 +95,50 @@ export async function awardMarks(
         id: schema.attemptAnswers.id,
         max: schema.questions.marks,
         subjectId: schema.examPapers.subjectId,
+        studentId: schema.attempts.studentId,
+        sessionId: schema.examSeries.sessionId,
+        termId: schema.examSeries.termId,
+        classId: schema.enrollments.classId,
       })
       .from(schema.attemptAnswers)
       .innerJoin(schema.questions, eq(schema.questions.id, schema.attemptAnswers.questionId))
       .innerJoin(schema.attempts, eq(schema.attempts.id, schema.attemptAnswers.attemptId))
       .innerJoin(schema.examPapers, eq(schema.examPapers.id, schema.attempts.paperId))
+      .innerJoin(schema.examSeries, eq(schema.examSeries.id, schema.examPapers.seriesId))
+      .innerJoin(schema.enrollments, and(eq(schema.enrollments.studentId, schema.attempts.studentId),
+        eq(schema.enrollments.sessionId, schema.examSeries.sessionId), eq(schema.enrollments.status, 'active')))
       .where(and(
         eq(schema.attemptAnswers.id, answerId),
         eq(schema.attemptAnswers.schoolId, actor.schoolId),
       ))
       .limit(1);
 
-    if (!row) return { ok: false, reason: 'not found' };
+    if (!row || !row.termId) return { ok: false, reason: 'not found' };
+    await lockResultTerm(tx, actor.schoolId, row.sessionId, row.termId);
+    const [permitted] = await tx.select({ id: schema.users.id }).from(schema.users)
+      .innerJoin(schema.schools, eq(schema.schools.id, schema.users.schoolId))
+      .where(and(eq(schema.users.id, actor.userId), eq(schema.users.status, 'active'),
+        eq(schema.users.role, actor.role as 'teacher'), eq(schema.schools.status, 'active'),
+        caAssignment(tx, actor, row.classId, row.subjectId)));
+    if (!permitted) return { ok: false, reason: 'You do not have permission to mark this script.' };
+    const [result] = await tx.select().from(subjectResults).where(and(
+      eq(subjectResults.studentId, row.studentId), eq(subjectResults.subjectId, row.subjectId),
+      eq(subjectResults.sessionId, row.sessionId), eq(subjectResults.termId, row.termId)));
+    if (result && (!isEditable(result.state) || result.published)) {
+      return { ok: false, reason: 'Reopen reviewed, published or locked results before correcting examination marks.' };
+    }
 
     // A mark above the maximum is a typo, not a decision. Caught here rather
     // than surfacing as a student scoring 105%.
-    if (marks < 0 || marks > Number(row.max)) {
+    if (!Number.isFinite(marks) || marks < 0 || marks > Number(row.max)) {
       return { ok: false, reason: `Marks must be between 0 and ${Number(row.max)}.` };
     }
 
     await tx.update(schema.attemptAnswers)
       .set({ awardedMarks: String(marks), markedBy: actor.userId, markedAt: new Date() })
       .where(eq(schema.attemptAnswers.id, answerId));
+
+    if (result?.state === 'compiled') await tx.update(subjectResults).set({ state: 'draft', complete: false }).where(eq(subjectResults.id, result.id));
 
     return { ok: true };
   });
@@ -138,143 +157,9 @@ export { subjectResults };
  */
 export async function compileSubject(
   actor: Actor,
-  args: {
-    subjectId: number; classId: number; sessionId: number; termId: number;
-    /**
-     * Supplied by the caller so a school's own scale and tie policy apply.
-     * Defaults exist so a school that has configured neither still compiles.
-     */
-    scale?: GradingScale;
-    policy?: RankingPolicy;
-  },
+  args: { subjectId: number; classId: number; sessionId: number; termId: number },
 ): Promise<{ compiled: number }> {
-  const scale = args.scale ?? WAEC_NINE_POINT;
-  const policy = args.policy ?? DEFAULT_RANKING;
-
-  return forSchool(actor.schoolId, async (tx) => {
-    await lockResultTerm(tx, actor.schoolId, args.sessionId, args.termId);
-    const students = await tx
-      .select({ id: schema.students.id })
-      .from(schema.enrollments)
-      .innerJoin(schema.students, eq(schema.students.id, schema.enrollments.studentId))
-      .where(and(
-        eq(schema.enrollments.classId, args.classId),
-        eq(schema.enrollments.sessionId, args.sessionId),
-        eq(schema.enrollments.status, 'active'),
-        eq(schema.students.status, 'active'),
-      ));
-
-    if (students.length === 0) return { compiled: 0 };
-
-    const totals: Array<{
-      studentId: number; ca: number; exam: number; total: number; complete: boolean;
-    }> = [];
-
-    for (const student of students) {
-      // Everything the candidate scored on papers for this subject this term,
-      // objective and theory together.
-      const [examRow] = await tx
-        .select({
-          scored: sql<number>`COALESCE(SUM(${schema.attemptAnswers.awardedMarks}), 0)`.mapWith(Number),
-        })
-        .from(schema.attemptAnswers)
-        .innerJoin(schema.attempts, eq(schema.attempts.id, schema.attemptAnswers.attemptId))
-        .innerJoin(schema.examPapers, eq(schema.examPapers.id, schema.attempts.paperId))
-        .innerJoin(schema.examSeries, eq(schema.examSeries.id, schema.examPapers.seriesId))
-        .where(and(
-          eq(schema.attempts.studentId, Number(student.id)),
-          eq(schema.examPapers.subjectId, args.subjectId),
-          eq(schema.examSeries.termId, args.termId),
-          // Practice never counts towards a result.
-          eq(schema.examSeries.seriesType, 'examination'),
-        ));
-
-      const exam = Number(examRow?.scored ?? 0);
-
-      // Continuous assessment, entered by the subject teacher.
-      const caRows = await tx
-        .select({ score: schema.assessmentScores.score })
-        .from(schema.assessmentScores)
-        .where(and(
-          eq(schema.assessmentScores.schoolId, actor.schoolId),
-          eq(schema.assessmentScores.studentId, Number(student.id)),
-          eq(schema.assessmentScores.subjectId, args.subjectId),
-          eq(schema.assessmentScores.sessionId, args.sessionId),
-          eq(schema.assessmentScores.termId, args.termId),
-        ));
-
-      const ca = caRows.reduce((sum, r) => sum + Number(r.score), 0);
-
-      // A student with no marks at all has not been assessed — recording 0%
-      // and a Fail for them is worse than recording nothing.
-      const complete = caRows.length > 0 || exam > 0;
-
-      totals.push({ studentId: Number(student.id), ca, exam, total: ca + exam, complete });
-    }
-
-    // Rank once, across the whole cohort.
-    // Ranked ONCE, with every total known. See src/domain/academic.ts.
-    const ranked = rank(
-      totals.map((t) => ({
-        studentId: t.studentId,
-        total: t.total,
-        examTotal: t.exam,
-        caTotal: t.ca,
-        complete: t.complete,
-      })),
-      policy,
-    );
-
-    const positionOf = new Map(ranked.map((r) => [r.studentId, r.position ?? 0]));
-
-    for (const row of totals) {
-      const graded = gradeFor(row.total, scale);
-      const { grade, remark } = graded;
-
-      await tx.insert(subjectResults).values({
-        schoolId: actor.schoolId,
-        studentId: row.studentId,
-        subjectId: args.subjectId,
-        sessionId: args.sessionId,
-        termId: args.termId,
-        caTotal: String(row.ca),
-        examTotal: String(row.exam),
-        total: String(row.total),
-        grade,
-        remark,
-        subjectPosition: positionOf.get(row.studentId) ?? 0,
-        classSize: totals.length,
-        // The context that makes this grade and position explainable later.
-        gradingScaleId: graded.scaleId,
-        gradingScaleVersion: graded.scaleVersion,
-        rankingPolicy: policy as unknown as Record<string, unknown>,
-        complete: row.complete,
-        state: 'compiled',
-      }).onConflictDoUpdate({
-        target: [
-          subjectResults.studentId, subjectResults.subjectId,
-          subjectResults.sessionId, subjectResults.termId,
-        ],
-        set: {
-          caTotal: String(row.ca),
-          examTotal: String(row.exam),
-          total: String(row.total),
-          grade,
-          remark,
-          subjectPosition: positionOf.get(row.studentId) ?? 0,
-          classSize: totals.length,
-          gradingScaleId: graded.scaleId,
-          gradingScaleVersion: graded.scaleVersion,
-          rankingPolicy: policy as unknown as Record<string, unknown>,
-          complete: row.complete,
-          state: 'compiled',
-          compiledAt: new Date(),
-        },
-      });
-    }
-
-    return { compiled: totals.length };
-  });
+  return compileClassResults(actor, args, args.subjectId);
 }
 
 /**
@@ -328,76 +213,14 @@ export async function resultsForStudent(
  * that reason goes to the audit log.
  */
 export async function transitionResults(
-  actor: Actor,
-  sessionId: number,
-  termId: number,
-  to: ResultState,
-  reason = '',
+  actor: Actor, sessionId: number, termId: number, to: ResultState, reason = '', classId?: number,
 ): Promise<{ ok: boolean; moved: number; error?: string }> {
-  return forSchool(actor.schoolId, async (tx) => {
-    await lockResultTerm(tx, actor.schoolId, sessionId, termId);
-    const rows = await tx
-      .select({ id: subjectResults.id, state: subjectResults.state })
-      .from(subjectResults)
-      .where(and(
-        eq(subjectResults.schoolId, actor.schoolId),
-        eq(subjectResults.sessionId, sessionId),
-        eq(subjectResults.termId, termId),
-      ));
-
-    if (rows.length === 0) return { ok: false, moved: 0, error: 'Nothing compiled for that term.' };
-
-    // Every row must be able to make the move. A partial transition would leave
-    // one class published and another not, under the same term.
-    const blocked = rows.filter((r) => !canTransition(r.state, to));
-
-    if (blocked.length > 0) {
-      return {
-        ok: false,
-        moved: 0,
-        error: `${blocked.length} result(s) cannot move from ${blocked[0]!.state} to ${to}.`,
-      };
-    }
-
-    const needsReason = rows.some((r) => requiresReason(r.state, to));
-
-    if (needsReason && reason.trim().length < 10) {
-      return {
-        ok: false,
-        moved: 0,
-        error: 'Taking results back from a state families have seen requires a written reason.',
-      };
-    }
-
-    const now = new Date();
-
-    await tx.update(subjectResults)
-      .set({
-        state: to,
-        published: to === 'published' || to === 'locked',
-        ...(to === 'reviewed' ? { reviewedAt: now } : {}),
-        ...(to === 'published' ? { publishedAt: now } : {}),
-        ...(to === 'locked' ? { lockedAt: now } : {}),
-      })
-      .where(and(
-        eq(subjectResults.schoolId, actor.schoolId),
-        eq(subjectResults.sessionId, sessionId),
-        eq(subjectResults.termId, termId),
-      ));
-
-    await tx.insert(schema.auditLog).values({
-      schoolId: actor.schoolId,
-      actorUserId: actor.userId,
-      actorRole: actor.role,
-      action: `results.${to}`,
-      entityType: 'subject_results',
-      before: { states: [...new Set(rows.map((r) => r.state))] },
-      after: { state: to, count: rows.length, sessionId, termId },
-      reason: reason || null,
-    });
-
-    return { ok: true, moved: rows.length };
-  });
+  if (!classId) return { ok: false, moved: 0, error: 'Choose a class before changing result stages.' };
+  try { return await transitionClassResults(actor, { classId, sessionId, termId }, to, reason); }
+  catch (error) {
+    if (error instanceof ResultError) return { ok: false, moved: 0, error: error.message };
+    throw error;
+  }
 }
 
 /** Enter or update a continuous assessment score. */
