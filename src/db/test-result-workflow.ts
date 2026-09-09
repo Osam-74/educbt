@@ -196,6 +196,55 @@ async function main() {
       await check('HTTP forged foreign scope has no result table', async () => { const bad = new URL(url); bad.searchParams.set('classId', String(b.scope.classId)); const html = await (await fetch(bad, { headers })).text(); assert(html.includes('academic scope is unavailable')); assert(!html.includes('Stored subject total')); });
       await db.update(schema.schools).set({ settings: {} }).where(eq(schema.schools.id, a.schoolId));
       await check('HTTP missing policy shows explicit setup guidance', async () => assert((await (await fetch(url, { headers })).text()).includes('Academic settings are incomplete or invalid')));
+      if (process.env.RESULT_BROWSER_MODULE) {
+        await db.update(schema.schools).set({ settings }).where(eq(schema.schools.id, a.schoolId));
+        await compile();
+        const { chromium } = await import(process.env.RESULT_BROWSER_MODULE);
+        const browser = await chromium.launch({ headless: true });
+        try {
+          const context = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
+          await context.addCookies([{ name: 'educbt.session', value: token, url: base.origin }]);
+          const page = await context.newPage();
+          const errors: string[] = [];
+          page.on('pageerror', (e: Error) => errors.push(e.message));
+          await page.goto(url.href, { waitUntil: 'networkidle' });
+          await check('browser desktop dashboard renders without runtime errors', async () => {
+            await page.getByRole('heading', { name: 'Review results', exact: true }).waitFor();
+            assert.deepEqual(errors, []);
+            await page.screenshot({ path: 'baseline-logs/results-desktop.png', fullPage: true });
+          });
+          await check('browser principal signs off review through server action', async () => {
+            await page.getByRole('button', { name: 'Sign off review', exact: true }).click();
+            await page.getByText('3 subject results moved to reviewed.', { exact: true }).waitFor();
+            assert.equal((await rows()).find(r => r.studentId === a.students[0]!.id)!.state, 'reviewed');
+          });
+          await check('browser mobile dashboard has no page overflow', async () => {
+            await page.setViewportSize({ width: 390, height: 844 });
+            await page.screenshot({ path: 'baseline-logs/results-mobile.png', fullPage: true });
+            assert(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth));
+          });
+          await check('browser publishes only after review', async () => {
+            await page.getByRole('button', { name: 'Publish to students and parents', exact: true }).click();
+            await page.getByText('3 subject results moved to published.', { exact: true }).waitFor();
+          });
+          await check('browser locks published results', async () => {
+            await page.getByRole('button', { name: 'Lock results', exact: true }).click();
+            await page.getByText('3 subject results moved to locked.', { exact: true }).waitFor();
+          });
+          await check('browser refuses unlock without correction reason', async () => {
+            await page.getByRole('button', { name: 'Unlock results', exact: true }).click();
+            await page.getByText('Provide a written correction reason of at least 10 characters.', { exact: true }).waitFor();
+            assert.equal((await rows()).find(r => r.studentId === a.students[0]!.id)!.state, 'locked');
+          });
+          await check('browser accepts reasoned unlock and retains publication', async () => {
+            await page.getByLabel('Written correction reason').fill('Correct the examination mark after review');
+            await page.getByRole('button', { name: 'Unlock results', exact: true }).click();
+            await page.getByText('3 subject results moved to published.', { exact: true }).waitFor();
+            assert((await rows()).find(r => r.studentId === a.students[0]!.id)!.published);
+            assert.deepEqual(errors, []);
+          });
+        } finally { await browser.close(); }
+      }
     }
     console.log(`${count} PASS / 0 FAIL`);
   } finally {

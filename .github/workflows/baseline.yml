@@ -49,6 +49,10 @@ jobs:
         run: |
           npm run typecheck
           npm run build
+      - name: Browser verification runtime
+        run: |
+          npm install --prefix /tmp/educbt-browser playwright@1.56.1
+          /tmp/educbt-browser/node_modules/.bin/playwright install --with-deps chromium
       - name: Full baseline and CA HTTP checks
         shell: bash
         run: |
@@ -69,7 +73,8 @@ jobs:
               verify) command=(npm run db:verify) ;;
               ca-validation) command=(npx tsx src/lib/ca/validation.test.ts) ;;
               ca) command=(npx tsx src/db/test-ca.ts) ;;
-              result-workflow|result-workflow-rerun) command=(npx tsx src/db/test-result-workflow.ts) ;;
+              result-workflow) command=(env RESULT_BROWSER_MODULE=/tmp/educbt-browser/node_modules/playwright/index.mjs npx tsx src/db/test-result-workflow.ts) ;;
+              result-workflow-rerun) command=(npx tsx src/db/test-result-workflow.ts) ;;
               print) command=(/tmp/educbt-print/bin/python scripts/test-print.py) ;;
               *) command=(npm run "test:$suite") ;;
             esac
