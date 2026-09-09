@@ -193,6 +193,18 @@ async function main() {
       await check('HTTP unauthenticated results redirects', async () => assert.equal((await fetch(url, { redirect: 'manual' })).status, 307));
       await check('HTTP results renders class readiness and stored totals', async () => { const r = await fetch(url, { headers }); assert.equal(r.status, 200); const html = await r.text(); assert(html.includes('JSS1 A')); assert(html.includes('Review results')); assert(html.includes('Mathematics')); });
       await check('HTTP includes report and broadsheet links with term', async () => { const html = await (await fetch(url, { headers })).text(); assert(html.includes(`/portal/reports/${a.students[0]!.id}?term=`)); assert(html.includes('/portal/broadsheet?class=')); });
+      const [laterSession] = await db.insert(schema.academicSessions).values({ schoolId: a.schoolId, title: '2027/2028' }).returning();
+      const [laterTerm] = await db.insert(schema.terms).values({ schoolId: a.schoolId, sessionId: laterSession!.id, title: 'Later term' }).returning();
+      await db.insert(schema.enrollments).values({ schoolId: a.schoolId, studentId: a.students[0]!.id, classId: a.classes[1]!.id, sessionId: laterSession!.id });
+      await db.update(schema.students).set({ firstName: 'WrongSessionStudent' }).where(eq(schema.students.id, a.students[3]!.id));
+      await check('HTTP report respects chosen term session enrollment', async () => {
+        const html = await (await fetch(new URL(`/portal/reports/${a.students[0]!.id}?term=${laterTerm!.id}`, base), { headers })).text();
+        assert(html.includes('2027/2028')); assert(html.includes('JSS1 B'));
+      });
+      await check('HTTP broadsheet excludes another session enrollment', async () => {
+        const html = await (await fetch(new URL(`/portal/broadsheet?class=${a.classes[1]!.id}&term=${laterTerm!.id}`, base), { headers })).text();
+        assert(!html.includes('WrongSessionStudent'));
+      });
       await check('HTTP forged foreign scope has no result table', async () => { const bad = new URL(url); bad.searchParams.set('classId', String(b.scope.classId)); const html = await (await fetch(bad, { headers })).text(); assert(html.includes('academic scope is unavailable')); assert(!html.includes('Stored subject total')); });
       await db.update(schema.schools).set({ settings: {} }).where(eq(schema.schools.id, a.schoolId));
       await check('HTTP missing policy shows explicit setup guidance', async () => assert((await (await fetch(url, { headers })).text()).includes('Academic settings are incomplete or invalid')));

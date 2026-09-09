@@ -1,5 +1,5 @@
 import { notFound } from 'next/navigation';
-import { and, eq, asc } from 'drizzle-orm';
+import { and, eq, asc, inArray } from 'drizzle-orm';
 import { requireSchoolSession } from '@/lib/session';
 import { forSchool, schema } from '@/db';
 import { subjectResults } from '@/db/schema/results';
@@ -61,6 +61,9 @@ export default async function ReportCard({
       .where(and(
         eq(schema.enrollments.studentId, studentId),
         eq(schema.enrollments.status, 'active'),
+        inArray(schema.enrollments.sessionId, tx.select({ sessionId: schema.terms.sessionId }).from(schema.terms)
+          .where(and(eq(schema.terms.schoolId, actor.schoolId), query.term
+            ? eq(schema.terms.id, Number(query.term)) : eq(schema.terms.isCurrent, true)))),
       ))
       .limit(1);
 
@@ -95,6 +98,7 @@ export default async function ReportCard({
           .where(and(
             eq(subjectResults.studentId, studentId),
             eq(subjectResults.termId, Number(term.id)),
+            eq(subjectResults.sessionId, Number(term.sessionId)),
           ))
           .orderBy(asc(schema.subjects.name))
       : [];

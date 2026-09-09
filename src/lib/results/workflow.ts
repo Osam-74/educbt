@@ -81,7 +81,7 @@ async function inputs(tx: Tx, actor: Actor, scope: ResultScope) {
         components.push({ key: component.key, score: Number(score.score) });
       } else missing.push(component.label);
     }
-    const caComplete = caComponents.length > 0 && missing.length === 0;
+    const caComplete = Boolean(config) && missing.length === 0;
     const examComponent = config?.assessmentComponents.find(c => c.isExam);
     const applicable = papers.filter(p => p.subjectId === offering.subjectId);
     let examComplete = false;

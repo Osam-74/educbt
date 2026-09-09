@@ -57,6 +57,7 @@ export default async function BroadsheetPage({
       .where(and(
         eq(schema.enrollments.classId, classId),
         eq(schema.enrollments.status, 'active'),
+        eq(schema.enrollments.sessionId, Number(term?.sessionId ?? 0)),
       ))
       .orderBy(asc(schema.students.lastName), asc(schema.students.firstName));
 
@@ -79,6 +80,7 @@ export default async function BroadsheetPage({
       .where(and(
         eq(subjectResults.schoolId, actor.schoolId),
         eq(subjectResults.termId, Number(term.id)),
+        eq(subjectResults.sessionId, Number(term.sessionId)),
         inArray(subjectResults.studentId, students.map((s) => Number(s.id))),
       ));
 
