@@ -4,6 +4,7 @@ import { requireSchoolSession } from '@/lib/session';
 import { forSchool, schema } from '@/db';
 import { subjectResults } from '@/db/schema/results';
 import { isVisibleToFamily } from '@/domain/academic';
+import { reportAudience } from '@/lib/results/report-access';
 import '../../../print.css';
 
 export const dynamic = 'force-dynamic';
@@ -90,6 +91,7 @@ export default async function ReportCard({
             classSize: subjectResults.classSize,
             complete: subjectResults.complete,
             state: subjectResults.state,
+            published: subjectResults.published,
             scaleId: subjectResults.gradingScaleId,
             scaleVersion: subjectResults.gradingScaleVersion,
           })
@@ -103,6 +105,11 @@ export default async function ReportCard({
           .orderBy(asc(schema.subjects.name))
       : [];
 
+    const audience = await reportAudience(tx, actor, studentId, Number(term?.sessionId ?? 0));
+    if (!audience) return null;
+    if (audience !== 'staff' && (!results.length || results.some(r => audience === 'family'
+      ? !isVisibleToFamily(r.state) || !r.published
+      : !['reviewed', 'published', 'locked'].includes(r.state)))) return null;
     return { student, school, enrolment, term, results };
   });
 

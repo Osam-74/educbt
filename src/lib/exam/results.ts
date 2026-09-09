@@ -18,6 +18,7 @@ import { forSchool, schema } from '@/db';
 import { subjectResults } from '@/db/schema/results';
 import { gradeFor, isEditable, type ResultState } from '@/domain/academic';
 import { compileClassResults, transitionClassResults, ResultError } from '@/lib/results/workflow';
+import { reportAudience } from '@/lib/results/report-access';
 
 import { caScoreSchema, type CaScoreInput } from '@/lib/ca/validation';
 import { validateCaContext, caAssignment } from '@/lib/ca/access';
@@ -177,13 +178,16 @@ export async function resultsForStudent(
   includeUnpublished: boolean,
 ) {
   return forSchool(actor.schoolId, async (tx) => {
+    const audience = await reportAudience(tx, actor, studentId, sessionId);
+    if (!audience) return [];
     const conditions = [
       eq(subjectResults.studentId, studentId),
       eq(subjectResults.sessionId, sessionId),
       eq(subjectResults.termId, termId),
     ];
 
-    if (!includeUnpublished) conditions.push(eq(subjectResults.published, true));
+    if (!includeUnpublished || audience === 'family') conditions.push(eq(subjectResults.published, true), inArray(subjectResults.state, ['published', 'locked']));
+    if (audience === 'teacher') conditions.push(inArray(subjectResults.state, ['reviewed', 'published', 'locked']));
 
     return tx
       .select({

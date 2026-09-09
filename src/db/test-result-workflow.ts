@@ -187,7 +187,7 @@ async function main() {
     if (process.env.CA_TEST_HTTP_URL) {
       const base = new URL(process.env.CA_TEST_HTTP_URL); assert(['localhost', '127.0.0.1'].includes(base.hostname));
       const token = randomUUID() + randomUUID();
-      await db.insert(schema.sessions).values({ id: createHash('sha256').update(token).digest('hex'), userId: principal.userId, expiresAt: new Date(Date.now() + 120000) });
+      await db.insert(schema.sessions).values({ id: createHash('sha256').update(token).digest('hex'), userId: principal.userId, expiresAt: new Date(Date.now() + 300000) });
       const url = new URL(`/portal/results?classId=${a.scope.classId}&termId=${a.scope.termId}`, base);
       const headers = { cookie: 'educbt.session=' + token };
       await check('HTTP unauthenticated results redirects', async () => assert.equal((await fetch(url, { redirect: 'manual' })).status, 307));
@@ -206,6 +206,33 @@ async function main() {
         assert(!html.includes('WrongSessionStudent'));
       });
       await check('HTTP forged foreign scope has no result table', async () => { const bad = new URL(url); bad.searchParams.set('classId', String(b.scope.classId)); const html = await (await fetch(bad, { headers })).text(); assert(html.includes('academic scope is unavailable')); assert(!html.includes('Stored subject total')); });
+      await db.update(schema.students).set({ userId: a.actors.student!.userId }).where(eq(schema.students.id, a.students[0]!.id));
+      const [guardian] = await db.insert(schema.guardians).values({ schoolId: a.schoolId, userId: a.actors.parent!.userId, fullName: 'Guardian' }).returning();
+      await db.insert(schema.guardianStudent).values({ schoolId: a.schoolId, guardianId: guardian!.id, studentId: a.students[0]!.id });
+      const [teacher] = await db.insert(schema.staff).values({ schoolId: a.schoolId, userId: a.actors.teacher!.userId,
+        role: 'teacher', staffNumber: 'CT', firstName: 'Class', lastName: 'Teacher' }).returning();
+      await db.insert(schema.staffAssignments).values({ schoolId: a.schoolId, staffId: teacher!.id, classId: a.scope.classId, assignmentType: 'class_teacher' });
+      const roleHeaders: Record<string, { cookie: string }> = {};
+      for (const role of ['student', 'parent', 'teacher']) {
+        const roleToken = randomUUID() + randomUUID();
+        await db.insert(schema.sessions).values({ id: createHash('sha256').update(roleToken).digest('hex'), userId: a.actors[role]!.userId, expiresAt: new Date(Date.now() + 300000) });
+        roleHeaders[role] = { cookie: 'educbt.session=' + roleToken };
+      }
+      const reportResponse = (role: string, studentId = a.students[0]!.id) => fetch(new URL(`/portal/reports/${studentId}?term=${a.scope.termId}`, base), { headers: roleHeaders[role] });
+      await check('HTTP student cannot read unpublished report', async () => assert.equal((await reportResponse('student')).status, 404));
+      await check('HTTP linked guardian cannot read unpublished report', async () => assert.equal((await reportResponse('parent')).status, 404));
+      await check('HTTP class teacher cannot read before review', async () => assert.equal((await reportResponse('teacher')).status, 404));
+      await move('reviewed');
+      await check('HTTP assigned class teacher may inspect reviewed report', async () => assert.equal((await reportResponse('teacher')).status, 200));
+      await check('HTTP class teacher cannot read another class report', async () => assert.equal((await reportResponse('teacher', a.students[3]!.id)).status, 404));
+      await move('published');
+      await check('HTTP student may read own published report', async () => assert.equal((await reportResponse('student')).status, 200));
+      await check('HTTP guardian may read linked published report', async () => assert.equal((await reportResponse('parent')).status, 200));
+      await check('HTTP student cannot read a peer published report', async () => assert.equal((await reportResponse('student', a.students[1]!.id)).status, 404));
+      await check('HTTP guardian cannot read unrelated published report', async () => assert.equal((await reportResponse('parent', a.students[1]!.id)).status, 404));
+      await move('reviewed', 'Withdraw report for a correction');
+      await check('HTTP withdrawn publication is immediately withheld', async () => assert.equal((await reportResponse('parent')).status, 404));
+      await move('compiled', 'Reopen report for a correction');
       await db.update(schema.schools).set({ settings: {} }).where(eq(schema.schools.id, a.schoolId));
       await check('HTTP missing policy shows explicit setup guidance', async () => assert((await (await fetch(url, { headers })).text()).includes('Academic settings are incomplete or invalid')));
       if (process.env.RESULT_BROWSER_MODULE) {
