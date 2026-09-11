@@ -16,9 +16,13 @@ export async function reportAudience(tx: Tx, actor: Actor, studentId: number, se
     return own ? 'family' : null;
   }
   if (actor.role === 'parent') {
+    // can_view_results gates the LINK (legacy guardian_student.can_view_results):
+    // one parent in a household may see results while the other may not.
+    // The school-wide staff paths above are untouched by it.
     const [child] = await tx.select({ id: schema.guardianStudent.id }).from(schema.guardianStudent)
       .innerJoin(schema.guardians, eq(schema.guardians.id, schema.guardianStudent.guardianId))
-      .where(and(eq(schema.guardians.userId, actor.userId), eq(schema.guardianStudent.studentId, studentId)));
+      .where(and(eq(schema.guardians.userId, actor.userId), eq(schema.guardianStudent.studentId, studentId),
+        eq(schema.guardianStudent.canViewResults, true)));
     return child ? 'family' : null;
   }
   if (actor.role === 'teacher' && actor.staffId) {

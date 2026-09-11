@@ -238,6 +238,15 @@ export const guardianStudent = pgTable('guardian_student', {
   studentId: bigint('student_id', { mode: 'number' }).notNull()
     .references(() => students.id, { onDelete: 'cascade' }),
   relationship: varchar('relationship', { length: 50 }),
+  /**
+   * Legacy guardian_student.can_view_results (tinyint DEFAULT 1): a household
+   * where only one parent may see results is respected per LINK, not per
+   * guardian. Results reads gate on it; the children page still lists the
+   * child and says the office can change this, exactly like legacy. The other
+   * legacy link flag, is_primary, has no consumer in the results flow and is
+   * deliberately not ported here — it belongs to staff-side link management.
+   */
+  canViewResults: boolean('can_view_results').notNull().default(true),
 }, (t) => ({
   uq: uniqueIndex('guardian_student_uq').on(t.guardianId, t.studentId),
 }));

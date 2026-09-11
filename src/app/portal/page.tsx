@@ -49,7 +49,30 @@ export default async function PortalHome() {
         </section>
       ) : null}
 
-      {papers.length === 0 && <p className="muted">Use the navigation to open your available school tools.</p>}
+      {/* Legacy student dashboard had a "Check results" quick action; the
+          parent dashboard led with children. Both live one click away. */}
+      {actor.role === 'student' ? (
+        <section className="card">
+          <div className="paper-row">
+            <span><strong>Check results</strong><br />
+              <span className="muted">Published report sheets for your terms.</span></span>
+            <a className="primary-wide" href="/portal/my-results">Open</a>
+          </div>
+        </section>
+      ) : null}
+      {actor.role === 'parent' ? (
+        <section className="card">
+          <div className="paper-row">
+            <span><strong>My children</strong><br />
+              <span className="muted">Published results for each of your children.</span></span>
+            <a className="primary-wide" href="/portal/children">Open</a>
+          </div>
+        </section>
+      ) : null}
+
+      {actor.role !== 'student' && actor.role !== 'parent' && papers.length === 0 && (
+        <p className="muted">Use the navigation to open your available school tools.</p>
+      )}
     </>
   );
 }
