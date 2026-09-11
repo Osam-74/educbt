@@ -367,6 +367,48 @@ async function main() {
       return rejects(() => students.linkGuardian(a.principal, heldStudent.studentId, { fullName: '' }), 'name');
     });
 
+    // ── Guardian invite redemption ───────────────────────────────────────────
+    const { acceptGuardianInvite, GuardianAcceptError } = await import('@/lib/people/guardians');
+    const { guardianChildren } = await import('@/lib/results/family');
+    const { authenticateCredentials } = await import('@/lib/auth/credentials');
+
+    await check('an invite is redeemed into a working parent account', async () => {
+      const res = await acceptGuardianInvite(a.schoolId, g1.inviteToken, 'ParentPass-2026!');
+      assert.equal(res.loginId, 'parent@example.com');
+      const [row] = await db.select().from(schema.guardians).where(eq(schema.guardians.id, g1.guardianId));
+      assert.equal(row!.inviteStatus, 'accepted');
+      assert.equal(row!.inviteToken, null);
+      assert.ok(row!.userId! > 0);
+      // The parent can actually sign in with the password THEY chose.
+      const sessionUser = await authenticateCredentials({ loginId: 'parent@example.com', password: 'ParentPass-2026!', schoolId: a.schoolId });
+      assert.equal(sessionUser.role, 'parent');
+      // And the family view resolves their linked children.
+      const kids = await forSchool(a.schoolId, (tx) => guardianChildren(tx, row!.userId!));
+      assert.equal(kids.length, 2);
+    });
+    await check('a redeemed token cannot be used again', () =>
+      assert.rejects(() => acceptGuardianInvite(a.schoolId, g1.inviteToken, 'ParentPass-2026!'),
+        (e: unknown) => e instanceof GuardianAcceptError && /invitation link is not valid/.test(String(e.message))));
+    await check('a short password is refused and the token survives', async () => {
+      const g3 = await students.linkGuardian(a.principal, heldStudent.studentId, { fullName: 'Mr Other', email: 'other-parent@example.com' });
+      await assert.rejects(() => acceptGuardianInvite(a.schoolId, g3.inviteToken, 'short'),
+        (e: unknown) => e instanceof GuardianAcceptError && /at least 8 characters/.test(String(e.message)));
+      const [row] = await db.select().from(schema.guardians).where(eq(schema.guardians.id, g3.guardianId));
+      assert.equal(row!.inviteStatus, 'pending');
+      assert.ok(row!.inviteToken);
+    });
+    await check('an accept cannot claim an existing parent login', async () => {
+      const g4 = await students.linkGuardian(a.principal, heldStudent.studentId, { fullName: 'Mrs Taken', email: 'taken@example.com' });
+      await db.insert(schema.users).values({ schoolId: a.schoolId, role: 'parent', loginId: 'taken@example.com', passwordHash: 'unused', mustChangePassword: false });
+      await assert.rejects(() => acceptGuardianInvite(a.schoolId, g4.inviteToken, 'ParentPass-2026!'),
+        (e: unknown) => e instanceof GuardianAcceptError && /already exists/.test(String(e.message)));
+      const [row] = await db.select().from(schema.guardians).where(eq(schema.guardians.id, g4.guardianId));
+      assert.equal(row!.inviteStatus, 'pending');
+    });
+    await check('an unknown token is refused', () =>
+      assert.rejects(() => acceptGuardianInvite(a.schoolId, 'not-a-real-token', 'ParentPass-2026!'),
+        (e: unknown) => e instanceof GuardianAcceptError && /invitation link is not valid/.test(String(e.message))));
+
     // ── Subject registration ────────────────────────────────────────────────
     await check('registration needs a current enrolment', () =>
       rejects(() => students.setStudentSubjects(a.principal, custom.studentId, [a.subjects[1]!.id]), 'no current enrolment')

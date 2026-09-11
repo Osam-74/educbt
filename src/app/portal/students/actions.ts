@@ -120,7 +120,7 @@ export async function studentAction(_previous: ActionState, form: FormData): Pro
         message: result.created
           ? 'Guardian created and linked. Give them the invitation below — they choose their own password with it.'
           : 'Existing guardian linked to this student (deduplicated by email or phone).',
-        invite: result.created ? `Invitation: /portal/guardian/accept?t=${result.inviteToken}` : undefined,
+        invite: result.created ? `Invitation: /guardian/accept?t=${result.inviteToken}` : undefined,
       };
     }
 
