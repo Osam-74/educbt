@@ -324,3 +324,20 @@ REVOKE UPDATE, DELETE ON audit_log FROM PUBLIC;
 -- Not school-scoped: the session is looked up BEFORE the tenant is known.
 -- Protected instead by an unguessable primary key and by expiry.
 ALTER TABLE sessions DISABLE ROW LEVEL SECURITY;
+
+-- ── portal_uploads: passport photographs, tenant-isolated like every other
+--    school record. Reads happen through the public token route (outside RLS,
+--    capability-by-token), so only the write side needs the standard policy.
+ALTER TABLE portal_uploads ENABLE ROW LEVEL SECURITY;
+ALTER TABLE portal_uploads FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON portal_uploads;
+CREATE POLICY tenant_isolation ON portal_uploads
+  USING (school_id = current_school_id() OR is_platform_admin())
+  WITH CHECK (school_id = current_school_id() OR is_platform_admin());
+
+-- portal_uploads reads are PUBLIC BY TOKEN: the serve route
+-- (/api/photos/[token]) has no session context, and the 32-byte token is the
+-- capability. Writes stay tenant-isolated by the policy above.
+DROP POLICY IF EXISTS public_token_read ON portal_uploads;
+CREATE POLICY public_token_read ON portal_uploads
+  FOR SELECT USING (true);
