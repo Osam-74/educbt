@@ -120,9 +120,9 @@ def sheet(n, not_ranked=0, subject_name=None, student_name=None,
             f'<tbody>{rows}</tbody></table>{tail}</div>')
 
 
-def render(sheets):
+def render(sheets, extra_css=''):
     html = (f'<!DOCTYPE html><html><head><meta charset="utf-8">'
-            f'<style>{CSS}</style></head><body>'
+            f'<style>{CSS}{extra_css}</style></head><body>'
             f'<div class="doc">{"".join(sheets)}</div></body></html>')
 
     return weasyprint.HTML(string=html).render()
@@ -277,6 +277,13 @@ def veil_probe(failures):
     buf = io.BytesIO(); doc.write_pdf(buf); buf.seek(0)
     pdf = pdfium.PdfDocument(buf)
     n_pages = len(pdf)
+    # Keep identical layout/pagination but hide foreground ink for spacing
+    # probes. A report-table glyph at 180mm is not an overlapping watermark.
+    watermark_doc = render([sheet(19, crest=True)],
+        '.doc__sheet * { visibility: hidden } .doc__wm, .doc__wm img { visibility: visible }')
+    watermark_buf = io.BytesIO(); watermark_doc.write_pdf(watermark_buf); watermark_buf.seek(0)
+    watermark_pdf = pdfium.PdfDocument(watermark_buf)
+    assert len(watermark_pdf) == n_pages, 'Watermark isolation must preserve pagination'
     ok_pages = n_pages == 2
     if not ok_pages:
         failures += 1
@@ -299,8 +306,9 @@ def veil_probe(failures):
         # Verify the second tile and the clear gap between circular test
         # crests. Presence at one point alone missed overlapping copies on page 2.
         for label, y, minimum, maximum in [('second tile', 235, 200, 250), ('tile gap', 180, 250, 255)]:
+            watermark_img = watermark_pdf[i].render(scale=1.5).to_pil().convert('RGB')
             tx, ty = int(105 * mm_x), int(y * mm_y)
-            tile_lum = sum(px[tx, ty]) / 3
+            tile_lum = sum(watermark_img.getpixel((tx, ty))) / 3
             ok = minimum <= tile_lum <= maximum
             if not ok:
                 failures += 1

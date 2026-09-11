@@ -124,6 +124,10 @@
 }
 @media print {
   .portal-shell:has(.doc) { background: #fff; min-height: 0; }
+  /* Keep every fixed image inside A4's 277mm printable height. Chromium
+     paginates an out-of-bounds fixed image onto an extra, otherwise blank page. */
+  .doc__wm img:nth-child(2) { top: 166mm; }
+  .doc__wm img:nth-child(3) { display: none; }
 }
 
 /* No crest: fall back to the school name as slanted text, so a document is

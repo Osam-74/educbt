@@ -104,6 +104,9 @@ jobs:
           import pypdfium2 as pdfium
           for path in pathlib.Path('baseline-logs').rglob('*.pdf'):
               pdf = pdfium.PdfDocument(str(path))
+              if path.name == 'report-route-chromium.pdf':
+                  assert len(pdf) == 1, 'Short report must not gain blank watermark-only pages'
+                  print('PASS  Chromium short report has exactly one page')
               for i, page in enumerate(pdf):
                   page.render(scale=1.5).to_pil().save(str(path.with_suffix('')) + f'-page-{i+1}.png')
           PY
