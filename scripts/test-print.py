@@ -280,7 +280,7 @@ def veil_probe(failures):
     # Keep identical layout/pagination but hide foreground ink for spacing
     # probes. A report-table glyph at 180mm is not an overlapping watermark.
     watermark_doc = render([sheet(19, crest=True)],
-        '.doc__sheet * { visibility: hidden } .doc__wm, .doc__wm img { visibility: visible }')
+        '.doc__sheet > :not(.doc__wm) { opacity: 0 }')
     watermark_buf = io.BytesIO(); watermark_doc.write_pdf(watermark_buf); watermark_buf.seek(0)
     watermark_pdf = pdfium.PdfDocument(watermark_buf)
     assert len(watermark_pdf) == n_pages, 'Watermark isolation must preserve pagination'
@@ -305,8 +305,13 @@ def veil_probe(failures):
               f'{lum:.0f}; veiled is ~224, raw crest ~49)')
         # Verify the second tile and the clear gap between circular test
         # crests. Presence at one point alone missed overlapping copies on page 2.
+        watermark_img = watermark_pdf[i].render(scale=1.5).to_pil().convert('RGB')
+        darkest = min(sum(rgb) / 3 for rgb in watermark_img.getdata())
+        clean = darkest >= 200
+        if not clean:
+            failures += 1
+        print(f'{"PASS" if clean else "FAIL"}  watermark-only page {i + 1} (minimum luminance {darkest:.0f})')
         for label, y, minimum, maximum in [('second tile', 235, 200, 250), ('tile gap', 180, 250, 255)]:
-            watermark_img = watermark_pdf[i].render(scale=1.5).to_pil().convert('RGB')
             tx, ty = int(105 * mm_x), int(y * mm_y)
             tile_lum = sum(watermark_img.getpixel((tx, ty))) / 3
             ok = minimum <= tile_lum <= maximum
