@@ -8,6 +8,8 @@ import { isVisibleToFamily, ordinal, DEFAULT_RANKING,
 import { reportAudience } from '@/lib/results/report-access';
 import { reportPositions, reportAverage, reportGradingKey } from '@/lib/reports/summary';
 import { PrintToolbar } from './PrintToolbar';
+import { reportExtras } from '@/lib/settings/remarks';
+import { RemarkEditor } from './RemarkEditor';
 import '../../../print.css';
 
 export const dynamic = 'force-dynamic';
@@ -206,7 +208,7 @@ export default async function ReportCard({
     // actually holding this class, not "any teacher".
     const [classTeacher] = enrolment?.classId
       ? await tx
-          .select({ firstName: schema.staff.firstName, lastName: schema.staff.lastName })
+          .select({ id: schema.staff.id, firstName: schema.staff.firstName, lastName: schema.staff.lastName })
           .from(schema.staffAssignments)
           .innerJoin(schema.staff, eq(schema.staff.id, schema.staffAssignments.staffId))
           .where(and(
@@ -218,7 +220,9 @@ export default async function ReportCard({
           .limit(1)
       : [];
 
-    return { student, school, enrolment, term, results, registered, cohort, cohortRows, cohortRegistrations,
+    const extras = term && enrolment?.classId ? await reportExtras(tx, studentId, Number(term.sessionId), Number(term.id), enrolment.classId) : null;
+    const scaleSnapshots = await tx.select({ snapshot: schema.gradingScaleVersions.snapshot }).from(schema.gradingScaleVersions);
+    return { student, school, enrolment, term, results, registered, cohort, cohortRows, cohortRegistrations, extras, scaleSnapshots,
       classTeacher: classTeacher ?? null };
   });
 
@@ -296,11 +300,20 @@ export default async function ReportCard({
   const classTeacherName = classTeacher
     ? `${classTeacher.firstName} ${classTeacher.lastName}` : '';
 
-  const gradingKey = reportGradingKey(results);
+  const gradingKey = reportGradingKey(results, data.scaleSnapshots.map(s => s.snapshot));
+  const editableRemarks = results.length > 0 && results.every(r => ['draft', 'compiled'].includes(r.state) && !r.published);
+  const signature = (role: 'principal' | 'class_teacher') => {
+    const saved = data.extras?.signatures[role];
+    return saved ? saved.type === 'text'
+      ? <span style={{ fontFamily: 'cursive', fontSize: '16pt' }}>{saved.data}</span>
+      : <img src={saved.data} alt={role === 'principal' ? 'Principal signature' : 'Class teacher signature'} style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }}/> : null;
+  };
 
   return (
     <>
       <PrintToolbar warn={anyUnpublished ? 'Not yet published — visible to staff only.' : undefined} />
+      {editableRemarks && term && actor.role === 'principal' && actor.staffId && <RemarkEditor studentId={studentId} sessionId={Number(term.sessionId)} termId={Number(term.id)} role="principal" initial={data.extras?.remarks.principal ?? ''}/>}
+      {editableRemarks && term && classTeacher?.id === actor.staffId && <RemarkEditor studentId={studentId} sessionId={Number(term.sessionId)} termId={Number(term.id)} role="class_teacher" initial={data.extras?.remarks.class_teacher ?? ''}/>}
 
       <div className="doc">
         <div
@@ -439,21 +452,18 @@ export default async function ReportCard({
           </div>
 
           <div className="doc__remarks">
-            {/* No per-student term remarks are stored yet (legacy kept these
-                in a term_results summary with auto-remark bands). The stated
-                absence is an em-dash — never invented text. */}
-            <p><strong>Class Teacher&rsquo;s Remark:</strong> <span className="doc__remark-text">—</span></p>
-            <p><strong>Principal&rsquo;s Remark:</strong> <span className="doc__remark-text">—</span></p>
+            <p><strong>Class Teacher&rsquo;s Remark:</strong> <span className="doc__remark-text">{data.extras?.remarks.class_teacher || '—'}</span></p>
+            <p><strong>Principal&rsquo;s Remark:</strong> <span className="doc__remark-text">{data.extras?.remarks.principal || '—'}</span></p>
           </div>
 
           <div className="doc__sign">
             <div className="doc__sign-box">
-              <div className="doc__sig-area" />
+              <div className="doc__sig-area">{signature('class_teacher')}</div>
               <div className="doc__sig-line">{classTeacherName || '____________________'}</div>
               <div className="doc__sig-role">Class Teacher</div>
             </div>
             <div className="doc__sign-box">
-              <div className="doc__sig-area" />
+              <div className="doc__sig-area">{signature('principal')}</div>
               <div className="doc__sig-line">{school?.principalName || '____________________'}</div>
               <div className="doc__sig-role">Principal</div>
             </div>

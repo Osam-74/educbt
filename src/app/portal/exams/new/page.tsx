@@ -15,7 +15,8 @@ export default async function NewExamPage({
   const actor = await requireSchoolSession();
   requireRole(actor, SCHOOL_WIDE);
 
-  const { sessions, terms } = await forSchool(actor.schoolId, async (tx) => ({
+  const { sessions, terms, school } = await forSchool(actor.schoolId, async (tx) => ({
+    school: (await tx.select({ settings: schema.schools.settings }).from(schema.schools).where(eq(schema.schools.id, actor.schoolId)))[0],
     sessions: await tx
       .select({ id: schema.academicSessions.id, title: schema.academicSessions.title, isCurrent: schema.academicSessions.isCurrent })
       .from(schema.academicSessions)
@@ -126,7 +127,7 @@ export default async function NewExamPage({
           <div style={{ flex: 1, minWidth: 220 }}>
             <label htmlFor="durationMinutes">Duration (minutes)</label>
             <input id="durationMinutes" name="durationMinutes" type="number"
-                   min="5" max="300" defaultValue={60} required />
+                   min="5" max="300" defaultValue={Number((school?.settings.examDefaults as { durationMinutes?: number } | undefined)?.durationMinutes) || 60} required />
           </div>
         </div>
 

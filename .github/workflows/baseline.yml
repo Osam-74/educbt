@@ -1,7 +1,7 @@
 name: full-baseline
 on:
   push:
-    branches: [main, feat/ca-score-entry-ui, feat/results-lifecycle-ui, feat/portal-shell-parity, integrate/report-card-parity]
+    branches: [main, feat/ca-score-entry-ui, feat/results-lifecycle-ui, feat/portal-shell-parity, integrate/report-card-parity, feat/school-settings-academic-config]
   pull_request:
   workflow_dispatch:
 permissions:
@@ -70,7 +70,7 @@ jobs:
           test "$ready" = 1
           export CA_TEST_HTTP_URL=http://127.0.0.1:3017
           failed=0
-          for suite in verify scope auth leak vault engine authoring results practice jobs domain config backup platform ca-validation ca result-workflow result-workflow-rerun report-summary print print69; do
+          for suite in verify scope auth leak vault engine authoring results practice jobs domain config backup platform ca-validation ca result-workflow result-workflow-rerun report-summary settings-validation settings print print69; do
             case "$suite" in
               verify) command=(npm run db:verify) ;;
               ca-validation) command=(npx tsx src/lib/ca/validation.test.ts) ;;
@@ -78,6 +78,8 @@ jobs:
               result-workflow) command=(env RESULT_BROWSER_MODULE=/tmp/educbt-browser/node_modules/playwright/index.mjs npx tsx src/db/test-result-workflow.ts) ;;
               result-workflow-rerun) command=(npx tsx src/db/test-result-workflow.ts) ;;
               report-summary) command=(npx tsx src/lib/reports/summary.test.ts) ;;
+              settings-validation) command=(npx tsx src/lib/settings/validation.test.ts) ;;
+              settings) command=(env SETTINGS_BROWSER_MODULE=/tmp/educbt-browser/node_modules/playwright/index.mjs npx tsx src/db/test-settings.ts) ;;
               print69) command=(/tmp/educbt-print69/bin/python scripts/test-print.py) ;;
               print) command=(/tmp/educbt-print/bin/python scripts/test-print.py) ;;
               *) command=(npm run "test:$suite") ;;
