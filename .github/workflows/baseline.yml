@@ -70,7 +70,7 @@ jobs:
           test "$ready" = 1
           export CA_TEST_HTTP_URL=http://127.0.0.1:3017
           failed=0
-          for suite in verify scope auth leak vault engine authoring results practice jobs domain config backup platform ca-validation ca result-workflow result-workflow-rerun report-summary settings-validation settings print print69; do
+          for suite in verify scope auth leak vault engine authoring results practice jobs domain config backup platform ca-validation ca result-workflow result-workflow-rerun report-summary people dashboards settings-validation settings print print69; do
             case "$suite" in
               verify) command=(npm run db:verify) ;;
               ca-validation) command=(npx tsx src/lib/ca/validation.test.ts) ;;

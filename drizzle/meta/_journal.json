@@ -72,6 +72,27 @@
       "tag": "0009_sitting_window",
       "breakpoints": true
     },
-    { "idx": 10, "version": "7", "when": 1789128000000, "tag": "0010_school_settings", "breakpoints": true }
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1789141101126,
+      "tag": "0010_guardian-can-view-results",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1789141200000,
+      "tag": "0011_staff-title-gender",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1789141300000,
+      "tag": "0012_guardian-invite-photos",
+      "breakpoints": true
+    },
+    { "idx": 13, "version": "7", "when": 1789141400000, "tag": "0013_school_settings", "breakpoints": true }
   ]
 }

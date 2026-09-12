@@ -249,6 +249,17 @@ button[type='submit']:disabled { opacity: .6; cursor: default; }
   gap: 14px; padding: 12px 0; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
 .paper-row:last-of-type { border-bottom: 0; }
 .paper-row a.primary-wide { text-decoration: none; display: inline-block; }
+
+/* Family result lists (legacy educbt-list / educbt-child): a row per term,
+   a heading block per child. */
+.family-list { list-style: none; margin: 0; padding: 0; }
+.family-list li { display: flex; justify-content: space-between; align-items: center;
+  gap: 14px; padding: 12px 0; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+.family-list li:last-child { border-bottom: 0; }
+.family-list a.primary-wide { text-decoration: none; display: inline-block; }
+.family-child { display: flex; align-items: center; gap: 14px; }
+.family-child__photo { width: 44px; height: 44px; border-radius: 50%;
+  object-fit: cover; border: 1px solid var(--line); }
 .answer-box { background: var(--wash); border: 1px solid var(--line); border-radius: 9px;
   padding: 12px 14px; font-size: 14.5px; line-height: 1.65; white-space: pre-wrap; }
 
@@ -264,3 +275,62 @@ button[type='submit']:disabled { opacity: .6; cursor: default; }
 .practice-q__answers { font-size: 14px; color: var(--muted); margin: 8px 0 0; }
 .practice-q__explanation { font-size: 14.5px; background: var(--wash);
   border: 1px solid var(--line); border-radius: 7px; padding: 10px 12px; margin-top: 10px; }
+
+/* ── People management (staff / students) ─────────────────────────────────
+   The register + duty-assignment screens. Kept in the same restrained
+   register as the rest of the portal: forms on cards, small in-row actions,
+   one-off credentials highlighted once and then gone. */
+.stack { display: grid; gap: 22px; }
+/* An implicit auto track grows to the item's max-content and can blow past
+   the viewport; minmax(0, 1fr) keeps every card inside the page column. */
+.stack > * { min-width: 0; }
+
+.form-grid { display: grid; gap: 14px 18px; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); border: 0; margin: 0 0 16px; padding: 0; }
+.form-grid legend { display: none; }
+.form-grid label { display: grid; gap: 6px; font-size: 13.5px; color: var(--muted); }
+.form-grid input, .form-grid select { width: 100%; padding: 8px 10px; border: 1px solid var(--line); border-radius: 7px; font: inherit; color: var(--ink); background: var(--white); }
+
+fieldset > legend { font-size: 13px; font-weight: 600; color: var(--muted); margin-bottom: 8px; }
+
+.check-grid { display: flex; flex-wrap: wrap; gap: 8px 18px; margin: 0 0 16px; padding: 0; border: 0; }
+.check { display: inline-flex; align-items: center; gap: 7px; font-size: 14px; color: var(--ink); }
+.check input { accent-color: var(--green, #1a7f37); }
+
+.credentials { background: var(--wash); border: 1px solid var(--line); border-radius: 7px;
+  padding: 10px 12px; font-family: var(--mono, monospace); font-size: 13.5px; }
+
+.btn-small { display: inline-block; padding: 4px 10px; font-size: 12.5px; border: 1px solid var(--line);
+  border-radius: 6px; background: var(--white); color: var(--ink); cursor: pointer; }
+.btn-small:hover { background: var(--wash); }
+.btn-small.danger { color: #b42318; border-color: #e6c9c5; }
+.btn-small.danger:hover { background: #faf1f0; }
+
+.inline-form { display: inline-block; margin-left: 8px; }
+.inline-edit { display: grid; gap: 12px; margin: 12px 0 4px; padding: 14px;
+  border: 1px solid var(--line); border-radius: 9px; background: var(--wash); }
+
+.details-plain { cursor: pointer; list-style: none; }
+.details-plain::-webkit-details-marker { display: none; }
+.details-plain img { border-radius: 4px; margin-right: 8px; vertical-align: middle; object-fit: cover; }
+
+.duty-list { list-style: none; margin: 6px 0 0; padding: 0; display: grid; gap: 6px; font-size: 13px; }
+
+.stand-down { display: inline-block; }
+.stand-down summary { display: inline-block; }
+.stand-down .inline-edit { box-shadow: 0 4px 14px rgba(22, 36, 27, 0.08); background: var(--white); }
+
+.row--inactive td { color: var(--muted); }
+.row--message td { background: transparent; }
+.row--message .note, .row--message .error { margin: 0; padding: 6px 0; }
+
+.row-actions { white-space: nowrap; }
+.row-actions form { display: inline-block; }
+
+/* Wide lists scroll within their card on phones instead of stretching the
+   page — every .tbl in the portal inherits this at once. */
+@media (max-width: 720px) {
+  .tbl { display: block; overflow-x: auto; }
+  /* A fieldset cannot shrink below its min-content width, so the register
+     forms stay one column on phones instead of stretching the page. */
+  .form-grid { grid-template-columns: 1fr; }
+}

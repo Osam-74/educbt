@@ -1,6 +1,8 @@
 import Link from 'next/link';
 import { requireSchoolSession } from '@/lib/session';
+import { isSchoolWide } from '@/lib/queries';
 import { listStudents, listClasses } from '@/lib/queries';
+import { RegisterStudentForm, StudentRowActions } from './StudentForms';
 
 export const dynamic = 'force-dynamic';
 
@@ -30,11 +32,22 @@ export default async function StudentsPage({
     listClasses(actor),
   ]);
 
+  // Teachers enrol into their own classes only, and the record waits for the
+  // office's approval (legacy teacher_add_student). The service enforces it;
+  // the flag here only changes the form's wording.
+  const office = isSchoolWide(actor.role);
+
   return (
     <>
       <h1 className="page-title">Students</h1>
 
       {scopeNote ? <p className="note">{scopeNote}</p> : null}
+
+      {classes.length > 0 && (
+        <div className="stack">
+          <RegisterStudentForm classes={classes} teacher={!office} />
+        </div>
+      )}
 
       <form className="filters" method="get">
         <input
@@ -82,7 +95,10 @@ export default async function StudentsPage({
                     {STATUS_LABEL[s.status] ?? s.status}
                   </span>
                 </td>
-                <td><Link href={`/portal/students/${s.id}`}>View</Link></td>
+                <td className="row-actions">
+                  <Link href={`/portal/students/${s.id}`}>View</Link>
+                  <StudentRowActions studentId={s.id} status={s.status} office={office} />
+                </td>
               </tr>
             ))}
           </tbody>

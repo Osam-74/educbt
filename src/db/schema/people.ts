@@ -14,7 +14,7 @@
 
 import {
   pgTable, bigserial, bigint, varchar, text, boolean, timestamp,
-  uniqueIndex, index, pgEnum, jsonb, inet,
+  uniqueIndex, index, pgEnum, jsonb, inet, customType,
 } from 'drizzle-orm/pg-core';
 import { schools, classes, classLevels, departments, subjects, academicSessions } from './core';
 import { studentStatus, staffStatus, enrollmentStatus } from './core';
@@ -98,6 +98,10 @@ export const staff = pgTable('staff', {
     .references(() => users.id, { onDelete: 'set null' }),
 
   staffNumber: varchar('staff_number', { length: 50 }).notNull(),
+  // Legacy staff carried a title (Mr / Mrs / Dr) and sex on the record, shown
+  // on both the add and edit forms. Free-text columns, no behavior attached.
+  title: varchar('title', { length: 50 }),
+  gender: varchar('gender', { length: 20 }),
   firstName: varchar('first_name', { length: 100 }).notNull(),
   lastName: varchar('last_name', { length: 100 }).notNull(),
   email: varchar('email', { length: 191 }),
@@ -225,8 +229,43 @@ export const guardians = pgTable('guardians', {
   fullName: varchar('full_name', { length: 191 }).notNull(),
   email: varchar('email', { length: 191 }),
   phone: varchar('phone', { length: 50 }),
+  /**
+   * A school never holds a parent's credentials. The link is created with a
+   * one-time token and the parent redeems it to set their own password
+   * (legacy invite_token / invite_status). Token issue is shown once to the
+   * office; invite_status tracks none -> pending -> accepted.
+   */
+  inviteToken: varchar('invite_token', { length: 191 }),
+  inviteStatus: varchar('invite_status', { length: 20 }).default('none').notNull(),
 }, (t) => ({
   schoolIdx: index('guardians_school_idx').on(t.schoolId),
+}));
+
+// ── Portal uploads (passport photographs) ─────────────────────────────────────
+
+/**
+ * Passport photographs, stored in the tenant database rather than a media
+ * library. The app is self-contained (one Postgres, no object storage), and a
+ * bytea column keeps photos inside the same tenant isolation and backup stream
+ * as every other school record.
+ */
+export const portalUploads = pgTable('portal_uploads', {
+  id: bigserial('id', { mode: 'number' }).primaryKey(),
+  schoolId: bigint('school_id', { mode: 'number' }).notNull()
+    .references(() => schools.id, { onDelete: 'cascade' }),
+  /** Unguessable: the public serve route (/api/photos/[token]) needs no
+   *  session because the token IS the capability, like a signed S3 URL —
+   *  report-card print pipelines cannot carry cookies. */
+  token: varchar('token', { length: 64 }).notNull(),
+  mimeType: varchar('mime_type', { length: 100 }).notNull(),
+  byteSize: bigint('byte_size', { mode: 'number' }).notNull(),
+  data: customType<{ data: Buffer; driverData: Buffer }>({
+    dataType() { return 'bytea'; },
+  })('data'),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+}, (t) => ({
+  tokenUq: uniqueIndex('portal_uploads_token_uq').on(t.token),
+  schoolIdx: index('portal_uploads_school_idx').on(t.schoolId),
 }));
 
 export const guardianStudent = pgTable('guardian_student', {
@@ -238,6 +277,15 @@ export const guardianStudent = pgTable('guardian_student', {
   studentId: bigint('student_id', { mode: 'number' }).notNull()
     .references(() => students.id, { onDelete: 'cascade' }),
   relationship: varchar('relationship', { length: 50 }),
+  /**
+   * Legacy guardian_student.can_view_results (tinyint DEFAULT 1): a household
+   * where only one parent may see results is respected per LINK, not per
+   * guardian. Results reads gate on it; the children page still lists the
+   * child and says the office can change this, exactly like legacy. The other
+   * legacy link flag, is_primary, has no consumer in the results flow and is
+   * deliberately not ported here — it belongs to staff-side link management.
+   */
+  canViewResults: boolean('can_view_results').notNull().default(true),
 }, (t) => ({
   uq: uniqueIndex('guardian_student_uq').on(t.guardianId, t.studentId),
 }));

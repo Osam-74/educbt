@@ -239,6 +239,20 @@ async function main() {
         roleHeaders[role] = { cookie: 'educbt.session=' + roleToken };
       }
       const reportResponse = (role: string, studentId = a.students[0]!.id) => fetch(new URL(`/portal/reports/${studentId}?term=${a.scope.termId}`, base), { headers: roleHeaders[role] });
+      const familyPage = (path: string, role: string) => fetch(new URL(path, base), { headers: roleHeaders[role]! });
+      // React server rendering inserts <!-- --> separators between text
+      // expressions, so content assertions read the text with them stripped.
+      const text = (html: string) => html.replace(/<!--.*?-->/g, '');
+      await check('HTTP student my-results is empty before publication', async () => {
+        const response = await familyPage('/portal/my-results', 'student'); assert.equal(response.status, 200);
+        const html = text(await response.text());
+        assert(html.includes('No results have been published yet.')); assert(!html.includes('First term')); assert(!html.includes('Download'));
+      });
+      await check('HTTP guardian children lists the child with no published terms yet', async () => {
+        const response = await familyPage('/portal/children', 'parent'); assert.equal(response.status, 200);
+        const html = text(await response.text());
+        assert(html.includes('Student 1')); assert(html.includes('No results have been published yet.')); assert(!html.includes('Download'));
+      });
       await check('HTTP student cannot read unpublished report', async () => assert.equal((await reportResponse('student')).status, 404));
       await check('HTTP linked guardian cannot read unpublished report', async () => assert.equal((await reportResponse('parent')).status, 404));
       await check('HTTP class teacher cannot read before review', async () => assert.equal((await reportResponse('teacher')).status, 404));
@@ -250,8 +264,31 @@ async function main() {
       await check('HTTP guardian may read linked published report', async () => assert.equal((await reportResponse('parent')).status, 200));
       await check('HTTP student cannot read a peer published report', async () => assert.equal((await reportResponse('student', a.students[1]!.id)).status, 404));
       await check('HTTP guardian cannot read unrelated published report', async () => assert.equal((await reportResponse('parent', a.students[1]!.id)).status, 404));
+      await check('HTTP student my-results lists the published term', async () => {
+        const html = text(await (await familyPage('/portal/my-results', 'student')).text());
+        assert(html.includes('First term, 2026/2027')); assert(html.includes('JSS1 A'));
+        assert(html.includes(`/portal/reports/${a.students[0]!.id}?term=${a.scope.termId}`));
+        assert(!html.includes('No results have been published yet.'));
+      });
+      await check('HTTP guardian children lists the child published term', async () => {
+        const html = text(await (await familyPage('/portal/children', 'parent')).text());
+        assert(html.includes('Student 1')); assert(html.includes(`/portal/reports/${a.students[0]!.id}?term=${a.scope.termId}`));
+      });
+      await check('HTTP can_view_results off withholds terms and the report from the guardian', async () => {
+        await db.update(schema.guardianStudent).set({ canViewResults: false }).where(eq(schema.guardianStudent.guardianId, guardian!.id));
+        try {
+          const html = text(await (await familyPage('/portal/children', 'parent')).text());
+          assert(html.includes('Results for this child are not shared with this account.'));
+          assert(!html.includes('Download')); assert(!html.includes('First term'));
+          assert.equal((await reportResponse('parent')).status, 404);
+        } finally { await db.update(schema.guardianStudent).set({ canViewResults: true }).where(eq(schema.guardianStudent.guardianId, guardian!.id)); }
+      });
       await move('reviewed', 'Withdraw report for a correction');
       await check('HTTP withdrawn publication is immediately withheld', async () => assert.equal((await reportResponse('parent')).status, 404));
+      await check('HTTP withdrawn publication leaves the family lists empty', async () => {
+        const html = text(await (await familyPage('/portal/my-results', 'student')).text());
+        assert(html.includes('No results have been published yet.')); assert(!html.includes('First term'));
+      });
       await move('compiled', 'Reopen report for a correction');
       await db.update(schema.schools).set({ settings: {} }).where(eq(schema.schools.id, a.schoolId));
       await check('HTTP missing policy shows explicit setup guidance', async () => assert((await (await fetch(url, { headers })).text()).includes('Academic settings are incomplete or invalid')));

@@ -20,7 +20,7 @@ function homeFor(role: string): string {
 export default async function SignInPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string; next?: string }>;
+  searchParams: Promise<{ error?: string; notice?: string; next?: string }>;
 }) {
   const params = await searchParams;
   const session = await auth();
@@ -132,6 +132,7 @@ export default async function SignInPage({
         <p className="sub">Sign in to continue</p>
 
         {params.error ? <p className="error">{params.error}</p> : null}
+        {params.notice === 'guardian-accepted' ? <p className="sub">Account created. Sign in with your email address and your new password.</p> : null}
 
         <form action={authenticate}>
           {/* The tenant is never posted: the server action takes the school
