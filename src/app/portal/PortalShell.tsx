@@ -13,9 +13,9 @@ export function portalAreas(role: string, teaching: boolean, classTeacher: boole
   const areas: Area[] = [];
   if (wide) areas.push({ label: 'School', items: [item('', 'Overview'), item('/staff', 'Staff', 'person'), item('/students', 'Students', 'school'), item('/classes', 'Classes', 'layers'), item('/subjects', 'Subjects', 'book'), item('/results', 'Results', 'chart'), item('/review', 'Review', 'check'), item('/broadsheet', 'Broadsheet', 'grid'), item('/ca', 'Record scores', 'edit'), ...(role === 'principal' || role === 'vice_principal' ? [item('/activity', 'Activity log', 'activity')] : [])] });
   if (role === 'teacher' || role === 'exam_officer' || (wide && teaching)) areas.push({ label: 'Teaching', items: [item('', 'Dashboard'), item('/classes', 'My assignments', 'layers'), ...(classTeacher || wide ? [item('/students', 'My students', 'school')] : []), item('/ca', 'Record scores', 'edit')] });
-  if (wide || role === 'teacher') areas.push({ label: 'Examinations', items: [...(wide ? [item('/exams', 'Exam office', 'book')] : []), item('/questions', 'Question Bank', 'book'), item('/marking', 'Marking', 'edit')] });
+  if (wide || role === 'teacher') areas.push({ label: 'Examinations', items: [...(wide ? [item('/exams', 'Exam office', 'book')] : []), item('/timetable', 'Timetable', 'calendar'), item('/invigilation', 'Invigilation', 'clock'), item('/invigilate', 'Live sessions', 'activity'), item('/questions', 'Question Bank', 'book'), item('/marking', 'Marking', 'edit')] });
   if (role === 'student') areas.push({ label: 'Student', items: [item('', 'Dashboard'), item('/my-results', 'My results', 'chart'), item('/practice', 'Practice', 'edit')] });
-  if (role === 'parent') areas.push({ label: 'Parent', items: [item('', 'Dashboard'), item('/children', 'My children', 'person')] });
+  if (role === 'parent') areas.push({ label: 'Parent', items: [item('', 'Dashboard'), item('/children', 'My children', 'person'), item('/timetable', 'Exam timetable', 'calendar')] });
   return areas.length ? areas : [{ label: 'Account', items: [item('', 'Dashboard')] }];
 }
 export function PortalIcon({ name }: { name: string }) {

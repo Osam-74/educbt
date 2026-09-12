@@ -30,7 +30,8 @@ export type StartResult =
   | { ok: false; reason:
     | 'not_published' | 'not_registered' | 'already_submitted' | 'no_questions'
     // Sitting-window refusals, formal examinations only.
-    | 'not_scheduled' | 'window_not_open' | 'window_closed' };
+    | 'not_scheduled' | 'window_not_open' | 'window_closed'
+    | 'access_code_required' | 'access_code_wrong' };
 
 /**
  * Start or resume.
@@ -42,6 +43,12 @@ export async function startAttempt(
   schoolId: number,
   paperId: number,
   studentId: number,
+  /**
+   * The invigilator's access code, for papers that require one (legacy
+   * papers.requires_access_code). The candidate cannot read the paper
+   * without the code the invigilator read out.
+   */
+  accessCode?: string,
 ): Promise<StartResult> {
   return forSchool(schoolId, async (tx) => {
     const [paper] = await tx.select().from(schema.examPapers)
@@ -51,6 +58,15 @@ export async function startAttempt(
       )).limit(1);
 
     if (!paper || paper.status !== 'published') return { ok: false, reason: 'not_published' };
+
+    // ACCESS-CODE GATE. Checked before registration so the code never becomes
+    // an oracle for who is registered ("wrong code" vs "not registered").
+    if (paper.requiresAccessCode) {
+      if (!accessCode) return { ok: false, reason: 'access_code_required' };
+      if (paper.accessCode !== accessCode.trim().toUpperCase()) {
+        return { ok: false, reason: 'access_code_wrong' };
+      }
+    }
 
     // Registration is authoritative. In the WordPress system this read
     // "registered OR enrolled in the class", which made registration optional
@@ -228,6 +244,12 @@ export async function submitAttempt(
   attemptId: number,
   studentId: number,
   auto = false,
+  /**
+   * Invigilator force-submit (legacy InvigilatorService::force_submit): the
+   * candidate's saved answers are marked as they stand, and the reason is
+   * recorded so a forced close is never indistinguishable from a submit.
+   */
+  forcedReason?: string,
 ): Promise<{ ok: boolean; reason?: string }> {
   return forSchool(schoolId, async (tx) => {
     const [attempt] = await tx.select().from(schema.attempts)
@@ -299,6 +321,7 @@ export async function submitAttempt(
         submittedAt: new Date(),
         score: String(score),
         maxScore: String(maxScore),
+        ...(forcedReason ? { submitReason: `forced: ${forcedReason.slice(0, 80)}` } : {}),
       })
       .where(eq(schema.attempts.id, attemptId));
 
