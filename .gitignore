@@ -8,3 +8,4 @@ next-env.d.ts
 /backups
 __pycache__/
 .qa-samples/
+baseline-logs/

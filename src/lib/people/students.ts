@@ -183,6 +183,9 @@ export type RegisteredStudent = {
   initialPassword: string;
   name: string;
   pendingApproval: boolean;
+  // The one-time guardian activation token, when intake included a guardian.
+  // Shown to the office once — the parent redeems it themselves.
+  guardianInviteToken: string | null;
 };
 
 function validateNames(firstName: string, lastName: string): void {
@@ -272,8 +275,10 @@ export async function registerStudent(actor: Actor, input: RegisterStudentInput)
 
     // Optional guardian in the same step: the office has the parent's details
     // in front of them at intake, and will not come back later.
+    let guardianInviteToken: string | null = null;
     if (input.guardian && (input.guardian.email?.trim() || input.guardian.phone?.trim())) {
-      await linkGuardianWithinTx(tx, actor, studentId, input.guardian);
+      const link = await linkGuardianWithinTx(tx, actor, studentId, input.guardian);
+      guardianInviteToken = link.inviteToken;
     }
 
     await tx.insert(schema.auditLog).values({
@@ -298,6 +303,7 @@ export async function registerStudent(actor: Actor, input: RegisterStudentInput)
       admissionNumber,
       loginId,
       initialPassword,
+      guardianInviteToken,
       name: `${firstName} ${lastName}`,
       pendingApproval,
     };
@@ -638,7 +644,7 @@ export type GuardianLinkInput = {
   canViewResults?: boolean;
 };
 
-export type GuardianLinkResult = { guardianId: number; created: boolean; inviteToken: string };
+export type GuardianLinkResult = { guardianId: number; created: boolean; inviteToken: string | null };
 
 function newInviteToken(): string {
   // Unguessable one-time token; shown to the office once, redeemable later.
@@ -682,26 +688,34 @@ async function linkGuardianWithinTx(
   // Deduplicate: same email (or phone when there is no email) is the same
   // person — the link is added, the guardian is not duplicated.
   const existing = email
-    ? await tx.select({ id: schema.guardians.id, inviteToken: schema.guardians.inviteToken }).from(schema.guardians)
+    ? await tx.select({ id: schema.guardians.id, inviteToken: schema.guardians.inviteToken, userId: schema.guardians.userId }).from(schema.guardians)
       .where(and(eq(schema.guardians.schoolId, actor.schoolId), eq(schema.guardians.email, email))).limit(1)
     : phone
-      ? await tx.select({ id: schema.guardians.id, inviteToken: schema.guardians.inviteToken }).from(schema.guardians)
+      ? await tx.select({ id: schema.guardians.id, inviteToken: schema.guardians.inviteToken, userId: schema.guardians.userId }).from(schema.guardians)
         .where(and(eq(schema.guardians.schoolId, actor.schoolId), eq(schema.guardians.phone, phone))).limit(1)
       : [];
 
   let guardianId: number;
   let created = false;
-  let inviteToken: string;
+  let inviteToken: string | null;
 
   const match = existing[0];
   if (match) {
     guardianId = Number(match.id);
-    // A returning guardian does not need a second invite; the existing one is
-    // re-issued so the office can hand it over again.
-    inviteToken = match.inviteToken || newInviteToken();
-    if (!match.inviteToken) {
-      await tx.update(schema.guardians).set({ inviteToken, inviteStatus: 'pending' })
-        .where(eq(schema.guardians.id, guardianId));
+    if (match.userId) {
+      // The parent already activated their account. Re-issuing a token would
+      // hand the office a dead link: redemption refuses guardians that
+      // already have a user. No invitation is needed — the login works.
+      inviteToken = null;
+    } else {
+      // A returning guardian who never activated: the pending invite is
+      // re-issued (or regenerated if it was cleared) so the office can hand
+      // it over again.
+      inviteToken = match.inviteToken || newInviteToken();
+      if (!match.inviteToken) {
+        await tx.update(schema.guardians).set({ inviteToken, inviteStatus: 'pending' })
+          .where(eq(schema.guardians.id, guardianId));
+      }
     }
   } else {
     inviteToken = newInviteToken();

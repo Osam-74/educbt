@@ -281,6 +281,9 @@ button[type='submit']:disabled { opacity: .6; cursor: default; }
    register as the rest of the portal: forms on cards, small in-row actions,
    one-off credentials highlighted once and then gone. */
 .stack { display: grid; gap: 22px; }
+/* An implicit auto track grows to the item's max-content and can blow past
+   the viewport; minmax(0, 1fr) keeps every card inside the page column. */
+.stack > * { min-width: 0; }
 
 .form-grid { display: grid; gap: 14px 18px; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); border: 0; margin: 0 0 16px; padding: 0; }
 .form-grid legend { display: none; }
@@ -322,3 +325,12 @@ fieldset > legend { font-size: 13px; font-weight: 600; color: var(--muted); marg
 
 .row-actions { white-space: nowrap; }
 .row-actions form { display: inline-block; }
+
+/* Wide lists scroll within their card on phones instead of stretching the
+   page — every .tbl in the portal inherits this at once. */
+@media (max-width: 720px) {
+  .tbl { display: block; overflow-x: auto; }
+  /* A fieldset cannot shrink below its min-content width, so the register
+     forms stay one column on phones instead of stretching the page. */
+  .form-grid { grid-template-columns: 1fr; }
+}

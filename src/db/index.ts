@@ -136,13 +136,21 @@ export async function asPlatformAdmin<T>(
  * tenant exists. Nothing else may use it.
  */
 export async function resolveSchoolByHost(host: string) {
-  const rows = await db.execute<{ id: number; name: string; status: string }>(
+  // postgres.js returns int8 (school.id) as a STRING to preserve precision;
+  // every consumer expects a number, so coerce once here at the boundary.
+  const rows = await db.execute<{ id: number | string; name: string; status: string }>(
     dsql`SELECT id, name, status FROM schools
          WHERE custom_domain = ${host} OR subdomain = ${host.split('.')[0] ?? ''}
          LIMIT 1`,
   );
+  const row = rows[0];
+  if (!row) return null;
 
-  return rows[0] ?? null;
+  const id = Number(row.id);
+  if (!Number.isInteger(id) || id <= 0) {
+    throw new Error(`resolveSchoolByHost got a non-numeric school id: ${row.id}`);
+  }
+  return { id, name: row.name, status: row.status };
 }
 
 export { db, client };

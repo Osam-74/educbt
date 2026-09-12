@@ -53,6 +53,9 @@ export async function studentAction(_previous: ActionState, form: FormData): Pro
         ok: true,
         message: `${result.name} enrolled as ${result.admissionNumber} (student ID ${result.studentId}).${pendingNote}`,
         credentials: `Login ${result.loginId} — initial password ${result.initialPassword} (their surname). They must change it at first sign-in.`,
+        invite: result.guardianInviteToken
+          ? `Invitation: /guardian/accept?t=${result.guardianInviteToken}`
+          : undefined,
       };
     }
 
@@ -119,8 +122,10 @@ export async function studentAction(_previous: ActionState, form: FormData): Pro
         ok: true,
         message: result.created
           ? 'Guardian created and linked. Give them the invitation below — they choose their own password with it.'
-          : 'Existing guardian linked to this student (deduplicated by email or phone).',
-        invite: result.created ? `Invitation: /guardian/accept?t=${result.inviteToken}` : undefined,
+          : result.inviteToken
+            ? 'Existing guardian linked (deduplicated by email or phone). Their pending invitation is re-issued below.'
+            : 'Existing guardian linked (deduplicated by email or phone). They already have an account — no invitation is needed.',
+        invite: result.inviteToken ? `Invitation: /guardian/accept?t=${result.inviteToken}` : undefined,
       };
     }
 
