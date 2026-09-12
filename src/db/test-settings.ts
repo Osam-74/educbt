@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { createHash, randomUUID } from 'node:crypto';
 import postgres from 'postgres';
 import { drizzle } from 'drizzle-orm/postgres-js';
-import { and, eq, inArray } from 'drizzle-orm';
+import { and, asc, eq, inArray } from 'drizzle-orm';
 import { mkdir } from 'node:fs/promises';
 import { defaultConfig } from '@/lib/settings/validation';
 import type { Actor } from '@/lib/session';
@@ -36,7 +36,7 @@ async function main() {
       actors[user.role] = { schoolId, userId: user.id, role: user.role, loginId: user.loginId, staffId: staff?.id ?? null, studentId: null };
     }
     const session = await service.createSession(actors.principal!, { title: '2026/2027', startsOn: '2026-09-01', endsOn: '2027-07-31', makeCurrent: true });
-    const terms = await db.select().from(schema.terms).where(eq(schema.terms.sessionId, session.id));
+    const terms = await db.select().from(schema.terms).where(eq(schema.terms.sessionId, session.id)).orderBy(asc(schema.terms.position));
     const [level] = await db.insert(schema.classLevels).values({ schoolId, name: 'JSS1' }).returning();
     const [classroom] = await db.insert(schema.classes).values({ schoolId, levelId: level!.id, arm: 'A', displayName: 'JSS1 A' }).returning();
     await db.insert(schema.staffAssignments).values({ schoolId, staffId: actors.teacher!.staffId!, classId: classroom!.id, assignmentType: 'class_teacher' });
@@ -111,7 +111,7 @@ async function main() {
       const browserModule = process.env.SETTINGS_BROWSER_MODULE;
       assert(browserModule, 'Settings HTTP checks require browser QA runtime; do not silently skip');
       const { chromium } = await import(browserModule);
-      const browser = await chromium.launch({ headless: true });
+      const browser = await chromium.launch({ headless: true, ...(process.env.SETTINGS_BROWSER_EXECUTABLE ? { executablePath: process.env.SETTINGS_BROWSER_EXECUTABLE } : {}) });
       try {
         await mkdir('baseline-logs', { recursive: true });
         const context = await browser.newContext({ viewport: { width: 1440, height: 1050 } });
