@@ -37,6 +37,7 @@
     "test:backup": "tsx src/db/test-backup.ts",
     "test:platform": "tsx src/db/test-platform.ts",
     "test:dashboards": "tsx src/db/test-dashboards.ts",
+    "test:timetable": "tsx src/db/test-timetable.ts",
     "bootstrap:platform-admin": "tsx scripts/bootstrap-platform-admin.ts"
   },
   "dependencies": {

@@ -93,6 +93,13 @@
       "tag": "0012_guardian-invite-photos",
       "breakpoints": true
     },
-    { "idx": 13, "version": "7", "when": 1789141400000, "tag": "0013_school_settings", "breakpoints": true }
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1789217369520,
+      "tag": "0013_timetable-invigilation",
+      "breakpoints": true
+    },
+    { "idx": 14, "version": "7", "when": 1789217400000, "tag": "0014_school_settings", "breakpoints": true }
   ]
 }

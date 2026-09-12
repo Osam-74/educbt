@@ -58,6 +58,28 @@ export const examPapers = pgTable('exam_papers', {
   scheduledAt: timestamp('scheduled_at', { withTimezone: true }),
   durationSeconds: integer('duration_seconds').default(3600).notNull(),
 
+  /**
+   * Set by the scheduling step: scheduledAt + durationSeconds. The timetable
+   * and the invigilation clash checks read this window rather than
+   * recomputing it, so a reschedule can never leave a stale end time behind
+   * (legacy papers.closes_at).
+   */
+  closesAt: timestamp('closes_at', { withTimezone: true }),
+
+  /** Where the paper is sat — legacy papers.venue. */
+  venue: varchar('venue', { length: 191 }),
+
+  /**
+   * Access-code gate (legacy papers.requires_access_code / access_code).
+   * A candidate cannot start without the code read out by the invigilator.
+   * `accessCode` is the current code; regenerating invalidates the old one
+   * immediately. `codeReleasedAt/By` records the release for the audit trail.
+   */
+  requiresAccessCode: boolean('requires_access_code').default(false).notNull(),
+  accessCode: varchar('access_code', { length: 16 }),
+  codeReleasedAt: timestamp('code_released_at', { withTimezone: true }),
+  codeReleasedBy: bigint('code_released_by', { mode: 'number' }),
+
   // How many of the pooled questions each candidate answers.
   questionCount: integer('question_count').default(0).notNull(),
 
@@ -112,6 +134,9 @@ export const attempts = pgTable('attempts', {
   startedAt: timestamp('started_at', { withTimezone: true }).defaultNow().notNull(),
   expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
   submittedAt: timestamp('submitted_at', { withTimezone: true }),
+
+  /** Why the attempt closed — 'self', 'auto_expired', 'forced:<reason>'. */
+  submitReason: varchar('submit_reason', { length: 100 }),
 
   // Granted by an invigilator, in seconds, and added to expiresAt.
   extensionSeconds: integer('extension_seconds').default(0).notNull(),

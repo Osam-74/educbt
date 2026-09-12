@@ -51,3 +51,14 @@ does not grant these capabilities. Preserve those boundaries with server checks.
 All meaningful writes require transactionally recorded before/after audit data,
 active school/user authorization, app-role access and forced tenant RLS. No
 production migration or automatic merge is part of this feature task.
+
+## Integration with the accepted timetable baseline
+
+Accepted main `90ade73` adds `0013_timetable-invigilation`. School Settings now
+follows it as `0014_school_settings` (journal index 14), with a later timestamp.
+The settings migration's SQL is unchanged. The shared sidebar retains Settings,
+Timetable, Invigilation, Live sessions and the parent exam-timetable link.
+The combined Linux baseline includes people, dashboards, timetable, settings
+validation and settings browser checks, alongside the existing suites and both
+supported print environments. No timetable/invigilation or management service
+implementation is changed by this integration.
