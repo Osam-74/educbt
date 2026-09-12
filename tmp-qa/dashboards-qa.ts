@@ -118,6 +118,73 @@ async function main() {
   await overflow(mobile, 'parent mobile');
   await shot(mobile, 'dash-parent-mobile');
 
+
+  // ---- Sidebar crawl -----------------------------------------------------
+  // Every visible sidebar link must resolve with a 200, be a real route,
+  // and never hit an authorization refusal for the role that can see it.
+  const FORBIDDEN: Record<string, string[]> = {
+    principal: [],
+    vice_principal: [],
+    teacher: ['/portal/staff', '/portal/results', '/portal/review', '/portal/broadsheet', '/portal/exams', '/portal/activity', '/portal/children'],
+    parent: ['/portal/staff', '/portal/students', '/portal/classes', '/portal/subjects', '/portal/results', '/portal/review', '/portal/broadsheet', '/portal/ca', '/portal/exams', '/portal/questions', '/portal/marking', '/portal/activity'],
+  };
+  const sidebarLinks = async (page: any): Promise<string[]> => {
+    const hrefs: string[] = [];
+    const buttons = await page.$$('aside.ps-sidebar .ps-areas button');
+    if (buttons.length) {
+      for (const b of buttons) {
+        await b.click();
+        hrefs.push(...await page.$$eval('aside.ps-sidebar nav a', els => els.map(e => e.getAttribute('href'))));
+      }
+    } else {
+      hrefs.push(...await page.$$eval('aside.ps-sidebar nav a', els => els.map(e => e.getAttribute('href'))));
+    }
+    hrefs.push(...await page.$$eval('.ps-profile a', els => els.map(e => e.getAttribute('href'))));
+    return [...new Set(hrefs.filter(Boolean) as string[])];
+  };
+  for (const [loginId, role] of [['PRINCIPAL', 'principal'], ['VPREVIEW', 'vice_principal'], ['STF001', 'teacher'], ['PAREVIEW', 'parent']] as const) {
+    page = await fresh();
+    await signIn(page, loginId, PW);
+    await page.waitForSelector('.ps-sidebar');
+    const links = await sidebarLinks(page);
+    const exposed = links.filter(h => FORBIDDEN[role].includes(h));
+    if (exposed.length) fail(`${role} sidebar exposure`, `shows ${exposed.join(', ')}`);
+    else ok(`${role} sidebar exposes nothing forbidden`);
+    for (const href of links) {
+      const res = await page.goto(`${BASE}${href}`);
+      if (!res || res.status() !== 200) fail(`${role} crawl ${href}`, `status ${res?.status() ?? 'no response'}`);
+      else {
+        const alert = await page.$$eval('[role="alert"]', els => els.map(e => e.textContent).join(' '));
+        if (/do not have access/i.test(alert)) fail(`${role} crawl ${href}`, 'authorization refusal on a visible link');
+        else ok(`${role} crawl ${href}`);
+      }
+    }
+  }
+
+  // ---- Mobile drawer interaction -------------------------------------------
+  mobile = await freshMobile();
+  await signIn(mobile, 'STF001', PW);
+  await mobile.waitForSelector('.ps-burger');
+  await mobile.click('.ps-burger');
+  try { await mobile.waitForSelector('.ps-drawer[open]', { timeout: 3000 }); ok('drawer opens'); }
+  catch { fail('drawer opens', 'dialog never opened'); }
+  try { await mobile.waitForSelector('.ps-drawer nav a', { timeout: 3000 }); ok('drawer shows navigation'); }
+  catch { fail('drawer shows navigation', 'no links visible in the open drawer'); }
+  await mobile.click('.ps-drawer nav a[href="/portal/classes"]');
+  await mobile.waitForFunction(() => location.pathname === '/portal/classes', null, { timeout: 10000 });
+  ok('drawer navigates via a menu item');
+  try { await mobile.waitForFunction(() => !document.querySelector('.ps-drawer[open]'), null, { timeout: 3000 }); ok('drawer closes after navigation'); }
+  catch { fail('drawer closes after navigation', 'dialog still open after navigating'); }
+  await mobile.click('.ps-burger');
+  try { await mobile.waitForSelector('.ps-drawer[open]', { timeout: 3000 }); ok('drawer reopens'); }
+  catch { fail('drawer reopens', 'dialog did not reopen'); }
+  await mobile.keyboard.press('Escape');
+  try { await mobile.waitForFunction(() => !document.querySelector('.ps-drawer[open]'), null, { timeout: 3000 }); ok('Escape closes the drawer'); }
+  catch { fail('Escape closes the drawer', 'dialog still open after Escape'); }
+  const focusLabel = await mobile.evaluate(() => document.activeElement?.getAttribute('aria-label') ?? document.activeElement?.tagName);
+  if (focusLabel === 'Open navigation') ok('focus returns to the open-navigation button');
+  else fail('focus returns to the open-navigation button', `focus landed on ${focusLabel}`);
+
   await browser.close();
   if (failures.length) {
     console.log(`\n${passes} PASS / ${failures.length} FAIL`);
