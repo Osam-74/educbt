@@ -536,3 +536,68 @@
     box-shadow: 0 2px 12px rgba(0, 0, 0, 0.15);
   }
 }
+
+/* ── Academic transcript (issued document) ───────────────────────────────── */
+
+/* Single-line OFFICIAL COPY watermark: fixed so it repeats on every printed
+   page, slanted across the sheet, faint enough to never obscure content. */
+.doc__wm-official {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  z-index: 0;
+}
+.doc__wm-official span {
+  font-size: 42pt;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  color: rgba(0, 0, 0, 0.10);
+  transform: rotate(-24deg);
+  white-space: nowrap;
+}
+
+.doc__session { page-break-inside: auto; }
+.doc__session > table { page-break-inside: auto; }
+
+.doc__summary {
+  display: flex;
+  gap: 5mm;
+  margin: 5mm 0;
+}
+.doc__stat {
+  flex: 1;
+  border: 0.4mm solid #bbb;
+  border-radius: 2mm;
+  padding: 3mm 4mm;
+  text-align: center;
+  page-break-inside: avoid;
+}
+.doc__stat b { display: block; font-size: 13pt; }
+.doc__stat span { font-size: 8pt; color: #555; text-transform: uppercase; letter-spacing: 0.05em; }
+
+.doc__key {
+  font-size: 8.5pt;
+  color: #444;
+  line-height: 1.5;
+  max-width: 100%;
+}
+
+.doc__qr {
+  display: flex;
+  align-items: center;
+  gap: 4mm;
+  margin: 4mm 0;
+  font-size: 9pt;
+  color: #444;
+}
+
+.doc__serial {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6mm;
+  margin: 3mm 0;
+  font-size: 9.5pt;
+}

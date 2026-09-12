@@ -341,3 +341,30 @@ CREATE POLICY tenant_isolation ON portal_uploads
 DROP POLICY IF EXISTS public_token_read ON portal_uploads;
 CREATE POLICY public_token_read ON portal_uploads
   FOR SELECT USING (true);
+
+-- ── Promotion and transcripts: tenant-isolated like every other school record.
+--    The public transcript verification route reads by serial OUTSIDE RLS (the
+--    serial is an unguessable capability, the same model as portal_uploads).
+ALTER TABLE promotion_batches ENABLE ROW LEVEL SECURITY;
+ALTER TABLE promotion_batches FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON promotion_batches;
+CREATE POLICY tenant_isolation ON promotion_batches
+  USING (school_id = current_school_id() OR is_platform_admin())
+  WITH CHECK (school_id = current_school_id() OR is_platform_admin());
+
+ALTER TABLE promotion_decisions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE promotion_decisions FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON promotion_decisions;
+CREATE POLICY tenant_isolation ON promotion_decisions
+  USING (school_id = current_school_id() OR is_platform_admin())
+  WITH CHECK (school_id = current_school_id() OR is_platform_admin());
+
+ALTER TABLE transcripts ENABLE ROW LEVEL SECURITY;
+ALTER TABLE transcripts FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON transcripts;
+CREATE POLICY tenant_isolation ON transcripts
+  USING (school_id = current_school_id() OR is_platform_admin())
+  WITH CHECK (school_id = current_school_id() OR is_platform_admin());
+DROP POLICY IF EXISTS public_serial_read ON transcripts;
+CREATE POLICY public_serial_read ON transcripts
+  FOR SELECT USING (true);
