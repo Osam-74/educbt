@@ -123,13 +123,13 @@ export default async function TranscriptDocument({
             </div>
           ))}
 
-          <div className="doc__summary">
-            <div className="doc__stat"><b>{compiled.termsRecorded}</b><span>Terms Recorded</span></div>
-            <div className="doc__stat"><b>{num(compiled.cumulativeAverage)}%</b><span>Cumulative Average</span></div>
-            <div className="doc__stat"><b>{compiled.sessions.length}</b><span>Sessions</span></div>
+          <div className="doc__tr-summary">
+            <div className="doc__tr-stat"><b>{compiled.termsRecorded}</b><span>Terms Recorded</span></div>
+            <div className="doc__tr-stat"><b>{num(compiled.cumulativeAverage)}%</b><span>Cumulative Average</span></div>
+            <div className="doc__tr-stat"><b>{compiled.sessions.length}</b><span>Sessions</span></div>
           </div>
 
-          <p className="doc__key" style={{ marginTop: '6mm' }}>
+          <p className="doc__tr-key" style={{ marginTop: '6mm' }}>
             This transcript is a complete record of the internal academic results of the named
             student at {school?.name ?? 'this school'}. It is not a substitute for the West African
             Senior School Certificate (WASSCE) or NECO result, which reports a separate external
