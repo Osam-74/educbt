@@ -39,7 +39,8 @@
     "test:dashboards": "tsx src/db/test-dashboards.ts",
     "test:timetable": "tsx src/db/test-timetable.ts",
     "test:promotion": "tsx src/db/test-promotion.ts",
-    "bootstrap:platform-admin": "tsx scripts/bootstrap-platform-admin.ts"
+    "bootstrap:platform-admin": "tsx scripts/bootstrap-platform-admin.ts",
+    "test:comms": "tsx src/db/test-comms.ts"
   },
   "dependencies": {
     "@google-cloud/storage": "^7.22.0",

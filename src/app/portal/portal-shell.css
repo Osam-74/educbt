@@ -42,3 +42,8 @@ a.sd-stat:hover { border-color:#96bc9e; }.sd-icon { width:42px; height:42px; dis
 @media(max-width:900px) { .ps-sidebar { display:none; }.ps-workspace { margin-left:0; }.ps-burger { display:grid; place-items:center; width:40px; height:40px; border:1px solid #456449; border-radius:8px; background:transparent; color:var(--ps-lime); flex-shrink:0; cursor:pointer; }.ps-topbar { padding:12px 18px; gap:12px; }.ps-context { font-size:10px; max-width:135px; }.portal-shell .portal__body { padding:28px 20px; }.sd-heading { margin-bottom:24px; } }
 @media(max-width:560px) { .sd-heading { flex-direction:column; align-items:flex-start; gap:16px; }.sd-heading h1 { font-size:26px; }.sd-stats { grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; margin-bottom:22px; }.sd-stat { padding:18px; }.sd-stat strong { font-size:27px; }.sd-calendar strong { font-size:18px; }.sd-stat>span:last-child { font-size:10px; }.ps-topbar strong { font-size:12px; }.ps-context { display:none; }.sd-panel header { padding:18px; }.sd-panel h2 { font-size:14px; }.sd-panel td,.sd-panel th { padding:14px; }.portal-shell .portal__body { padding:26px 16px; } }
 @media print { .ps-sidebar,.ps-topbar,.ps-drawer,.ps-skip { display:none!important; }.ps-workspace { margin:0; }.portal-shell .portal__body { padding:0; max-width:none; } }
+
+/* Unread bell in the topbar. */
+.ps-bell { margin-left: auto; display: inline-flex; align-items: center; position: relative; color: var(--ps-lime); }
+.ps-bell:hover { opacity: 0.8; }
+.ps-badge { position: absolute; top: -7px; right: -10px; min-width: 18px; text-align: center; background: #d54f2f; color: #fff; font-size: 11px; font-weight: 700; border-radius: 999px; padding: 1px 5px; }
