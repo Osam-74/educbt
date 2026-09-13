@@ -4,6 +4,7 @@ import { eq } from 'drizzle-orm';
 import PortalShell from './PortalShell';
 import './portal-shell.css';
 import { portalCalendar } from '@/lib/portal-dashboard';
+import { unreadCount } from '@/lib/comms/notifications';
 import { and } from 'drizzle-orm';
 import { signOut } from '@/lib/auth';
 
@@ -21,7 +22,7 @@ export default async function PortalLayout({ children }: { children: React.React
 
   // The school comes from the SESSION tenant, and the query runs inside
   // forSchool — so even this read is bounded by Row-Level Security.
-  const { school, displayName } = await forSchool(actor.schoolId, async (tx) => {
+  const { school, displayName, unread } = await forSchool(actor.schoolId, async (tx) => {
     const [s] = await tx.select({ name: schema.schools.name })
       .from(schema.schools).where(eq(schema.schools.id, actor.schoolId)).limit(1);
 
@@ -39,7 +40,8 @@ export default async function PortalLayout({ children }: { children: React.React
       if (sd) name = `${sd.f} ${sd.l}`;
     }
 
-    return { school: s, displayName: name };
+    const unread = await unreadCount(tx, actor.schoolId, actor.userId);
+    return { school: s, displayName: name, unread };
   });
 
   async function endSession() {
@@ -49,7 +51,7 @@ export default async function PortalLayout({ children }: { children: React.React
 
   const calendar = await portalCalendar(actor);
   const assignments = actor.staffId ? await forSchool(actor.schoolId, tx => tx.select({ type: schema.staffAssignments.assignmentType }).from(schema.staffAssignments).where(and(eq(schema.staffAssignments.staffId, actor.staffId!), eq(schema.staffAssignments.status, 'active')))) : [];
-  return <PortalShell school={school?.name ?? 'School'} displayName={displayName} role={actor.role}
+  return <PortalShell school={school?.name ?? 'School'} displayName={displayName} role={actor.role} unread={unread}
     calendar={`${calendar.session?.title ?? 'No current session'} · ${calendar.term?.title ?? 'No current term'}`}
     teaching={assignments.length > 0} classTeacher={assignments.some(a => a.type === 'class_teacher')} signOut={endSession}>{children}</PortalShell>;
 }

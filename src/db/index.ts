@@ -30,8 +30,9 @@ import * as attemptsSchema from './schema/attempts';
 import * as resultsSchema from './schema/results';
 import * as scoresSchema from './schema/scores';
 import * as promotionSchema from './schema/promotion';
+import * as commsSchema from './schema/comms';
 
-export const schema = { ...core, ...people, ...questionBank, ...vault, ...attemptsSchema, ...resultsSchema, ...scoresSchema, ...promotionSchema };
+export const schema = { ...core, ...people, ...questionBank, ...vault, ...attemptsSchema, ...resultsSchema, ...scoresSchema, ...promotionSchema, ...commsSchema };
 
 // The connection contract lives in ./connection — see its header for the
 // three-connection model. Production resolves to DATABASE_URL_APP only and

@@ -334,3 +334,42 @@ fieldset > legend { font-size: 13px; font-weight: 600; color: var(--muted); marg
      forms stay one column on phones instead of stretching the page. */
   .form-grid { grid-template-columns: 1fr; }
 }
+
+/* ── Communications (notifications, announcements, messages) ───────────── */
+
+.empty-state { padding: 18px 0; }
+
+/* Notifications inbox */
+.notification-list { list-style: none; margin: 12px 0 20px; padding: 0; display: grid; gap: 10px; }
+.notification { border: 1px solid var(--line); border-radius: 9px; padding: 12px 14px; background: var(--wash); }
+.notification.unread { border-left: 4px solid var(--green, #1a7f37); background: var(--white); }
+.notification > div:first-child { display: flex; justify-content: space-between; gap: 10px; align-items: baseline; flex-wrap: wrap; }
+.notification-type { font-size: 12px; color: var(--muted); white-space: nowrap; }
+.notification p { margin: 6px 0 0; }
+.notification .btn-ghost { margin-top: 10px; }
+
+.btn-ghost { background: none; border: 1px solid var(--line); color: var(--ink); cursor: pointer; border-radius: 7px; padding: 6px 12px; font-size: 13px; }
+.btn-ghost:hover { background: var(--wash); }
+
+.prefs { margin-top: 28px; }
+.prefs summary { cursor: pointer; }
+.prefs form { display: grid; gap: 8px; margin-top: 12px; }
+
+/* Announcements */
+.announcement-list { list-style: none; margin: 12px 0 28px; padding: 0; display: grid; gap: 12px; }
+.announcement { border: 1px solid var(--line); border-radius: 9px; padding: 14px 16px; }
+.announcement p { margin: 6px 0; }
+
+/* Messages */
+.thread-list { list-style: none; margin: 12px 0 20px; padding: 0; display: grid; gap: 8px; }
+.thread { border: 1px solid var(--line); border-radius: 9px; background: var(--wash); }
+.thread.active { border-color: var(--green, #1a7f37); background: var(--white); }
+.thread a { display: flex; flex-direction: column; gap: 4px; padding: 10px 14px; text-decoration: none; color: var(--ink); }
+.thread .badge, .ps-badge { display: inline-block; background: var(--green, #1a7f37); color: var(--white); font-size: 11px; font-weight: 600; border-radius: 999px; padding: 1px 8px; margin-left: 8px; }
+
+.thread-view { margin-bottom: 28px; }
+.message-list { list-style: none; margin: 12px 0 18px; padding: 0; display: grid; gap: 10px; }
+.message { border: 1px solid var(--line); border-radius: 9px; padding: 10px 14px; background: var(--wash); max-width: 72ch; }
+.message.mine { background: var(--white); border-color: var(--green, #1a7f37); }
+.message p { margin: 4px 0; }
+.message strong { display: block; }

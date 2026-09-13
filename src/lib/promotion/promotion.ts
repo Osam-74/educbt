@@ -35,6 +35,7 @@ import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { forSchool, schema, type Tx } from '@/db';
 import type { Actor } from '@/lib/session';
+import { notifyPromotionApproved } from '@/lib/comms/events';
 
 export class PromotionError extends Error {}
 const fail = (message: string): never => { throw new PromotionError(message); };
@@ -518,7 +519,12 @@ export async function commitPromotion(actor: Actor, batchId: number) {
       after: { batchId, status: 'committed', enrolled, graduated, toSessionId: batch.toSessionId },
     });
 
-    return { ok: true, enrolled, graduated };
+    // Every student the batch decided on is told their placement — inside
+    // the commit transaction, so the notice and the enrollment move together.
+    const notified = await notifyPromotionApproved(tx, actor.schoolId,
+      decisions.map(d => d.studentId));
+
+    return { ok: true, enrolled, graduated, notified };
   });
 }
 
