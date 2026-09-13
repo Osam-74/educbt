@@ -220,7 +220,7 @@ export default async function ReportCard({
           .limit(1)
       : [];
 
-    const extras = term && enrolment?.classId ? await reportExtras(tx, studentId, Number(term.sessionId), Number(term.id), enrolment.classId) : null;
+    const extras = term && enrolment?.classId ? await reportExtras(tx, actor.schoolId, studentId, Number(term.sessionId), Number(term.id), enrolment.classId) : null;
     const scaleSnapshots = await tx.select({ snapshot: schema.gradingScaleVersions.snapshot }).from(schema.gradingScaleVersions);
     return { student, school, enrolment, term, results, registered, cohort, cohortRows, cohortRegistrations, extras, scaleSnapshots,
       classTeacher: classTeacher ?? null };

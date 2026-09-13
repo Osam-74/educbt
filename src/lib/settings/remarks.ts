@@ -5,10 +5,14 @@ import { lockResultTerm } from '@/lib/ca/lock';
 import { audit, fail, ownStaff, settingsAccess } from './service';
 import { suggestedRemark } from './validation';
 
-/** Never fall back to a random teacher or choose among multiple principals. */
-export async function reportStaff(tx: Tx, classId: number) {
+/** Never fall back to a random teacher or choose among multiple principals.
+ *  School-scoped: on a multi-tenant platform every school has its own principal,
+ *  so resolving without the school filter would find several and refuse —
+ *  which would silently strip remarks and signatures from every report. */
+export async function reportStaff(tx: Tx, schoolId: number, classId: number) {
   const principals = await tx.select({ id: schema.staff.id }).from(schema.staff)
-    .innerJoin(schema.users, eq(schema.users.id, schema.staff.userId)).where(and(eq(schema.staff.role, 'principal'),
+    .innerJoin(schema.users, eq(schema.users.id, schema.staff.userId)).where(and(eq(schema.staff.schoolId, schoolId),
+      eq(schema.staff.role, 'principal'),
       eq(schema.staff.status, 'active'), eq(schema.users.status, 'active'), eq(schema.users.role, 'principal')));
   const teachers = await tx.select({ id: schema.staff.id }).from(schema.staffAssignments)
     .innerJoin(schema.staff, eq(schema.staff.id, schema.staffAssignments.staffId))
@@ -18,9 +22,9 @@ export async function reportStaff(tx: Tx, classId: number) {
   const ids = [...new Set(teachers.map(t => t.id))];
   return { principal: principals.length === 1 ? principals[0]!.id : null, class_teacher: ids.length === 1 ? ids[0]! : null };
 }
-export async function reportExtras(tx: Tx, studentId: number, sessionId: number, termId: number, classId: number) {
-  const staff = await reportStaff(tx, classId);
-  const signatures = await tx.select().from(schema.staffSignatures);
+export async function reportExtras(tx: Tx, schoolId: number, studentId: number, sessionId: number, termId: number, classId: number) {
+  const staff = await reportStaff(tx, schoolId, classId);
+  const signatures = await tx.select().from(schema.staffSignatures).where(eq(schema.staffSignatures.schoolId, schoolId));
   const remarks = await tx.select().from(schema.reportRemarks).where(and(eq(schema.reportRemarks.studentId, studentId),
     eq(schema.reportRemarks.sessionId, sessionId), eq(schema.reportRemarks.termId, termId)));
   return { signatures: { principal: signatures.find(s => s.role === 'principal' && s.staffId === staff.principal) ?? null,
@@ -32,8 +36,8 @@ export async function reportExtras(tx: Tx, studentId: number, sessionId: number,
  */
 export async function snapshotRemarks(tx: Tx, actor: Actor, scope: { classId: number; sessionId: number; termId: number }, studentIds: number[]) {
   if (!studentIds.length) return;
-  const staff = await reportStaff(tx, scope.classId);
-  const ranges = await tx.select().from(schema.staffRemarkRanges);
+  const staff = await reportStaff(tx, actor.schoolId, scope.classId);
+  const ranges = await tx.select().from(schema.staffRemarkRanges).where(eq(schema.staffRemarkRanges.schoolId, actor.schoolId));
   const rows = await tx.select().from(schema.subjectResults).where(and(inArray(schema.subjectResults.studentId, studentIds),
     eq(schema.subjectResults.sessionId, scope.sessionId), eq(schema.subjectResults.termId, scope.termId)));
   const registrations = await tx.select().from(schema.studentSubjects).where(and(inArray(schema.studentSubjects.studentId, studentIds), eq(schema.studentSubjects.sessionId, scope.sessionId)));
