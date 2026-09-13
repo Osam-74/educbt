@@ -1,4 +1,4 @@
-import { rank, WAEC_NINE_POINT, type RankingPolicy } from '@/domain/academic';
+import { rank, WAEC_NINE_POINT, type RankingPolicy, type GradingScale } from '@/domain/academic';
 
 type Row = { studentId: number; subjectId: number; total: string; examTotal: string; complete: boolean };
 type Registration = { studentId: number; subjectId: number };
@@ -26,8 +26,15 @@ export function reportAverage(totals: number[]) {
 }
 
 /** Only a known immutable scale version can explain historical grades. */
-export function reportGradingKey(rows: { scaleId: string; scaleVersion: number }[]) {
+export function reportGradingKey(rows: { scaleId: string; scaleVersion: number }[], snapshots: GradingScale[] = []) {
   if (!rows.length) return 'No compiled grading scale available.';
+  const versions = [...new Set(rows.map(r => r.scaleId + ':' + r.scaleVersion))];
+  const known = versions.map(key => snapshots.find(s => s.id + ':' + s.version === key));
+  if (known.length && known.every(Boolean)) return known.map(scale => {
+    const bands = [...scale!.bands].sort((a, b) => b.min - a.min);
+    return scale!.name + ' v' + scale!.version + ': ' + bands.map((band, i) =>
+      `${band.grade}: ${band.min}–${i === 0 ? '100' : '<' + bands[i - 1]!.min} (${band.remark})`).join(' | ');
+  }).join(' / ');
   if (!rows.every(r => r.scaleId === WAEC_NINE_POINT.id && r.scaleVersion === WAEC_NINE_POINT.version)) {
     const versions = [...new Set(rows.map(r => `${r.scaleId || 'unspecified'} v${r.scaleVersion}`))].join(', ');
     return `Historical grading key unavailable (${versions}). Grades are shown as compiled.`;

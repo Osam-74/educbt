@@ -325,6 +325,33 @@ REVOKE UPDATE, DELETE ON audit_log FROM PUBLIC;
 -- Protected instead by an unguessable primary key and by expiry.
 ALTER TABLE sessions DISABLE ROW LEVEL SECURITY;
 
+-- School configuration: normal tenant records and immutable grade versions.
+ALTER TABLE staff_signatures ENABLE ROW LEVEL SECURITY;
+ALTER TABLE staff_signatures FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON staff_signatures;
+CREATE POLICY tenant_isolation ON staff_signatures
+ USING (school_id = current_school_id() OR is_platform_admin())
+ WITH CHECK (school_id = current_school_id() OR is_platform_admin());
+ALTER TABLE staff_remark_ranges ENABLE ROW LEVEL SECURITY;
+ALTER TABLE staff_remark_ranges FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON staff_remark_ranges;
+CREATE POLICY tenant_isolation ON staff_remark_ranges
+ USING (school_id = current_school_id() OR is_platform_admin())
+ WITH CHECK (school_id = current_school_id() OR is_platform_admin());
+ALTER TABLE report_remarks ENABLE ROW LEVEL SECURITY;
+ALTER TABLE report_remarks FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON report_remarks;
+CREATE POLICY tenant_isolation ON report_remarks
+ USING (school_id = current_school_id() OR is_platform_admin())
+ WITH CHECK (school_id = current_school_id() OR is_platform_admin());
+ALTER TABLE grading_scale_versions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE grading_scale_versions FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS grading_read ON grading_scale_versions;
+CREATE POLICY grading_read ON grading_scale_versions FOR SELECT
+ USING (school_id = current_school_id() OR is_platform_admin());
+DROP POLICY IF EXISTS grading_insert ON grading_scale_versions;
+CREATE POLICY grading_insert ON grading_scale_versions FOR INSERT
+ WITH CHECK (school_id = current_school_id() OR is_platform_admin());
 -- ── portal_uploads: passport photographs, tenant-isolated like every other
 --    school record. Reads happen through the public token route (outside RLS,
 --    capability-by-token), so only the write side needs the standard policy.

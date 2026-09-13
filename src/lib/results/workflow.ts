@@ -4,6 +4,7 @@ import { forSchool, schema, type Tx } from '@/db';
 import type { Actor } from '@/lib/session';
 import { computeTotal, gradeFor, rank, canTransition, isEditable, requiresReason, type ResultState } from '@/domain/academic';
 import { lockResultTerm } from '@/lib/ca/lock';
+import { snapshotRemarks } from '@/lib/settings/remarks';
 import { canManageResults, resultConfig, resultScopeSchema, resultStateSchema, type ResultScope } from './config';
 
 export class ResultError extends Error {}
@@ -149,6 +150,7 @@ export async function compileClassResults(actor: Actor, scope: ResultScope, only
     const stale = data.results.filter(r => (!onlySubject || r.subjectId === onlySubject)
       && !rows.some(row => row.subjectId === r.subjectId && row.studentId === r.studentId));
     if (stale.length) await tx.delete(schema.subjectResults).where(inArray(schema.subjectResults.id, stale.map(r => r.id)));
+    await snapshotRemarks(tx, actor, scope, data.students.map(s => s.id));
     await tx.insert(schema.auditLog).values({ schoolId: actor.schoolId, actorUserId: actor.userId, actorRole: actor.role,
       action: 'results.compiled', entityType: 'subject_results',
       before: { states: [...new Set(data.results.map(r => r.state))], count: data.results.length },
