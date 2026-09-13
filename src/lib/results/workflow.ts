@@ -159,6 +159,8 @@ export async function compileClassResults(actor: Actor, scope: ResultScope, only
   });
 }
 
+import { notifyResultsPublished } from '@/lib/comms/events';
+
 export async function transitionClassResults(actor: Actor, scope: ResultScope, to: ResultState, reason = '') {
   return forSchool(actor.schoolId, async tx => {
     await lockResultTerm(tx, actor.schoolId, scope.sessionId, scope.termId);
@@ -190,6 +192,10 @@ export async function transitionClassResults(actor: Actor, scope: ResultScope, t
     await tx.insert(schema.auditLog).values({ schoolId: actor.schoolId, actorUserId: actor.userId, actorRole: actor.role,
       action: `results.${to}`, entityType: 'subject_results', before: { ...scope, state: from, count: data.results.length },
       after: { ...scope, state: to, count: data.results.length }, reason: reason.trim() || null });
-    return { ok: true, moved: data.results.length };
+    // Publication tells every affected student and every guardian who may
+    // see results — in the same transaction, so no notice without the work.
+    let notified = { students: 0, guardians: 0 };
+    if (to === 'published') notified = await notifyResultsPublished(tx, actor.schoolId, scope.classId);
+    return { ok: true, moved: data.results.length, notified };
   });
 }

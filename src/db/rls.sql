@@ -368,3 +368,84 @@ CREATE POLICY tenant_isolation ON portal_uploads
 DROP POLICY IF EXISTS public_token_read ON portal_uploads;
 CREATE POLICY public_token_read ON portal_uploads
   FOR SELECT USING (true);
+
+-- ── Promotion and transcripts: tenant-isolated like every other school record.
+--    The public transcript verification route reads by serial OUTSIDE RLS (the
+--    serial is an unguessable capability, the same model as portal_uploads).
+ALTER TABLE promotion_batches ENABLE ROW LEVEL SECURITY;
+ALTER TABLE promotion_batches FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON promotion_batches;
+CREATE POLICY tenant_isolation ON promotion_batches
+  USING (school_id = current_school_id() OR is_platform_admin())
+  WITH CHECK (school_id = current_school_id() OR is_platform_admin());
+
+ALTER TABLE promotion_decisions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE promotion_decisions FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON promotion_decisions;
+CREATE POLICY tenant_isolation ON promotion_decisions
+  USING (school_id = current_school_id() OR is_platform_admin())
+  WITH CHECK (school_id = current_school_id() OR is_platform_admin());
+
+ALTER TABLE transcripts ENABLE ROW LEVEL SECURITY;
+ALTER TABLE transcripts FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON transcripts;
+CREATE POLICY tenant_isolation ON transcripts
+  USING (school_id = current_school_id() OR is_platform_admin())
+  WITH CHECK (school_id = current_school_id() OR is_platform_admin());
+DROP POLICY IF EXISTS public_serial_read ON transcripts;
+CREATE POLICY public_serial_read ON transcripts
+  FOR SELECT USING (true);
+
+-- ── Communications: tenant-isolated like every other school record.
+--    Notifications, prefs, announcements, threads and the email queue all
+--    carry school_id; user scoping (whose inbox, whose thread) is enforced
+--    by the service layer with the session user, the same contract as the
+--    people and results modules.
+ALTER TABLE notifications ENABLE ROW LEVEL SECURITY;
+ALTER TABLE notifications FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON notifications;
+CREATE POLICY tenant_isolation ON notifications
+  USING (school_id = current_school_id() OR is_platform_admin())
+  WITH CHECK (school_id = current_school_id() OR is_platform_admin());
+
+ALTER TABLE notification_prefs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE notification_prefs FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON notification_prefs;
+CREATE POLICY tenant_isolation ON notification_prefs
+  USING (school_id = current_school_id() OR is_platform_admin())
+  WITH CHECK (school_id = current_school_id() OR is_platform_admin());
+
+ALTER TABLE announcements ENABLE ROW LEVEL SECURITY;
+ALTER TABLE announcements FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON announcements;
+CREATE POLICY tenant_isolation ON announcements
+  USING (school_id = current_school_id() OR is_platform_admin())
+  WITH CHECK (school_id = current_school_id() OR is_platform_admin());
+
+ALTER TABLE message_threads ENABLE ROW LEVEL SECURITY;
+ALTER TABLE message_threads FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON message_threads;
+CREATE POLICY tenant_isolation ON message_threads
+  USING (school_id = current_school_id() OR is_platform_admin())
+  WITH CHECK (school_id = current_school_id() OR is_platform_admin());
+
+ALTER TABLE thread_participants ENABLE ROW LEVEL SECURITY;
+ALTER TABLE thread_participants FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON thread_participants;
+CREATE POLICY tenant_isolation ON thread_participants
+  USING (school_id = current_school_id() OR is_platform_admin())
+  WITH CHECK (school_id = current_school_id() OR is_platform_admin());
+
+ALTER TABLE messages ENABLE ROW LEVEL SECURITY;
+ALTER TABLE messages FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON messages;
+CREATE POLICY tenant_isolation ON messages
+  USING (school_id = current_school_id() OR is_platform_admin())
+  WITH CHECK (school_id = current_school_id() OR is_platform_admin());
+
+ALTER TABLE email_events ENABLE ROW LEVEL SECURITY;
+ALTER TABLE email_events FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON email_events;
+CREATE POLICY tenant_isolation ON email_events
+  USING (school_id = current_school_id() OR is_platform_admin())
+  WITH CHECK (school_id = current_school_id() OR is_platform_admin());

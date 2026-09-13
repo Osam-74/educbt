@@ -100,6 +100,26 @@
       "tag": "0013_timetable-invigilation",
       "breakpoints": true
     },
-    { "idx": 14, "version": "7", "when": 1789217400000, "tag": "0014_school_settings", "breakpoints": true }
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1789300000000,
+      "tag": "0014_promotion-transcripts",
+      "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1789395000000,
+      "tag": "0015_communications",
+      "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1789405000000,
+      "tag": "0016_school_settings",
+      "breakpoints": true
+    }
   ]
 }

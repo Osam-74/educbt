@@ -11,13 +11,18 @@ const item = (path: string, label: string, icon = 'grid'): Item => ({ href: '/po
 export function portalAreas(role: string, teaching: boolean, classTeacher: boolean): Area[] {
   const wide = ['principal', 'vice_principal', 'exam_officer'].includes(role);
   const areas: Area[] = [];
-  if (wide) areas.push({ label: 'School', items: [item('', 'Overview'), item('/staff', 'Staff', 'person'), item('/students', 'Students', 'school'), item('/classes', 'Classes', 'layers'), item('/subjects', 'Subjects', 'book'), item('/results', 'Results', 'chart'), item('/review', 'Review', 'check'), item('/broadsheet', 'Broadsheet', 'grid'), item('/ca', 'Record scores', 'edit'), ...(role === 'principal' || role === 'vice_principal' ? [item('/activity', 'Activity log', 'activity')] : [])] });
+  if (wide) areas.push({ label: 'School', items: [item('', 'Overview'), item('/staff', 'Staff', 'person'), item('/students', 'Students', 'school'), item('/classes', 'Classes', 'layers'), item('/subjects', 'Subjects', 'book'), item('/results', 'Results', 'chart'), item('/review', 'Review', 'check'), item('/broadsheet', 'Broadsheet', 'grid'), ...(role === 'principal' || role === 'vice_principal' ? [item('/promotion', 'Promotion', 'layers')] : []), ...(role === 'principal' ? [item('/transcripts', 'Transcripts', 'book')] : []), item('/ca', 'Record scores', 'edit'), ...(role === 'principal' || role === 'vice_principal' ? [item('/activity', 'Activity log', 'activity')] : [])] });
   if (role === 'teacher' || role === 'exam_officer' || (wide && teaching)) areas.push({ label: 'Teaching', items: [item('', 'Dashboard'), item('/classes', 'My assignments', 'layers'), ...(classTeacher || wide ? [item('/students', 'My students', 'school')] : []), item('/ca', 'Record scores', 'edit')] });
   if (wide) areas.find(a => a.label === 'School')!.items.push(item('/settings', 'School Settings', 'edit'));
   else if (role === 'teacher' && classTeacher) areas.find(a => a.label === 'Teaching')!.items.push(item('/settings', 'Signatures & remarks', 'edit'));
   if (wide || role === 'teacher') areas.push({ label: 'Examinations', items: [...(wide ? [item('/exams', 'Exam office', 'book')] : []), item('/timetable', 'Timetable', 'calendar'), item('/invigilation', 'Invigilation', 'clock'), item('/invigilate', 'Live sessions', 'activity'), item('/questions', 'Question Bank', 'book'), item('/marking', 'Marking', 'edit')] });
   if (role === 'student') areas.push({ label: 'Student', items: [item('', 'Dashboard'), item('/my-results', 'My results', 'chart'), item('/practice', 'Practice', 'edit')] });
   if (role === 'parent') areas.push({ label: 'Parent', items: [item('', 'Dashboard'), item('/children', 'My children', 'person'), item('/timetable', 'Exam timetable', 'calendar')] });
+  // Communications are for everyone: the inbox, the announcements board and
+  // (for staff and parents) messages. Added as its own area so the sidebar
+  // never buries the unread count.
+  const msgRoles = ['principal', 'vice_principal', 'exam_officer', 'teacher', 'parent'];
+  areas.push({ label: 'Communications', items: [item('/notifications', 'Notifications', 'activity'), item('/announcements', 'Announcements', 'school'), ...(msgRoles.includes(role) ? [item('/messages', 'Messages', 'edit')] : [])] });
   return areas.length ? areas : [{ label: 'Account', items: [item('', 'Dashboard')] }];
 }
 export function PortalIcon({ name }: { name: string }) {
@@ -25,7 +30,7 @@ export function PortalIcon({ name }: { name: string }) {
   return <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d={paths[name] ?? paths.grid}/></svg>;
 }
 
-export default function PortalShell({ children, school, displayName, role, calendar, teaching, classTeacher, signOut }: { children: React.ReactNode; school: string; displayName: string; role: string; calendar: string; teaching: boolean; classTeacher: boolean; signOut: () => Promise<void> }) {
+export default function PortalShell({ children, school, displayName, role, calendar, teaching, classTeacher, signOut, unread = 0 }: { children: React.ReactNode; school: string; displayName: string; role: string; calendar: string; teaching: boolean; classTeacher: boolean; signOut: () => Promise<void>; unread?: number }) {
   const pathname = usePathname();
   const areas = portalAreas(role, teaching, classTeacher);
   const matches = (href: string) => pathname === href || (href !== '/portal' && pathname.startsWith(href + '/'));
@@ -58,6 +63,6 @@ export default function PortalShell({ children, school, displayName, role, calen
     <a className="ps-skip" href="#portal-main">Skip to content</a>
     <aside className="ps-sidebar">{navigation()}</aside>
     <dialog ref={drawer} className="ps-drawer" aria-label="Portal navigation" onCancel={() => setOpen(false)} onClose={() => { setOpen(false); burger.current?.focus(); }} onClick={e => { if (e.target === e.currentTarget) setOpen(false); }}><div className="ps-drawer-inner"><button className="ps-close" type="button" onClick={() => setOpen(false)}>Close menu ×</button>{navigation()}</div></dialog>
-    <div className="ps-workspace"><header className="ps-topbar"><button ref={burger} className="ps-burger" type="button" aria-label="Open navigation" aria-expanded={open} onClick={() => setOpen(true)}><PortalIcon name="menu"/></button><strong>{title}</strong><span className="ps-context">{calendar}</span></header><main id="portal-main" className="portal__body" tabIndex={-1}>{children}</main></div>
+    <div className="ps-workspace"><header className="ps-topbar"><button ref={burger} className="ps-burger" type="button" aria-label="Open navigation" aria-expanded={open} onClick={() => setOpen(true)}><PortalIcon name="menu"/></button><strong>{title}</strong><span className="ps-context">{calendar}</span><Link className="ps-bell" href="/portal/notifications" aria-label={`${unread} unread notifications`}>{unread > 0 ? <span className="ps-badge">{unread}</span> : null}<PortalIcon name="activity"/></Link></header><main id="portal-main" className="portal__body" tabIndex={-1}>{children}</main></div>
   </div>;
 }
