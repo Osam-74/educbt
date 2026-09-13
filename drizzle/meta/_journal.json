@@ -99,6 +99,13 @@
       "when": 1789217369520,
       "tag": "0013_timetable-invigilation",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1789300000000,
+      "tag": "0014_promotion-transcripts",
+      "breakpoints": true
     }
   ]
 }

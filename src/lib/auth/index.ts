@@ -47,11 +47,23 @@ export async function auth(): Promise<SessionUser | null> {
 export async function signIn(input: SignInInput): Promise<SessionUser> {
   const user = await authenticateCredentials(input);
 
-  const h = await headers();
+  // Production-build server actions on Next 15.1 can lose the request scope,
+  // making headers() throw (`\`headers\` was called outside a request scope`).
+  // The IP and user-agent are audit colour, not credentials — degrade to null
+  // rather than refuse sign-in entirely. Cookies still bind the session.
+  let forwardedFor: string | null = null;
+  let userAgent: string | null = null;
+  try {
+    const h = await headers();
+    forwardedFor = h.get('x-forwarded-for')?.split(',')[0]?.trim() ?? null;
+    userAgent = h.get('user-agent') ?? null;
+  } catch {
+    // outside request scope — fall through with null audit metadata
+  }
   const { token, expiresAt } = await createSession(
     user.id,
-    input.ip ?? h.get('x-forwarded-for')?.split(',')[0]?.trim() ?? null,
-    h.get('user-agent') ?? null,
+    input.ip ?? forwardedFor,
+    userAgent,
   );
 
   (await cookies()).set(SESSION_COOKIE, token, {
