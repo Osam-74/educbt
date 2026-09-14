@@ -45,7 +45,10 @@
     "test:settings": "tsx src/db/test-settings.ts",
     "test:operational": "tsx src/db/test-operational-audit.ts",
     "test:roles": "tsx src/db/test-role-completeness.ts",
-    "test:guardian-scope": "tsx src/db/test-guardian-scope.ts"
+    "test:guardian-scope": "tsx src/db/test-guardian-scope.ts",
+    "load:seed": "tsx scripts/load-seed.ts",
+    "load:observe": "tsx scripts/load-observe.ts",
+    "load:verify": "tsx scripts/load-verify.ts"
   },
   "dependencies": {
     "@google-cloud/storage": "^7.22.0",

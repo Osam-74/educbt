@@ -10,3 +10,4 @@ __pycache__/
 .qa-samples/
 .npm-cache/
 baseline-logs/
+load/results/
