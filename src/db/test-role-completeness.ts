@@ -23,6 +23,10 @@ async function main() {
     const url = new URL(process.env[key] ?? '');
     assert(['localhost', '127.0.0.1', '[::1]'].includes(url.hostname) && url.pathname.endsWith('_ca_test'), 'Disposable local database required');
   }
+  // The QR verification check signs AND verifies with this secret; without it
+  // the suite fails confusingly at "the printed QR code must verify" instead
+  // of telling you why (test-promotion guards the same way).
+  assert(process.env.TRANSCRIPT_VERIFY_SECRET, 'Role tests require TRANSCRIPT_VERIFY_SECRET in the environment.');
   const { schema } = await import('@/db');
   const { defaultConfig } = await import('@/lib/settings/validation');
   const { compileClassResults, transitionClassResults } = await import('@/lib/results/workflow');
