@@ -33,8 +33,12 @@ function check(name: string, ok: boolean, detail = '') {
 const FAKE_APP_URL = 'postgresql://educbt_app:not-a-real-password@ep-pooler.example/educbt?sslmode=verify-full';
 const FAKE_OWNER_URL = 'postgresql://owner:owner-secret-value@ep-direct.example/educbt';
 
-function resolve(env: Record<string, string | undefined>, nodeEnv?: string) {
-  return resolveRuntimeDatabaseUrl(env, nodeEnv);
+function resolve(
+  env: Record<string, string | undefined>,
+  nodeEnv?: string,
+  options?: { buildPhase?: boolean },
+) {
+  return resolveRuntimeDatabaseUrl(env, nodeEnv, options);
 }
 
 // ── Production: fail closed without the app-role connection ────────────────
@@ -76,6 +80,18 @@ function resolve(env: Record<string, string | undefined>, nodeEnv?: string) {
   check('production + sslmode=require rejected (must be verify-full)', !bad.ok,
     bad.ok ? '' : (bad as { error: string }).error);
 }
+{
+  // Build phase (NEXT_PHASE=phase-production-build) is the ONE exemption:
+  // next build imports this module in production NODE_ENV but serves no
+  // traffic. The same URL at runtime must still fail closed.
+  const build = resolve(
+    { DATABASE_URL_APP: FAKE_APP_URL.replace('sslmode=verify-full', 'sslmode=require') },
+    'production',
+    { buildPhase: true },
+  );
+  check('build phase accepts a non-verify-full URL (no traffic served)', build.ok);
+}
+
 {
   const r = resolve({}, 'production');
   check('production with nothing configured rejected', !r.ok && r.error.includes('DATABASE_URL_APP'));

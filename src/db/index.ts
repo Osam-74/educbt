@@ -38,7 +38,13 @@ export const schema = { ...core, ...people, ...questionBank, ...vault, ...attemp
 // The connection contract lives in ./connection — see its header for the
 // three-connection model. Production resolves to DATABASE_URL_APP only and
 // fails closed without it; development may fall back to DATABASE_URL.
-const resolved = resolveRuntimeDatabaseUrl(process.env, process.env.NODE_ENV);
+// `NEXT_PHASE=phase-production-build` is set while `next build` collects
+// page data: modules are imported in production NODE_ENV but nothing is
+// served. The sslmode=verify-full gate exempts ONLY that phase (see
+// connection.ts); a live server with a weak sslmode still fails closed.
+const resolved = resolveRuntimeDatabaseUrl(process.env, process.env.NODE_ENV, {
+  buildPhase: process.env.NEXT_PHASE === 'phase-production-build',
+});
 
 if (!resolved.ok) {
   throw new Error(resolved.error);

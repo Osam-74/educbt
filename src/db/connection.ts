@@ -71,6 +71,7 @@ const NOT_SET_HINT =
 export function resolveRuntimeDatabaseUrl(
   env: ConnectionEnv,
   nodeEnv: string | undefined,
+  options: { buildPhase?: boolean } = {},
 ): ResolvedRuntimeConnection {
   const production = nodeEnv === 'production';
   const app = env.DATABASE_URL_APP?.trim();
@@ -83,7 +84,10 @@ export function resolveRuntimeDatabaseUrl(
       // weaker modes to rejectUnauthorized:false). A silent log line here is
       // indistinguishable from a correct deployment — a wrong credential must
       // break loudly instead of quietly degrading the security posture.
-      if (!sslVerifiesCertificates(app)) {
+      // `next build` imports route modules (page-data collection) with
+      // NODE_ENV=production but serves no traffic and runs no queries — the
+      // TLS gate is a runtime guarantee, so the build phase is exempt.
+      if (!options.buildPhase && !sslVerifiesCertificates(app)) {
         return {
           ok: false,
           error:
