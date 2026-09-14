@@ -45,7 +45,9 @@ export async function requirePlatformSession(): Promise<PlatformActor> {
   if (user.role !== 'platform_admin') redirect('/portal');
 
   // A fresh platform account (or one reset by the owner) must set its own
-  // password before it can administer anything.
+  // password before it can administer anything. The password page itself is
+  // OUTSIDE this layout (src/app/(standalone)/platform/account/password) —
+  // if it were wrapped by this layout, this redirect would loop forever.
   if (user.mustChangePassword) redirect('/platform/account/password');
 
   return { userId: user.id, loginId: user.loginId, role: 'platform_admin' as const };

@@ -5,11 +5,17 @@ import { changeOwnPassword, PasswordChangeError } from '@/lib/auth/change-passwo
 export const dynamic = 'force-dynamic';
 
 /**
- * Platform-account password change — the /platform counterpart of
- * /portal/account/password, running on the same shared service. Reached by
- * any platform admin whose password is still the issued temporary one.
- */
-export default async function PlatformChangePasswordPage({
+ * School-portal password change, now running on the shared service
+ * (src/lib/auth/change-password.ts) that also serves platform accounts.
+ * Same rules as before: current password verified even on a forced change,
+ * every other session destroyed afterwards.
+  * PLACEMENT: this page deliberately lives in src/app/(standalone)/… so the
+ * portal layout (whose requireSchoolSession forces mustChangePassword users
+ * to redirect HERE) does not wrap it. Moving it back under src/app/portal/
+ * recreates an infinite redirect loop: layout -> guard -> this page -> layout
+ * -> … The URL is unchanged.
+*/
+export default async function ChangePasswordPage({
   searchParams,
 }: {
   searchParams: Promise<{ error?: string }>;
@@ -18,7 +24,6 @@ export default async function PlatformChangePasswordPage({
   const session = await auth();
 
   if (!session) redirect('/sign-in');
-  if (session.role !== 'platform_admin') redirect('/portal');
 
   const forced = session.mustChangePassword;
 
@@ -26,19 +31,20 @@ export default async function PlatformChangePasswordPage({
     'use server';
 
     const inner = await auth();
-    if (!inner || inner.role !== 'platform_admin') redirect('/sign-in');
+
+    if (!inner) redirect('/sign-in');
 
     const current = String(formData.get('current') ?? '');
     const next = String(formData.get('next') ?? '');
     const confirm = String(formData.get('confirm') ?? '');
 
     const fail = (msg: string) =>
-      redirect(`/platform/account/password?error=${encodeURIComponent(msg)}`);
+      redirect(`/portal/account/password?error=${encodeURIComponent(msg)}`);
 
     if (next !== confirm) fail('The new passwords do not match.');
 
     try {
-      await changeOwnPassword({ id: inner.id, schoolId: null }, current, next);
+      await changeOwnPassword({ id: inner.id, schoolId: inner.schoolId }, current, next);
     } catch (error) {
       fail(error instanceof PasswordChangeError ? error.message : 'The password could not be changed.');
     }
@@ -52,7 +58,7 @@ export default async function PlatformChangePasswordPage({
         <h1>{forced ? 'Set your password' : 'Change your password'}</h1>
         <p className="sub">
           {forced
-            ? 'Your account was created with a temporary password. Choose your own to continue.'
+            ? 'Your school issued you a temporary password. Choose your own to continue.'
             : 'You will be signed out of all devices afterwards.'}
         </p>
 
@@ -70,6 +76,12 @@ export default async function PlatformChangePasswordPage({
 
           <button type="submit">Save password</button>
         </form>
+
+        {['principal', 'vice_principal', 'exam_officer', 'teacher'].includes(session.role) ? (
+          <p className="hint">
+            <a href="/portal/account/security">Two-factor security (authenticator app)</a>
+          </p>
+        ) : null}
       </div>
     </main>
   );

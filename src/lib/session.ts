@@ -38,6 +38,9 @@ export async function requireSchoolSession(): Promise<Actor> {
 
   if (!user) redirect('/sign-in');
 
+  // Forced password change. The password page lives OUTSIDE the portal layout
+  // (src/app/(standalone)/portal/account/password) — wrapping it there would
+  // make this redirect loop forever.
   if (user.mustChangePassword) redirect('/portal/account/password');
 
   if (!user.schoolId) redirect('/sign-in');
