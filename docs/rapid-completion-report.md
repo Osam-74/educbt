@@ -148,7 +148,7 @@ npm run build                    # production build (needs DATABASE_URL_APP)
 npx tsx src/db/test-<suite>.ts   # any suite from the table above
 ```
 
-Required env vars: `DATABASE_URL_UNPOOLED`, `DATABASE_URL_APP`, `AUTH_SECRET`, `TRANSCRIPT_VERIFY_SECRET`, `EMAIL_TRANSPORT` (use `log` outside production).
+Required env vars: `DATABASE_URL_UNPOOLED`, `DATABASE_URL_APP`, `AUTH_SECRET`, `TRANSCRIPT_VERIFY_SECRET`. Email is optional: with `RESEND_API_KEY` + `MAIL_FROM` set, the `drain-email-queue` Inngest job sends queued mail every 5 minutes; without them it reports `skipped` and rows stay queued (the queue is the record of what should have been sent).
 
 ## Architecture rules that must not regress
 
@@ -158,3 +158,26 @@ Required env vars: `DATABASE_URL_UNPOOLED`, `DATABASE_URL_APP`, `AUTH_SECRET`, `
 4. **Migration numbering is sequence-critical** — current head is 0016; append, never renumber applied migrations.
 5. **RLS everywhere** except the documented `sessions` exception.
 6. The app must only ever connect with `DATABASE_URL_APP` (least-privilege role); the owner credential is for migrations/RLS only, and the build enforces this.
+
+
+---
+
+## Addendum — completion-gap audit round (2026-09-14)
+
+A fresh audit of shipped-vs-parity found three gaps, all closed on `main`:
+
+### P0 — Theory questions in the CBT room (`1ad9516`)
+
+The backend already accepted text answers (`saveAnswer`, idempotent) and served `type`/`imageUrl`, but the exam room rendered only option buttons. A candidate sitting a paper with theory questions saw no way to answer, so the theory marking queue could never fill. The room now renders a local-first textarea that syncs through the same retry queue (debounced 900ms, force-enqueued at submit), and question images render.
+
+### P1 — Production email drain (`1822ae4`)
+
+Rows queued into `email_events` but nothing in production ever drained them. New `src/lib/jobs/email-drain.ts` + Inngest job `drain-email-queue` (5-min cadence): enumerates active schools through the same narrow `hostname_lookup` RLS window as the exam sweep — no BYPASSRLS — and drains each through `forSchool()` with a Resend transport (plain fetch). Without credentials the run reports `skipped`; rows stay queued and the principal can still drain manually.
+
+### P1 — TOTP two-factor (`d0ac4e3`)
+
+The schema carried `totp_secret`/`totp_enabled` ("a shared staffroom password should not be enough to alter a result set") with nothing behind it. Built: RFC 6238 engine on `node:crypto` (`src/lib/auth/totp.ts`, RFC Appendix B vectors in `test-totp.ts`), enrollment lifecycle (`start` → disabled secret; `confirm` → valid code flips it on; `disable` → requires a valid current code), the sign-in gate in `credentials.ts` (wrong code burns the same lockout budget as a wrong password; missing code asks without burning), and the staff enrollment screen at `/portal/account/security`.
+
+**Deliberately open decision:** hard-enforcing TOTP for publish/approve roles would lock out every existing principal on day one. Enrollment is live and staff-facing; per-school enforcement is a config decision for the pilot office. When the office decides, the gate belongs at the capability check, not at sign-in.
+
+**Regression status after this round:** `test-auth`, `test-totp` (new, 37 checks), `test-comms` (41), `test-result-workflow` (75) all green; `tsc --noEmit` and `npm run build` clean.
