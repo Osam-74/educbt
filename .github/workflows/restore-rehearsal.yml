@@ -64,7 +64,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
 
       # pg_restore major must match the server that took the dump.
       - name: Install postgresql-client-${{ vars.PG_MAJOR || '18' }}

@@ -98,7 +98,7 @@ changes needed.**
 Dashboard verification checklist (Settings → General):
 1. Framework preset: **Next.js**
 2. Production branch: **main**
-3. Node version: 20.x (matches `engines`)
+3. Node version: 22.x (matches `engines`)
 4. Region: **dub1** — intentional (Neon London proximity). Do not change
    without an owner decision.
 5. Build command: `next build` (default), Output: default (`.next`)

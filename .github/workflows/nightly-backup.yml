@@ -53,7 +53,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
 
       # Fail CLOSED: missing credentials must abort the job before any
       # database is touched, not silently skip the backup.
