@@ -34,6 +34,7 @@ async function main() {
   const announcements = await import('@/lib/comms/announcements');
   const messages = await import('@/lib/comms/messages');
   const email = await import('@/lib/comms/email');
+  const emailJob = await import('@/lib/jobs/email-drain');
   const events = await import('@/lib/comms/events');
 
   const owner = postgres(process.env.DATABASE_URL_UNPOOLED!, { max: 1, onnotice: () => {} });
@@ -438,6 +439,46 @@ async function main() {
     const stats = await forSchool(F.schoolId, (tx) => email.queueStats(tx, F.schoolId));
     assert.ok(stats.sent >= 1);
     assert.ok(stats.failed >= 1);
+  });
+
+  await check('the platform job drains every active school through the transport', async () => {
+    // A fresh queued row for the fixture school, then the scheduled drain's
+    // enumeration path with a local recorder — the same call the Inngest job
+    // makes behind the real transport.
+    await forSchool(F.schoolId, (tx) => email.queueEmail(tx, {
+      schoolId: F.schoolId, to: F.gGold.user.loginId, subject: 'Platform drain', body: 'x',
+    }));
+    const sent: string[] = [];
+    const summary = await emailJob.drainAllSchoolsWith(async (m) => {
+      sent.push(m.toEmail);
+    });
+    assert.ok(summary.schoolsConsidered >= 1, 'the fixture school was enumerated');
+    assert.equal(summary.failures.length, 0, 'no school failed to drain');
+    assert.ok(sent.includes(F.gGold.user.loginId), 'the queued row reached the transport');
+    const [row] = await db.select().from(schema.emailEvents)
+      .where(and(eq(schema.emailEvents.schoolId, F.schoolId), eq(schema.emailEvents.subject, 'Platform drain')));
+    assert.equal(row!.status, 'sent', 'the platform drain marked the row sent');
+  });
+
+  await check('without transport credentials the job is a reported no-op', async () => {
+    // Scrub the env for the duration of the check, then restore — a developer
+    // machine with real credentials set must not make this check hit Resend.
+    const savedKey = process.env.RESEND_API_KEY;
+    const savedFrom = process.env.MAIL_FROM;
+    delete process.env.RESEND_API_KEY;
+    delete process.env.MAIL_FROM;
+    try {
+      const before = await db.select().from(schema.emailEvents)
+        .where(eq(schema.emailEvents.status, 'queued'));
+      const summary = await emailJob.drainAllQueuedEmails();
+      assert.equal(summary.skipped, 'no_transport', 'the run reports why it did nothing');
+      const after = await db.select().from(schema.emailEvents)
+        .where(eq(schema.emailEvents.status, 'queued'));
+      assert.equal(after.length, before.length, 'no queued row was touched');
+    } finally {
+      if (savedKey !== undefined) process.env.RESEND_API_KEY = savedKey;
+      if (savedFrom !== undefined) process.env.MAIL_FROM = savedFrom;
+    }
   });
 
   await rejects('only the principal may drain from the portal wrapper', async () => {
