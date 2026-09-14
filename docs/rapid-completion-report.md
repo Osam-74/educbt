@@ -181,3 +181,22 @@ The schema carried `totp_secret`/`totp_enabled` ("a shared staffroom password sh
 **Deliberately open decision:** hard-enforcing TOTP for publish/approve roles would lock out every existing principal on day one. Enrollment is live and staff-facing; per-school enforcement is a config decision for the pilot office. When the office decides, the gate belongs at the capability check, not at sign-in.
 
 **Regression status after this round:** the FULL battery — all 22 suites — re-run and green (auth, totp (new, 37 checks), leak, vault, engine, authoring, results (75), practice, jobs, domain, people (60), print, config, backup, platform, dashboards, timetable, promotion (37), comms (41), settings (50), operational (29), roles (25)); `tsc --noEmit` and `npm run build` clean. Note: `test:promotion` AND `test:roles` both require `TRANSCRIPT_VERIFY_SECRET` in the environment — the roles suite now guards with a clear assertion instead of failing at the QR check.
+
+## Addendum — Question Bank branch + CI baseline exit-hang fix (2026-09-14, `d7023bb`)
+
+### Question Bank completion (`cc5c842`, merged to main)
+
+Question collection controls and scoped authoring safeguards (the `codex-qbank-init` audit branch, verified against `e4eeebc`): collection open/close lifecycle, per-author scoping, and `src/lib/exam/authoring-validation.ts` / `src/lib/exam/collection.ts`. The branch had never survived CI — see below for why, and note it was never the branch's own code.
+
+### The CI "hang" — root cause and fix (`8d88ed9`)
+
+Two CI attempts cancelled at the 30-minute timeout with the promotion suite blamed. Artifact forensics proved the suite innocent: `promotion.log` was fully written (including teardown) at **+2 seconds**, yet the shell loop never printed `promotion: PASS` and never started the next suite. The stall was *after* the work:
+
+- `src/db/test-promotion.ts` never closed its main-scoped postgres.js `owner` client (`max: 1`, no `idle_timeout`). A **passing** run left that pooled TCP socket open, which kept the Node event loop alive — `npm run` never returned, and the synchronous CI shell loop waited on it until the job timeout. (Failing runs returned instantly because the `catch` path calls `process.exit(1)` — which is exactly why every earlier failing local run "worked" and only green runs hung.)
+- Same latent pattern in `test-comms.ts` and `test-role-completeness.ts` (both call `forSchool` through the `@/db` module singleton and had never been reached in CI; they would have stalled the loop the same way right after promotion).
+
+Fixes: close main's owner at the end of `main()`; close the `@/db` singleton in cleanup for promotion/comms/roles (the `test-ca` `appClient.end()` pattern); per-suite `=== start ===` markers and `ANALYZE` after fixture setup in `baseline.yml`; `timeout-minutes: 30 → 60` so the tail suites are actually reachable.
+
+**Regression status after this round:** the branch CI completed green — **all 34 suites**, including the ten that had never once run in CI before (promotion, comms, operational, roles, totp, settings-validation, settings, question-validation, question-bank, print, print69). Main CI green at `d7023bb`. The full battery now takes ~90 seconds of suite time; promotion specifically went from a 30-minute timeout to 1.4 seconds.
+
+**Lesson for future suites:** a pooled postgres.js client without `idle_timeout` will hang any passing test process that forgets `await client.end()` — always close every client the suite creates, plus the `@/db` singleton if the suite imports it.
