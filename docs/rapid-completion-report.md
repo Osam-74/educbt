@@ -180,4 +180,4 @@ The schema carried `totp_secret`/`totp_enabled` ("a shared staffroom password sh
 
 **Deliberately open decision:** hard-enforcing TOTP for publish/approve roles would lock out every existing principal on day one. Enrollment is live and staff-facing; per-school enforcement is a config decision for the pilot office. When the office decides, the gate belongs at the capability check, not at sign-in.
 
-**Regression status after this round:** `test-auth`, `test-totp` (new, 37 checks), `test-comms` (41), `test-result-workflow` (75) all green; `tsc --noEmit` and `npm run build` clean.
+**Regression status after this round:** the FULL battery — all 22 suites — re-run and green (auth, totp (new, 37 checks), leak, vault, engine, authoring, results (75), practice, jobs, domain, people (60), print, config, backup, platform, dashboards, timetable, promotion (37), comms (41), settings (50), operational (29), roles (25)); `tsc --noEmit` and `npm run build` clean. Note: `test:promotion` AND `test:roles` both require `TRANSCRIPT_VERIFY_SECRET` in the environment — the roles suite now guards with a clear assertion instead of failing at the QR check.
