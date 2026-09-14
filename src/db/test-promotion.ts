@@ -22,6 +22,14 @@ import type { Actor } from '@/lib/session';
 
 const schoolIds: number[] = [];
 
+/** CI forensics: stamp every log line with seconds elapsed since process
+ *  start, so a slow phase is visible in the buffered suite log. */
+const T0 = Date.now();
+{
+  const raw = console.log.bind(console);
+  console.log = (...a: unknown[]) => raw(...a, `+${Math.round((Date.now() - T0) / 1000)}s`);
+}
+
 async function main() {
   for (const key of ['DATABASE_URL_APP', 'DATABASE_URL_UNPOOLED', 'TRANSCRIPT_VERIFY_SECRET']) {
     if (!process.env[key]) throw new Error(`Promotion tests require ${key} in the environment.`);
@@ -456,6 +464,11 @@ async function main() {
   }
 
   console.log(`\nOK: ${count} checks passed.`);
+  // Close the suite's own owner client (mkSession's sessions inserts above ran
+  // through it): a pooled postgres.js connection without idle_timeout keeps
+  // the event loop alive forever, so a passing run would never exit and CI
+  // would stall at this suite until the job timeout.
+  await owner.end();
 }
 
 async function cleanup() {
@@ -464,6 +477,10 @@ async function cleanup() {
     await owner`DELETE FROM schools WHERE id = ${id}`.catch(() => {});
   }
   await owner.end();
+  // The '@/db' module singleton opens pooled connections for the service-layer
+  // calls above; without this close a passing run never exits (CI hang).
+  const { client: appSingleton } = await import('@/db');
+  await appSingleton.end().catch(() => {});
   console.log('Teardown complete.');
 }
 

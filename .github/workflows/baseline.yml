@@ -9,7 +9,7 @@ permissions:
 jobs:
   baseline:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 60
     services:
       postgres:
         image: postgres:18
@@ -48,6 +48,7 @@ jobs:
           npm run db:rls
           npm run db:seed
           npx tsx scripts/db-verify-fixtures.ts --setup
+          psql "$DATABASE_URL_UNPOOLED" -c 'ANALYZE;'
       - name: Typecheck and production build
         run: |
           npm run typecheck
@@ -87,6 +88,7 @@ jobs:
               print) command=(/tmp/educbt-print/bin/python scripts/test-print.py) ;;
               *) command=(npm run "test:$suite") ;;
             esac
+            echo "=== $suite start ==="
             if "${command[@]}" > "baseline-logs/$suite.log" 2>&1; then
               echo "$suite: PASS"
             else
