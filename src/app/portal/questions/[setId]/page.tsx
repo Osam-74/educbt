@@ -19,6 +19,7 @@ export default async function AuthorSetPage({
   const { setId: rawId } = await params;
   const query = await searchParams;
   const actor = await requireSchoolSession();
+  if (!isSchoolWide(actor.role) && actor.role !== 'teacher') notFound();
   const setId = Number(rawId);
 
   const data = await forSchool(actor.schoolId, async (tx) => {
@@ -47,7 +48,7 @@ export default async function AuthorSetPage({
 
     // A teacher may open only their own set. Same response as not-found, so
     // they cannot confirm another teacher's set exists.
-    if (!isSchoolWide(actor.role) && set.teacherId !== actor.staffId) return null;
+    if (!isSchoolWide(actor.role) && (!actor.staffId || set.teacherId !== actor.staffId)) return null;
 
     const questions = await tx
       .select({

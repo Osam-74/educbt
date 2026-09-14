@@ -1,7 +1,7 @@
 name: full-baseline
 on:
   push:
-    branches: [main, feat/ca-score-entry-ui, feat/results-lifecycle-ui, feat/portal-shell-parity, integrate/report-card-parity, feat/school-settings-academic-config]
+    branches: [main, feat/ca-score-entry-ui, feat/results-lifecycle-ui, feat/portal-shell-parity, integrate/report-card-parity, feat/school-settings-academic-config, feat/question-bank-completion]
   pull_request:
   workflow_dispatch:
 permissions:
@@ -24,6 +24,7 @@ jobs:
       DATABASE_URL_UNPOOLED: postgresql://postgres:baseline@127.0.0.1:5432/educbt_ca_test
       DATABASE_URL_APP: postgresql://educbt_app:educbt_local_app@127.0.0.1:5432/educbt_ca_test
       NEXT_TELEMETRY_DISABLED: '1'
+      TRANSCRIPT_VERIFY_SECRET: 'disposable-ci-transcript-verification-key-not-for-production'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -70,7 +71,7 @@ jobs:
           test "$ready" = 1
           export CA_TEST_HTTP_URL=http://127.0.0.1:3017
           failed=0
-          for suite in verify scope auth leak vault engine authoring results practice jobs domain config backup platform ca-validation ca result-workflow result-workflow-rerun report-summary people dashboards timetable settings-validation settings print print69; do
+          for suite in verify scope auth leak vault engine authoring results practice jobs domain config backup platform ca-validation ca result-workflow result-workflow-rerun report-summary people dashboards timetable promotion comms operational roles totp settings-validation settings question-validation question-bank print print69; do
             case "$suite" in
               verify) command=(npm run db:verify) ;;
               ca-validation) command=(npx tsx src/lib/ca/validation.test.ts) ;;
@@ -79,6 +80,8 @@ jobs:
               result-workflow-rerun) command=(npx tsx src/db/test-result-workflow.ts) ;;
               report-summary) command=(npx tsx src/lib/reports/summary.test.ts) ;;
               settings-validation) command=(npx tsx src/lib/settings/validation.test.ts) ;;
+              question-validation) command=(npx tsx src/lib/exam/authoring-validation.test.ts) ;;
+              question-bank) command=(env QUESTION_BROWSER_MODULE=/tmp/educbt-browser/node_modules/playwright/index.mjs npx tsx src/db/test-question-bank.ts) ;;
               settings) command=(env SETTINGS_BROWSER_MODULE=/tmp/educbt-browser/node_modules/playwright/index.mjs npx tsx src/db/test-settings.ts) ;;
               print69) command=(/tmp/educbt-print69/bin/python scripts/test-print.py) ;;
               print) command=(/tmp/educbt-print/bin/python scripts/test-print.py) ;;

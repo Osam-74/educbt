@@ -22,6 +22,8 @@ import { and, eq, count, asc, sql } from 'drizzle-orm';
 import { forSchool, schema } from '@/db';
 import type { Actor } from '@/lib/session';
 import { isSchoolWide } from '@/lib/queries';
+import { authoringActor, authoringLock, permittedScope, permittedCollection, editableSetAccess } from './authoring-access';
+import { validateQuestion } from './authoring-validation';
 
 export type SetScope = {
   sessionId: number;
@@ -42,6 +44,9 @@ export type SetScope = {
  */
 export async function findOrCreateSet(actor: Actor, scope: SetScope) {
   return forSchool(actor.schoolId, async (tx) => {
+    await authoringLock(tx, actor.schoolId);
+    const school = await permittedScope(tx, actor, scope);
+    const quotas = await permittedCollection(tx, actor, scope, school.settings);
     const where = and(
       eq(schema.questionSets.schoolId, actor.schoolId),
       eq(schema.questionSets.sessionId, scope.sessionId),
@@ -58,7 +63,10 @@ export async function findOrCreateSet(actor: Actor, scope: SetScope) {
 
     const [existing] = await tx.select().from(schema.questionSets).where(where).limit(1);
 
-    if (existing) return existing;
+    if (existing) {
+      if (!isSchoolWide(actor.role) && existing.teacherId !== actor.staffId) throw new Error('This set belongs to another teacher.');
+      return existing;
+    }
 
     const [created] = await tx.insert(schema.questionSets).values({
       schoolId: actor.schoolId,
@@ -71,9 +79,11 @@ export async function findOrCreateSet(actor: Actor, scope: SetScope) {
       seriesId: scope.seriesId,
       waecMode: scope.waecMode,
       teacherId: actor.staffId,
-      minRequired: scope.examType === 'objective' ? 20 : 4,
+      minRequired: quotas[scope.examType],
     }).returning();
 
+    await tx.insert(schema.auditLog).values({ schoolId: actor.schoolId, actorUserId: actor.userId, actorRole: actor.role,
+      action: 'question_set.created', entityType: 'question_sets', entityId: created!.id, after: scope });
     return created!;
   });
 }
@@ -94,10 +104,12 @@ export async function addQuestion(
     instructions?: string | null;
     imageUrl?: string | null;
     noShuffle?: boolean;
+    markingGuide?: string | null;
     options?: Array<{ text: string; isCorrect: boolean }>;
   },
 ) {
   return forSchool(actor.schoolId, async (tx) => {
+    await authoringLock(tx, actor.schoolId);
     const [set] = await tx.select().from(schema.questionSets)
       .where(and(
         eq(schema.questionSets.id, setId),
@@ -105,6 +117,18 @@ export async function addQuestion(
       )).limit(1);
 
     if (!set) throw new Error('Question set not found.');
+    await editableSetAccess(tx, actor, set);
+    input = validateQuestion(input, set.examType);
+    const [duplicate] = await tx.select({ id: schema.questions.id }).from(schema.questions).where(and(
+      eq(schema.questions.questionSetId, setId), eq(schema.questions.status, 'active'),
+      sql`lower(trim(${schema.questions.questionText})) = lower(trim(${input.text}))`));
+    if (duplicate) throw new Error('This question already exists in the set.');
+    if (input.passageId) {
+      const [passage] = await tx.select({ id: schema.passages.id }).from(schema.passages).where(and(
+        eq(schema.passages.id, input.passageId), eq(schema.passages.schoolId, actor.schoolId),
+        eq(schema.passages.subjectId, set.subjectId)));
+      if (!passage) throw new Error('Choose a passage for this subject in this school.');
+    }
 
     if (!isEditable(set.status)) {
       throw new Error(
@@ -147,6 +171,7 @@ export async function addQuestion(
       instructions: input.instructions ?? null,
       imageUrl: input.imageUrl ?? null,
       noShuffle: input.noShuffle ?? false,
+      markingGuide: input.markingGuide ?? null,
       sequence: seqRow?.next ?? 1,
       // Pending until a reviewer reads it. Never 'approved' on write.
       approvalStatus: 'pending',
@@ -167,6 +192,8 @@ export async function addQuestion(
       await tx.insert(schema.questionOptions).values(rows);
     }
 
+    await tx.insert(schema.auditLog).values({ schoolId: actor.schoolId, actorUserId: actor.userId, actorRole: actor.role,
+      action: 'question.created', entityType: 'questions', entityId: question!.id, after: { setId, marks: input.marks } });
     return question!;
   });
 }
@@ -181,6 +208,7 @@ export async function addQuestion(
  */
 export async function submitSet(actor: Actor, setId: number) {
   return forSchool(actor.schoolId, async (tx) => {
+    await authoringLock(tx, actor.schoolId);
     const [set] = await tx.select().from(schema.questionSets)
       .where(and(
         eq(schema.questionSets.id, setId),
@@ -188,6 +216,7 @@ export async function submitSet(actor: Actor, setId: number) {
       )).limit(1);
 
     if (!set) throw new Error('Question set not found.');
+    await editableSetAccess(tx, actor, set);
     if (!isEditable(set.status)) throw new Error('This set has already been submitted.');
 
     const paired = set.seriesId === 0;
@@ -214,6 +243,7 @@ export async function submitSet(actor: Actor, setId: number) {
           eq(schema.questionSets.termId, set.termId),
           eq(schema.questionSets.subjectId, set.subjectId),
           eq(schema.questionSets.levelId, set.levelId),
+          set.departmentId === null ? sql`${schema.questionSets.departmentId} IS NULL` : eq(schema.questionSets.departmentId, set.departmentId),
           eq(schema.questionSets.examType, siblingType),
           eq(schema.questionSets.seriesId, 0),
           eq(schema.questionSets.waecMode, set.waecMode),
@@ -222,6 +252,8 @@ export async function submitSet(actor: Actor, setId: number) {
       if (!sibling) {
         shortfall.push(`${siblingType}: not started`);
       } else {
+        await editableSetAccess(tx, actor, sibling);
+        if (!isEditable(sibling.status) && sibling.status !== 'approved') throw new Error('The paired set is already awaiting review or published.');
         const [sn] = await tx.select({ n: count() }).from(schema.questions)
           .where(and(
             eq(schema.questions.questionSetId, Number(sibling.id)),
@@ -237,7 +269,7 @@ export async function submitSet(actor: Actor, setId: number) {
         return { success: false as const, shortfall };
       }
 
-      if (sibling) {
+      if (sibling && isEditable(sibling.status)) {
         await tx.update(schema.questionSets)
           .set({ status: 'submitted', submittedAt: new Date(), submittedBy: actor.userId })
           .where(eq(schema.questionSets.id, Number(sibling.id)));
@@ -309,6 +341,8 @@ export async function reviewSet(
   }
 
   return forSchool(actor.schoolId, async (tx) => {
+    await authoringLock(tx, actor.schoolId);
+    await authoringActor(tx, actor);
     const [set] = await tx.select().from(schema.questionSets)
       .where(and(
         eq(schema.questionSets.id, setId),
@@ -316,6 +350,7 @@ export async function reviewSet(
       )).limit(1);
 
     if (!set) throw new Error('Question set not found.');
+    if (!['submitted', 'under_review'].includes(set.status)) throw new Error('Only a submitted set can be reviewed.');
 
     await tx.update(schema.questions)
       .set({
@@ -352,6 +387,7 @@ export async function reviewSet(
 /** Sets a teacher owns, or every submitted set for the exam office. */
 export async function listSets(actor: Actor) {
   return forSchool(actor.schoolId, async (tx) => {
+    await authoringActor(tx, actor);
     const conditions = [eq(schema.questionSets.schoolId, actor.schoolId)];
 
     if (!isSchoolWide(actor.role)) {
