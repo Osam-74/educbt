@@ -1,0 +1,48 @@
+# Manual, one-shot bootstrap of the FIRST platform administrator.
+#
+# This is the runbook §7 owner action, run through the same controlled
+# provisioning path as init-production-db: the owner credential
+# (DATABASE_URL_UNPOOLED) exists only as a repository secret and is never
+# exposed to the application runtime. No SQL is written by hand anywhere.
+#
+# scripts/bootstrap-platform-admin.ts is idempotent-by-refusal: if the login
+# ID already exists, nothing is written and the run says so — safe to
+# re-dispatch to CHECK whether a platform admin already exists.
+#
+# The generated temporary password prints ONCE in this run's log (visible to
+# repository collaborators only). It is Argon2id-hashed in the database, and
+# must_change_password is forced, so the first sign-in demands a new one.
+
+name: bootstrap-platform-admin
+
+on:
+  workflow_dispatch:
+    inputs:
+      login_id:
+        description: 'Platform admin sign-in ID (defaults to PLATFORM-ADMIN)'
+        required: false
+        default: 'PLATFORM-ADMIN'
+
+permissions:
+  contents: read
+
+jobs:
+  bootstrap:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      DATABASE_URL_UNPOOLED: ${{ secrets.DATABASE_URL_UNPOOLED }}
+      PLATFORM_ADMIN_LOGIN_ID: ${{ inputs.login_id }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Bootstrap the first platform administrator
+        run: npm run bootstrap:platform-admin
