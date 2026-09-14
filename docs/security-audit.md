@@ -16,7 +16,7 @@
 | Answer/marking-guide leakage | `test:leak` (11/11 pass, including a deliberate self-check that proves the test *can* detect a leak): candidate payload never carries `isCorrect`, marking guide, or approval state. | OK |
 | Platform onboarding / audit | `test:platform` (13/13 pass): temporary passwords never appear in audit records; **no owner DB credential found in any application runtime module** (explicit check, passed); suspension takes effect immediately for already-live sessions. | OK |
 | Rate limiting / lockout | Per-account lockout with exponential backoff in `src/lib/auth/throttle.ts`, plus Upstash-backed request throttling referenced in the codebase. Verified functionally via `test:totp`'s lockout-budget assertions. | OK |
-| Guardian relationship checks | Enforced via `guardian_student` join table + RLS `school_id` scoping (see rls-audit.md); not exercised with a dedicated adversarial test in this pass — recommend adding one. | **P1** (test-coverage gap, not a known hole) |
+| Guardian relationship checks | Enforced via `guardian_student` join table + RLS `school_id` scoping (see rls-audit.md). **Closed** — see below, `test:guardian-scope` (7/7 PASS). | OK (was P1, now closed) |
 | Direct-URL / IDOR | Every school-owned table carries a denormalized `school_id` and is RLS-scoped (see rls-audit.md); a guessed/incremented ID from another tenant resolves to zero rows at the database layer regardless of what the route code does — this is the strongest possible IDOR mitigation (fails closed even if an app-layer check is missing). | OK |
 | Owner-credential hygiene | The **build hard-fails** if `DATABASE_URL_APP` is unset (documented, and re-confirmed present in `test:platform`'s "no owner DB credential in application runtime modules" check). | OK |
 
@@ -38,7 +38,12 @@
 
 ## Findings requiring follow-up
 
-1. **P1 — test-coverage gap:** no dedicated adversarial test proves a guardian cannot read a child they are *not* linked to (the RLS `school_id` scope stops cross-school reads, but within the *same* school a guardian's access is additionally gated by the `guardian_student` link at the query layer, not by RLS). Recommend a follow-up test in `test-people.ts` or a new `test-guardian-scope.ts` asserting Guardian A (linked to Student X) gets zero rows for Student Y in the *same* school.
+1. ~~P1 — test-coverage gap: guardian↔child adversarial test~~ — **CLOSED.** Added `src/db/test-guardian-scope.ts` (`npm run test:guardian-scope`), a focused adversarial suite against real data across two real schools. 7/7 PASS:
+   - A guardian cannot access another guardian's child (same school, no link).
+   - Being a registered parent-role user in a school is not itself sufficient — the specific `guardian_student` link is the actual gate, not school membership.
+   - A cross-school relationship is rejected at **both** the read path (`reportAudience` can never resolve a foreign school's student, RLS-backed) and the write path (`linkGuardian` refuses to create a link to a student outside the actor's own school — throws `StudentError('That student could not be found.')` rather than silently succeeding).
+   - A revoked link (`guardian_student.can_view_results = false`) denies access even though the relationship row still exists; re-enabling the flag restores access, proving the gate is the flag itself and not a fixture artifact.
+   - Positive control included (a guardian's own active, linked child correctly resolves `'family'`) so the suite can't pass by everything trivially returning null.
 2. **P2 — CSRF defense-in-depth:** see above; optional, not a pilot blocker given current browser support for `SameSite`.
 
 No P0 application-security issues were found in this pass. See `docs/rls-audit.md` for the tenant-isolation (RLS) audit, which is the primary tenant-security boundary and was tested directly with raw cross-tenant SQL probes.

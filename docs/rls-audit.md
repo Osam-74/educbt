@@ -84,4 +84,4 @@ Suites not re-run in this pass (time-boxed): `test-ca`, `test-comms`, `test-jobs
 
 ## Verdict
 
-**No RLS holes found.** Coverage is complete (44/44 applicable tables, 1 documented exception verified correct), the design is denormalized and fail-closed, and a direct adversarial SQL probe against the real `educbt_app` role confirms cross-tenant read AND write are both blocked. Treat as **P0-clear** for this audit pass, with one **P1 test-coverage gap** noted in `security-audit.md` (guardian-to-child scoping needs a dedicated adversarial test, not because a hole was found, but because none currently proves it directly).
+**No RLS holes found.** Coverage is complete (44/44 applicable tables, 1 documented exception verified correct), the design is denormalized and fail-closed, and a direct adversarial SQL probe against the real `educbt_app` role confirms cross-tenant read AND write are both blocked. Treat as **P0-clear** for this audit pass. The one P1 noted in the prior pass (guardian-to-child adversarial test coverage) is now **closed** — see `src/db/test-guardian-scope.ts` (7/7 PASS) and `security-audit.md`.

@@ -11,7 +11,7 @@ See `docs/security-audit.md` and `docs/rls-audit.md`. Executed directly (not via
 - Re-ran `test:scope`, `test:leak`, `test:auth`, `test:totp`, `test:platform`, `test:config`, `test:domain` — **all green**, no hangs.
 - Direct raw-SQL cross-tenant probe as the real `educbt_app` role: School A cannot read or write School B's rows even with explicit targeting; unscoped requests see zero rows (fail-closed).
 - RLS coverage: 44/45 tables enabled+forced; the one exception (`sessions`) is the documented, verified-correct carve-out.
-- **No P0 found.** One P1 (missing dedicated guardian↔child adversarial test — a coverage gap, not a known hole) and one P2 (no CSRF token as defense-in-depth on 6 API routes, though `sameSite=lax` already blocks the realistic attack on modern browsers).
+- **No P0 found.** The one P1 (missing dedicated guardian↔child adversarial test) is now **closed** — see `src/db/test-guardian-scope.ts` (7/7 PASS): another guardian's child denied, same-school membership alone insufficient, cross-school relationship rejected at both read and write paths, revoked (`can_view_results=false`) link denied. One P2 remains open (no CSRF token as defense-in-depth on 6 API routes, though `sameSite=lax` already blocks the realistic attack on modern browsers).
 
 ### Phase 10 + 11 — Cutover runbook + pilot checklist ✅
 See `docs/cutover-runbook.md` and `docs/pilot-acceptance-checklist.md`. Legacy→Next.js data mapping, explicit call-outs for what cannot auto-migrate (WordPress `phpass`/MD5 password hashes, freeform legacy class/subject strings, monolithic JSON answer blobs, orphaned FK rows, local filesystem media), a 13-stage import order, reconciliation steps, freeze window, DNS switch, and rollback. Pilot checklist covers all 18 requested operational steps with concrete UI paths and failure symptoms.
@@ -39,7 +39,11 @@ None of these are known P0s — they are simply **unverified**. Given the pilot'
 
 **Merge `feat/release-hardening` into `main` now** — it is additive documentation + a re-verified regression pass, zero application-code risk, and contains the only P0-relevant finding (RLS: clean) that blocks a pilot. Do **not** treat this branch as satisfying the full release-hardening brief — Phases 2/3/4/7/8/9 still need a dedicated pass (recommend a fresh, shorter session per phase rather than one large multi-phase mission, given the sub-agent checkpoint limitation above) before declaring the platform pilot-ready end to end.
 
-## For Agent 1 / Codex
+## For Agent 1 / Agent 3 / Codex
+
+- Load testing is Agent 3's scope, not repeated here.
+- Vercel/production runtime and DB config are Agent 1's scope — this branch does not touch `src/db/connection.ts`, `src/db/index.ts`, env vars, or deployment config; it was rebased onto Agent 1's latest work (SSL fail-closed, Next.js/Node upgrade) without modifying any of it, and the config-connection test suite still passes.
+
 
 - Do not duplicate the security/RLS audit or the cutover docs — they're done, see above.
 - If you pick up the load test or chaos suites, be aware of the CI hang lesson already fixed on `main` (close every postgres.js client explicitly) and reuse the pattern in `test-scope.ts`/`test-auth.ts` for local Postgres bootstrap (`pg_createcluster` on a dedicated port works well in a sandboxed environment without Docker).
