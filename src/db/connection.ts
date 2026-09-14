@@ -77,7 +77,24 @@ export function resolveRuntimeDatabaseUrl(
   const general = env.DATABASE_URL?.trim();
 
   if (production) {
-    if (app) return { ok: true, url: app, viaAppRole: true, production: true };
+    if (app) {
+      // Fail closed on unverified TLS, not just log: a production URL without
+      // sslmode=verify-full is encrypted-but-interceptable (postgres.js maps
+      // weaker modes to rejectUnauthorized:false). A silent log line here is
+      // indistinguishable from a correct deployment — a wrong credential must
+      // break loudly instead of quietly degrading the security posture.
+      if (!sslVerifiesCertificates(app)) {
+        return {
+          ok: false,
+          error:
+            'Production DATABASE_URL_APP must use sslmode=verify-full. ' +
+            'Weaker modes map to rejectUnauthorized:false — TLS without ' +
+            'certificate verification, i.e. interceptable. Fix the ' +
+            'connection string, then redeploy.',
+        };
+      }
+      return { ok: true, url: app, viaAppRole: true, production: true };
+    }
     // Deliberately NOT falling back to DATABASE_URL: in production that name
     // is conventionally the owner/admin credential, and running with it would
     // silently disable every RLS policy. The error names the variable to set

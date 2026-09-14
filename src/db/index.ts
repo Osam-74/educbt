@@ -46,16 +46,6 @@ if (!resolved.ok) {
 
 const connectionString = resolved.url;
 
-// Fail loudly (well, loudly for a log line) if a production connection would
-// silently skip certificate verification — see sslVerifiesCertificates.
-if (resolved.production && !sslVerifiesCertificates(connectionString)) {
-  console.error(
-    '[db] SECURITY: DATABASE_URL_APP does not use sslmode=verify-full. ' +
-    'postgres.js maps weaker modes to rejectUnauthorized:false — TLS without ' +
-    'certificate verification, i.e. interceptable. Set sslmode=verify-full.',
-  );
-}
-
 /**
  * `prepare: false` is required by PgBouncer transaction mode — prepared
  * statements are per-session and the session is not yours between transactions.

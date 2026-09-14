@@ -30,7 +30,7 @@ function check(name: string, ok: boolean, detail = '') {
   if (!ok) failures++;
 }
 
-const FAKE_APP_URL = 'postgresql://educbt_app:not-a-real-password@ep-pooler.example/educbt';
+const FAKE_APP_URL = 'postgresql://educbt_app:not-a-real-password@ep-pooler.example/educbt?sslmode=verify-full';
 const FAKE_OWNER_URL = 'postgresql://owner:owner-secret-value@ep-direct.example/educbt';
 
 function resolve(env: Record<string, string | undefined>, nodeEnv?: string) {
@@ -66,6 +66,16 @@ function resolve(env: Record<string, string | undefined>, nodeEnv?: string) {
     noLeak ? '' : `fell back to ${r.ok && r.url!.split('@')[1]}`);
 }
 
+{
+  // sslmode=verify-full is a hard production gate: anything weaker fails
+  // the boot instead of degrading to interceptable TLS.
+  const bad = resolve(
+    { DATABASE_URL_APP: FAKE_APP_URL.replace('sslmode=verify-full', 'sslmode=require') },
+    'production',
+  );
+  check('production + sslmode=require rejected (must be verify-full)', !bad.ok,
+    bad.ok ? '' : (bad as { error: string }).error);
+}
 {
   const r = resolve({}, 'production');
   check('production with nothing configured rejected', !r.ok && r.error.includes('DATABASE_URL_APP'));
