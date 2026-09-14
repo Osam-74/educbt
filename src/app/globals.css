@@ -220,6 +220,14 @@ button[type='submit']:disabled { opacity: .6; cursor: default; }
 .exam__instr { font-style: italic; color: var(--muted); margin: 0 0 12px; }
 .exam__num { margin: 0 0 6px; font-size: 13px; color: var(--muted); font-weight: 600; }
 .exam__text { font-size: 16.5px; line-height: 1.65; margin: 0 0 18px; }
+.exam__img { max-width: 100%; height: auto; border: 1px solid var(--line);
+  border-radius: 10px; margin: 0 0 18px; }
+.exam__theory { width: 100%; min-height: 240px; padding: 13px 15px;
+  border: 1.5px solid var(--line); border-radius: 10px; font: inherit;
+  font-size: 15px; line-height: 1.65; color: var(--ink); background: var(--white);
+  resize: vertical; }
+.exam__theory:focus { outline: 2px solid var(--forest); outline-offset: 1px;
+  border-color: var(--forest); }
 .exam__options { display: flex; flex-direction: column; gap: 10px; }
 .exam__options--grid { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 10px; }
 @media (max-width: 560px) { .exam__options--grid { grid-template-columns: 1fr; } }

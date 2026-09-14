@@ -22,6 +22,11 @@
  * THE TIMER IS DISPLAY ONLY. The countdown below is rendered from a server
  * deadline, but the server decides whether an answer is accepted. A candidate
  * who changes their device clock changes what they see and nothing else.
+ *
+ * THEORY QUESTIONS are captured through the same model: every keystroke is
+ * kept locally, and a debounced post carries the latest text to the server.
+ * Debounce (not per-keystroke posts) keeps the paper usable on a slow link —
+ * a candidate typing a long answer generates one network write, not hundreds.
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -31,7 +36,10 @@ type Option = { id: number; key: string | null; text: string };
 type Question = {
   id: number;
   number: number;
+  /** 'theory' renders an answer box; everything else renders options. */
+  type: string;
   text: string;
+  imageUrl: string | null;
   instructions: string | null;
   marks: number;
   options: Option[];
@@ -52,9 +60,11 @@ export default function ExamRoom({
   subjectName: string;
 }) {
   const storageKey = `educbt:attempt:${attemptId}`;
+  const textStorageKey = `educbt:attempt:${attemptId}:text`;
 
   const [index, setIndex] = useState(0);
   const [answers, setAnswers] = useState<Record<number, number>>({});
+  const [textAnswers, setTextAnswers] = useState<Record<number, string>>({});
   const [bookmarks, setBookmarks] = useState<Record<number, boolean>>({});
   const [sync, setSync] = useState<SyncState>('saved');
   const [remaining, setRemaining] = useState<number>(() =>
@@ -63,8 +73,9 @@ export default function ExamRoom({
   const [submitting, setSubmitting] = useState(false);
   const [warning, setWarning] = useState<string | null>(null);
 
-  const queue = useRef<Array<{ questionId: number; optionId: number; key: string }>>([]);
+  const queue = useRef<Array<{ questionId: number; optionId?: number; text?: string; key: string }>>([]);
   const flushing = useRef(false);
+  const theoryTimers = useRef<Record<number, ReturnType<typeof setTimeout>>>({});
 
   // ── Restore from local storage ─────────────────────────────────────────────
   // If the browser crashed, the answers are still here. The server copy is
@@ -73,10 +84,12 @@ export default function ExamRoom({
     try {
       const saved = localStorage.getItem(storageKey);
       if (saved) setAnswers(JSON.parse(saved) as Record<number, number>);
+      const savedText = localStorage.getItem(textStorageKey);
+      if (savedText) setTextAnswers(JSON.parse(savedText) as Record<number, string>);
     } catch {
       // A blocked or full localStorage must not stop the paper.
     }
-  }, [storageKey]);
+  }, [storageKey, textStorageKey]);
 
   // ── Countdown ──────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -112,6 +125,7 @@ export default function ExamRoom({
           body: JSON.stringify({
             questionId: item.questionId,
             optionId: item.optionId,
+            text: item.text,
             key: item.key,
           }),
         });
@@ -206,11 +220,66 @@ export default function ExamRoom({
     void flush();
   }
 
+  /**
+   * Theory capture. Local-first like an option tap, then one debounced server
+   * write per pause in typing. The timer is reset on every keystroke, so only
+   * the latest text is ever posted.
+   */
+  function writeTheory(questionId: number, value: string) {
+    const next = { ...textAnswers, [questionId]: value };
+    setTextAnswers(next);
+
+    try {
+      localStorage.setItem(textStorageKey, JSON.stringify(next));
+    } catch {
+      // Private browsing or a full quota. The debounced sync still runs.
+    }
+
+    const pending = theoryTimers.current[questionId];
+    if (pending) clearTimeout(pending);
+
+    theoryTimers.current[questionId] = setTimeout(() => {
+      delete theoryTimers.current[questionId];
+      queue.current = queue.current.filter((q) => q.questionId !== questionId);
+      queue.current.push({
+        questionId,
+        text: value,
+        // Stable per question, so a retry updates the same row.
+        key: `${attemptId}:${questionId}:text`,
+      });
+      void flush();
+    }, 900);
+  }
+
+  /** Hand any text still waiting on its debounce to the queue right now. */
+  function enqueuePendingTheory() {
+    for (const key of Object.keys(theoryTimers.current)) {
+      const questionId = Number(key);
+      clearTimeout(theoryTimers.current[questionId]);
+      delete theoryTimers.current[questionId];
+      const value = textAnswers[questionId] ?? '';
+      queue.current = queue.current.filter((q) => q.questionId !== questionId);
+      queue.current.push({
+        questionId,
+        text: value,
+        key: `${attemptId}:${questionId}:text`,
+      });
+    }
+  }
+
+  // An option question is answered when a choice exists; a theory question
+  // when the box holds something other than whitespace.
+  function isAnswered(item: Question): boolean {
+    return item.type === 'theory'
+      ? (textAnswers[item.id] ?? '').trim() !== ''
+      : answers[item.id] !== undefined;
+  }
+
   async function doSubmit(auto = false) {
     if (submitting) return;
 
     if (!auto) {
-      const unanswered = questions.length - Object.keys(answers).length;
+      const unanswered = questions.filter((q) => !isAnswered(q)).length;
       const message = unanswered > 0
         ? `${unanswered} question${unanswered === 1 ? '' : 's'} unanswered. Submit anyway?`
         : 'Submit your paper? You cannot change your answers afterwards.';
@@ -219,11 +288,13 @@ export default function ExamRoom({
     }
 
     setSubmitting(true);
+    enqueuePendingTheory();
     await flush();
 
     try {
       await fetch(`/api/exam/${attemptId}/submit`, { method: 'POST' });
       localStorage.removeItem(storageKey);
+      localStorage.removeItem(textStorageKey);
       window.location.href = '/portal?submitted=1';
     } catch {
       setSubmitting(false);
@@ -235,6 +306,7 @@ export default function ExamRoom({
 
   if (!q) return <p>This paper has no questions.</p>;
 
+  const answeredCount = questions.filter(isAnswered).length;
   const mm = String(Math.floor(remaining / 60)).padStart(2, '0');
   const ss = String(remaining % 60).padStart(2, '0');
   const low = remaining < 300;
@@ -283,25 +355,41 @@ export default function ExamRoom({
 
           <p className="exam__text">{q.text}</p>
 
-          {/* Short options sit two-up, the way a printed paper prints them, so
-              the whole set is visible without scrolling on a small screen. */}
-          <div className={`exam__options${q.options.every((o) => o.text.length <= 24) ? ' exam__options--grid' : ''}`}>
-            {q.options.map((o) => {
-              const chosen = answers[q.id] === o.id;
+          {q.imageUrl ? <img className="exam__img" src={q.imageUrl} alt="" /> : null}
 
-              return (
-                <button
-                  type="button"
-                  key={o.id}
-                  className={`opt${chosen ? ' opt--chosen' : ''}`}
-                  onClick={() => choose(q.id, o.id)}
-                >
-                  <span className="opt__key">{o.key ?? ''}</span>
-                  <span>{o.text}</span>
-                </button>
-              );
-            })}
-          </div>
+          {q.type === 'theory' ? (
+            /* The theory answer box. Spellcheck is off: an examiner marks the
+               content, and browser suggestions would help some candidates
+               more than others. */
+            <textarea
+              className="exam__theory"
+              value={textAnswers[q.id] ?? ''}
+              onChange={(e) => writeTheory(q.id, e.target.value)}
+              placeholder="Type your answer here…"
+              rows={12}
+              spellCheck={false}
+            />
+          ) : (
+            /* Short options sit two-up, the way a printed paper prints them, so
+               the whole set is visible without scrolling on a small screen. */
+            <div className={`exam__options${q.options.every((o) => o.text.length <= 24) ? ' exam__options--grid' : ''}`}>
+              {q.options.map((o) => {
+                const chosen = answers[q.id] === o.id;
+
+                return (
+                  <button
+                    type="button"
+                    key={o.id}
+                    className={`opt${chosen ? ' opt--chosen' : ''}`}
+                    onClick={() => choose(q.id, o.id)}
+                  >
+                    <span className="opt__key">{o.key ?? ''}</span>
+                    <span>{o.text}</span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
 
           <div className="exam__nav">
             <button type="button" onClick={() => setIndex((i) => Math.max(0, i - 1))} disabled={index === 0}>
@@ -325,7 +413,7 @@ export default function ExamRoom({
 
         <aside className="exam__palette">
           <p className="muted">
-            {Object.keys(answers).length} of {questions.length} answered
+            {answeredCount} of {questions.length} answered
           </p>
           <div className="palette">
             {questions.map((item, i) => (
@@ -334,7 +422,7 @@ export default function ExamRoom({
                 key={item.id}
                 className={
                   'pal'
-                  + (answers[item.id] ? ' pal--done' : '')
+                  + (isAnswered(item) ? ' pal--done' : '')
                   + (bookmarks[item.id] ? ' pal--marked' : '')
                   + (i === index ? ' pal--here' : '')
                 }

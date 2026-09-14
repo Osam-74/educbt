@@ -98,7 +98,9 @@ export default async function ExamPage({
       questions={result.questions.map((q) => ({
         id: q.id,
         number: q.number,
+        type: q.type,
         text: q.text,
+        imageUrl: q.imageUrl,
         instructions: q.instructions,
         marks: q.marks,
         options: q.options.map((o) => ({ id: o.id, key: o.key, text: o.text })),
