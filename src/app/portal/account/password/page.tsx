@@ -71,6 +71,12 @@ export default async function ChangePasswordPage({
 
           <button type="submit">Save password</button>
         </form>
+
+        {['principal', 'vice_principal', 'exam_officer', 'teacher'].includes(session.role) ? (
+          <p className="hint">
+            <a href="/portal/account/security">Two-factor security (authenticator app)</a>
+          </p>
+        ) : null}
       </div>
     </main>
   );

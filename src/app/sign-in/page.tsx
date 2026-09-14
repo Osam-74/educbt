@@ -45,6 +45,7 @@ export default async function SignInPage({
           // null: the platform-admin sign-in path. The credential decision in
           // credentials.ts resolves ONLY platform-admin accounts with this.
           schoolId: null,
+          totpCode: String(formData.get('totpCode') ?? '').trim() || undefined,
         });
       } catch (error) {
         if (error instanceof Error && error.message) {
@@ -83,6 +84,17 @@ export default async function SignInPage({
               required
             />
 
+            <label htmlFor="totpCode">Authenticator code <span className="muted">(only if two-factor is on)</span></label>
+            <input
+              id="totpCode"
+              name="totpCode"
+              type="text"
+              inputMode="numeric"
+              pattern="[0-9]*"
+              maxLength={6}
+              autoComplete="one-time-code"
+            />
+
             <button type="submit">Sign in</button>
           </form>
 
@@ -111,6 +123,7 @@ export default async function SignInPage({
         // The tenant comes from the HOSTNAME resolution in this closure —
         // never from the posted form, which a user could edit.
         schoolId: school.id,
+        totpCode: String(formData.get('totpCode') ?? '').trim() || undefined,
       });
     } catch (error) {
       // All expected failures throw a user-safe message (credentials.ts);
@@ -157,6 +170,17 @@ export default async function SignInPage({
             type="password"
             autoComplete="current-password"
             required
+          />
+
+          <label htmlFor="totpCode">Authenticator code <span className="muted">(only if two-factor is on)</span></label>
+          <input
+            id="totpCode"
+            name="totpCode"
+            type="text"
+            inputMode="numeric"
+            pattern="[0-9]*"
+            maxLength={6}
+            autoComplete="one-time-code"
           />
 
           <button type="submit">Sign in</button>

@@ -21,6 +21,7 @@ import { and, eq } from 'drizzle-orm';
 import { z } from 'zod';
 import { db, schema, forSchool } from '@/db';
 import { verifyPassword } from '@/lib/auth/password';
+import { verifyTotp } from '@/lib/auth/totp';
 import { checkLoginThrottle, lockoutUntil } from '@/lib/auth/throttle';
 import type { SessionUser } from '@/lib/auth/session-store';
 
@@ -31,6 +32,8 @@ const credentialsSchema = z.object({
   password: z.string().min(1).max(200),
   schoolId: z.coerce.number().int().positive().nullable().optional(),
   ip: z.string().optional(),
+  // Six digits from the authenticator when two-factor is on; absent otherwise.
+  totpCode: z.string().trim().regex(/^\d{0,6}$/).optional(),
 });
 
 // z.input, not z.infer: callers pass raw form strings and let the schema
@@ -113,6 +116,32 @@ export async function authenticateCredentials(raw: SignInInput): Promise<Session
     }
 
     throw new Error(GENERIC_FAILURE);
+  }
+
+  // Two-factor: the password alone is not enough for an account with TOTP
+  // on. Checked AFTER the password so a wrong code burns exactly the same
+  // lockout budget as a wrong password — a code-guesser cannot probe freely
+  // — and BEFORE the success reset so a failed code still counts.
+  if (user.totpEnabled) {
+    const code = parsed.data.totpCode ?? '';
+
+    if (code === '') {
+      // Nothing to check yet: ask for the code without touching the counters.
+      // The shared Upstash throttle still bounds retries per IP and login.
+      throw new Error('Enter the code from your authenticator app.');
+    }
+
+    if (!verifyTotp(user.totpSecret ?? '', code)) {
+      const attempts = user.failedAttempts + 1;
+      const patch = { failedAttempts: attempts, lockedUntil: lockoutUntil(attempts) };
+      if (schoolId) {
+        await forSchool(schoolId, async (tx) =>
+          tx.update(schema.users).set(patch).where(eq(schema.users.id, user.id)));
+      } else {
+        await db.update(schema.users).set(patch).where(eq(schema.users.id, user.id));
+      }
+      throw new Error('That code was not recognised.');
+    }
   }
 
   // Success: reset the counters and resolve the staff/student identity this
