@@ -93,6 +93,17 @@ function resolve(
 }
 
 {
+  // Local postgres cannot present a CA-verifiable certificate and has no
+  // network interception surface — CI boots the real production server
+  // against one. Remote hosts stay hard-gated (previous block).
+  const local = resolve(
+    { DATABASE_URL_APP: FAKE_APP_URL.replace('ep-pooler.example', 'localhost') },
+    'production',
+  );
+  check('production + localhost host exempt from the TLS gate', local.ok);
+}
+
+{
   const r = resolve({}, 'production');
   check('production with nothing configured rejected', !r.ok && r.error.includes('DATABASE_URL_APP'));
 }

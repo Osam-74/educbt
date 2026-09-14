@@ -51,6 +51,23 @@ export function sslVerifiesCertificates(url: string | undefined): boolean {
   return match?.[1] === 'verify-full';
 }
 
+/**
+ * Whether the connection's host is a loopback address. CA-verified TLS is
+ * impossible on a plain local postgres (no certificate), and there is no
+ * network path to intercept — the interception risk verify-full defends
+ * against only exists for remote hosts. CI legitimately boots the real
+ * production server (`next start`, NODE_ENV=production) against a local
+ * postgres; the gate exempts exactly that shape, mirroring the LOCAL_HOSTS
+ * exemption in scripts/preflight-production.ts.
+ */
+export function isLocalPgHost(url: string): boolean {
+  try {
+    return ['localhost', '127.0.0.1', '::1'].includes(new URL(url).hostname);
+  } catch {
+    return false;
+  }
+}
+
 export type ResolvedRuntimeConnection =
   | { ok: true; url: string; viaAppRole: boolean; production: boolean }
   | { ok: false; error: string };
@@ -87,7 +104,11 @@ export function resolveRuntimeDatabaseUrl(
       // `next build` imports route modules (page-data collection) with
       // NODE_ENV=production but serves no traffic and runs no queries — the
       // TLS gate is a runtime guarantee, so the build phase is exempt.
-      if (!options.buildPhase && !sslVerifiesCertificates(app)) {
+      if (
+        !options.buildPhase &&
+        !sslVerifiesCertificates(app) &&
+        !isLocalPgHost(app)
+      ) {
         return {
           ok: false,
           error:
