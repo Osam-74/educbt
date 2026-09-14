@@ -21,7 +21,7 @@
 import { drizzle } from 'drizzle-orm/postgres-js';
 import postgres from 'postgres';
 import { sql as dsql } from 'drizzle-orm';
-import { resolveRuntimeDatabaseUrl, sslVerifiesCertificates } from './connection';
+import { resolveRuntimeDatabaseUrl } from './connection';
 import * as core from './schema/core';
 import * as people from './schema/people';
 import * as questionBank from './schema/questions';
