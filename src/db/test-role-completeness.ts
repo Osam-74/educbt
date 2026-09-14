@@ -33,7 +33,7 @@ async function main() {
   const { enterScore } = await import('@/lib/exam/results');
   const { saveManualRemark } = await import('@/lib/settings/remarks');
   const { saveRanges } = await import('@/lib/settings/service');
-  const { forSchool } = await import('@/db');
+  const { forSchool, client: appSingleton } = await import('@/db');
   const { reportAudience } = await import('@/lib/results/report-access');
   const { allowedAudiences, assertCanCreate, ANNOUNCEMENT_AUDIENCES } = await import('@/lib/comms/announcements');
   const { canIssueTranscript, issueTranscript, verificationCode, verifyCode } = await import('@/lib/promotion/transcript');
@@ -248,6 +248,9 @@ async function main() {
     console.log('\nROLE COMPLETENESS OK: ' + count + ' checks passed. Every role can reach its whole office, and nothing beyond it.');
   } finally {
     await db.delete(schema.schools).where(eq(schema.schools.id, schoolId));
+    // The '@/db' module singleton stays connected after forSchool calls; close
+    // it so a passing run actually exits (same CI-hang fix as promotion).
+    await appSingleton.end().catch(() => {});
     await owner.end();
   }
 }

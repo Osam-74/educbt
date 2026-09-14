@@ -1,0 +1,9 @@
+.question-bank section,.question-bank details { background:#fff;border:1px solid #dbe5df;border-radius:12px;padding:20px;margin:20px 0; }
+.question-bank summary { cursor:pointer;font-weight:650;color:#195337; }
+.question-bank .form-grid { display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;margin-top:16px; }
+.question-bank label { display:flex;flex-direction:column;gap:8px;min-width:0; }
+.question-bank input,.question-bank select { width:100%;min-width:0;padding:10px;border:1px solid #bccfc2;border-radius:6px;background:#fff;color:#183528;font:inherit;box-sizing:border-box; }
+.question-bank button { align-self:end;padding:12px;border:0;border-radius:6px;background:#195337;color:#fff;font:inherit;cursor:pointer; }
+.question-bank [role=alert] { padding:12px;background:#fff0eb;color:#822c19;border-radius:6px;overflow-wrap:anywhere; }
+.question-bank .question-table { overflow-x:auto;max-width:100%; }
+@media(max-width:600px) { .question-bank .form-grid { grid-template-columns:minmax(0,1fr); } .question-bank section,.question-bank details { padding:14px; } }

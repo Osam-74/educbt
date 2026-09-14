@@ -29,7 +29,7 @@ async function main() {
   for (const key of ['DATABASE_URL_APP', 'DATABASE_URL_UNPOOLED']) {
     if (!process.env[key]) throw new Error(`Comms tests require ${key} in the environment.`);
   }
-  const { schema, forSchool } = await import('@/db');
+  const { schema, forSchool, client: appSingleton } = await import('@/db');
   const notifications = await import('@/lib/comms/notifications');
   const announcements = await import('@/lib/comms/announcements');
   const messages = await import('@/lib/comms/messages');
@@ -536,6 +536,9 @@ async function main() {
   });
 
   console.log(`\nCOMMS OK: ${count} checks passed.`);
+  // The '@/db' module singleton stays connected after forSchool calls; close
+  // it so a passing run actually exits (same CI-hang fix as promotion).
+  await appSingleton.end().catch(() => {});
   await owner.end();
 }
 
