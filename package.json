@@ -44,7 +44,10 @@
     "test:comms": "tsx src/db/test-comms.ts",
     "test:settings": "tsx src/db/test-settings.ts",
     "test:operational": "tsx src/db/test-operational-audit.ts",
-    "test:roles": "tsx src/db/test-role-completeness.ts"
+    "test:roles": "tsx src/db/test-role-completeness.ts",
+    "load:seed": "tsx scripts/load-seed.ts",
+    "load:observe": "tsx scripts/load-observe.ts",
+    "load:verify": "tsx scripts/load-verify.ts"
   },
   "dependencies": {
     "@google-cloud/storage": "^7.22.0",
