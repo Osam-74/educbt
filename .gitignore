@@ -11,3 +11,5 @@ __pycache__/
 .npm-cache/
 baseline-logs/
 load/results/
+qa/
+tmp-qa/
