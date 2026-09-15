@@ -172,6 +172,33 @@ async function main() {
       .limit(1);
     check('staff record links the principal to the tenant', !!staffRow && Number(staffRow!.userId) === Number(principal!.id));
 
+    // Default academic period: a new school must have a current session and
+    // the three standard terms, so the principal's dashboard and every term
+    // selector work on first sign-in.
+    const seedSessions = await odb
+      .select()
+      .from(core.academicSessions)
+      .where(eq(core.academicSessions.schoolId, schoolAId));
+    check(
+      'new school has exactly one academic session, current',
+      seedSessions.length === 1 && seedSessions[0]!.isCurrent === true,
+    );
+    const seedTerms = await odb
+      .select()
+      .from(core.terms)
+      .where(eq(core.terms.schoolId, schoolAId))
+      .orderBy(core.terms.position);
+    check(
+      'new school has First/Second/Third Term in order',
+      seedTerms.length === 3 &&
+        seedTerms.map((t) => t.title).join('|') === 'First Term|Second Term|Third Term' &&
+        seedTerms.map((t) => t.position).join(',') === '1,2,3',
+    );
+    check(
+      'First Term is the current term of the new school',
+      seedTerms[0]!.isCurrent === true && seedTerms[1]!.isCurrent === false && seedTerms[2]!.isCurrent === false,
+    );
+
     // ── 7. Duplicate school code: friendly, no raw database error ───────────
     let dupFailed = false;
     let dupMessage = '';

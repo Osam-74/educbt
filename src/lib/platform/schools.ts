@@ -348,6 +348,33 @@ export type OnboardedSchool = {
   temporaryPassword: string;
 };
 
+
+/**
+ * Nigerian school-year convention: the academic year runs September to
+ * August, so from September the session is "YYYY/(YYYY+1)" and before it
+ * "(YYYY-1)/YYYY". A brand-new school gets this session plus the three
+ * standard terms (First/Second/Third) with First Term current, so the
+ * principal's dashboard and every term selector work on first sign-in.
+ * Principals rename, re-date, or extend terms in /portal/settings.
+ */
+async function seedDefaultAcademicPeriod(tx: Tx, schoolId: number): Promise<void> {
+  const now = new Date();
+  const year = now.getFullYear();
+  const title = now.getMonth() >= 8 ? `${year}/${year + 1}` : `${year - 1}/${year}`;
+  const [session] = await tx.insert(schema.academicSessions).values({
+    schoolId,
+    title,
+    isCurrent: true,
+  }).returning({ id: schema.academicSessions.id });
+  await tx.insert(schema.terms).values(['First Term', 'Second Term', 'Third Term'].map((t, i) => ({
+    schoolId,
+    sessionId: Number(session!.id),
+    title: t,
+    position: i + 1,
+    isCurrent: i === 0,
+  })));
+}
+
 export async function createSchoolWithPrincipal(
   actor: PlatformActor,
   rawInput: OnboardingInput,
@@ -398,6 +425,8 @@ export async function createSchoolWithPrincipal(
           subdomain: schema.schools.subdomain,
           status: schema.schools.status,
         });
+
+      await seedDefaultAcademicPeriod(tx, Number(school!.id));
 
       const { principalName, loginId: principalUser_loginId } = await onboardPrincipalInTx(
         tx,
@@ -475,6 +504,15 @@ export async function createPrincipalForSchool(
         .where(eq(schema.schools.id, schoolId))
         .limit(1);
       if (!school) throw new NotFoundError();
+
+      // Recovery path: if this school predates default-period seeding (or its
+      // sessions were never configured), give it the standard setup now.
+      const existingSessions = await tx
+        .select({ id: schema.academicSessions.id })
+        .from(schema.academicSessions)
+        .where(eq(schema.academicSessions.schoolId, schoolId))
+        .limit(1);
+      if (!existingSessions.length) await seedDefaultAcademicPeriod(tx, schoolId);
 
       const principal = await onboardPrincipalInTx(
         tx,

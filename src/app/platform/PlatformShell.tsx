@@ -133,7 +133,18 @@ export default function PlatformShell({
             {brandLogoUrl ? (
               // Uploaded platform logo (Branding page) replaces the default
               // building mark; same slot, same size, object-fit for any shape.
-              <img src={brandLogoUrl} alt="" style={{ width: 22, height: 22, objectFit: 'contain' }} />
+              <img
+                src={brandLogoUrl}
+                alt=""
+                style={{
+                  position: 'absolute',
+                  inset: 0,
+                  width: '100%',
+                  height: '100%',
+                  objectFit: 'cover',
+                  borderRadius: 'inherit',
+                }}
+              />
             ) : (
               <PaIcon name="building" width={19} height={19} />
             )}
