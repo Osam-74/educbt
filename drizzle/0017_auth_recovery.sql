@@ -53,8 +53,14 @@ CREATE UNIQUE INDEX "password_reset_tokens_token_uq" ON "password_reset_tokens" 
 --> statement-breakpoint
 CREATE INDEX "password_reset_tokens_user_idx" ON "password_reset_tokens" ("user_id", "created_at");
 --> statement-breakpoint
--- Unguessable primary key reached pre-tenant, exactly like sessions: no RLS.
-ALTER TABLE "password_reset_tokens" DISABLE ROW LEVEL SECURITY;
+-- Creation is tenant-scoped; the single-use claim elevates per-tenant GUCs
+-- (see rls.sql). Row-level security, same policy shape as every core table.
+ALTER TABLE "password_reset_tokens" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "password_reset_tokens" FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON "password_reset_tokens";
+CREATE POLICY tenant_isolation ON "password_reset_tokens"
+  USING (school_id = current_school_id() OR is_platform_admin())
+  WITH CHECK (school_id = current_school_id() OR is_platform_admin());
 --> statement-breakpoint
 
 -- ── TOTP recovery codes ──────────────────────────────────────────────────────

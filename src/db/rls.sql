@@ -326,10 +326,18 @@ REVOKE UPDATE, DELETE ON audit_log FROM PUBLIC;
 ALTER TABLE sessions DISABLE ROW LEVEL SECURITY;
 
 -- ── password_reset_tokens ─────────────────────────────────────────────────────
--- Same posture as sessions: reached BEFORE the tenant exists, by an
--- unguessable primary key (the SHA-256 of a 256-bit token), and the table
--- holds no tenant data of its own. The raw token is never stored anywhere.
-ALTER TABLE password_reset_tokens DISABLE ROW LEVEL SECURITY;
+-- Token creation happens inside the requester's tenant (or platform
+-- elevation for platform admins), so the standard tenant predicate covers
+-- the INSERT. The claim UPDATE runs before any tenant is known — the
+-- unguessable 256-bit token IS the authorization — so the claim transaction
+-- elevates with app.platform_admin and its use is audited in the completion
+-- transaction. The raw token is never stored anywhere.
+ALTER TABLE password_reset_tokens ENABLE ROW LEVEL SECURITY;
+ALTER TABLE password_reset_tokens FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON password_reset_tokens;
+CREATE POLICY tenant_isolation ON password_reset_tokens
+  USING (school_id = current_school_id() OR is_platform_admin())
+  WITH CHECK (school_id = current_school_id() OR is_platform_admin());
 
 -- ── totp_recovery_codes ───────────────────────────────────────────────────────
 -- Looked up by user_id — NOT by an unguessable key — so unlike sessions this

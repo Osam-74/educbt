@@ -256,6 +256,10 @@ export async function resetPasswordWithToken(
   // tenant) — the users row itself cannot be read before the tenant is
   // pinned, that is the whole point of RLS on users.
   const claimed = await db.transaction(async (tx) => {
+    // The token IS the authorization — it is 256 random bits and this table
+    // is RLS-forced (policy: tenant match OR platform elevation), so the
+    // claim elevates here and the completion transaction audits the use.
+    await tx.execute(sql`select set_config('app.platform_admin', 'on', true)`);
     const rows = await tx
       .update(schema.passwordResetTokens)
       .set({ usedAt: new Date() })
