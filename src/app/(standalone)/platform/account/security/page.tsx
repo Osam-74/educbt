@@ -1,4 +1,5 @@
 import { cookies } from 'next/headers';
+import QRCode from 'qrcode';
 import { redirect } from 'next/navigation';
 import { auth } from '@/lib/auth';
 import {
@@ -38,6 +39,8 @@ export default async function PlatformSecurityPage({
 
   const { enabled } = await totpStatus(account);
   const pending = enabled ? null : await pendingEnrollment(account);
+  // Scanning beats typing — server-side QR from the otpauth URI.
+  const pendingQr = pending ? await QRCode.toDataURL(pending.uri, { margin: 1, width: 256 }) : null;
   const remaining = enabled ? await recoveryCodesRemaining(account) : 0;
 
   const flash = (await cookies()).get('educbt.new_recovery_codes')?.value;
@@ -195,10 +198,17 @@ export default async function PlatformSecurityPage({
           </>
         ) : pending ? (
           <>
-            <p><strong>1.</strong> In your authenticator app, choose “Add account”, then enter this key (or choose “enter a setup key” / “manual entry”):</p>
-            <p className="totp-secret">{pending.secret}</p>
+            <p><strong>1.</strong> In your authenticator app, choose “Add account”, then scan this code:</p>
+            {pendingQr ? (
+              // eslint-disable-next-line @next/next/no-img-element -- data URL, not a remote asset
+              <p className="totp-qr"><img src={pendingQr} alt="Two-factor setup code for your authenticator app" width={256} height={256} /></p>
+            ) : null}
 
-            <p className="hint">If your app asks for it: type <em>Time-based</em>, <em>6 digits</em>, <em>30 seconds</em>.</p>
+            <details className="totp-manual">
+              <summary>Can&rsquo;t scan? Enter the key manually</summary>
+              <p className="totp-secret">{pending.secret}</p>
+              <p className="hint">If your app asks for it: type <em>Time-based</em>, <em>6 digits</em>, <em>30 seconds</em>.</p>
+            </details>
 
             <p><strong>2.</strong> Enter the six-digit code the app is showing now:</p>
 

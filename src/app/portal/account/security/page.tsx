@@ -1,5 +1,6 @@
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
+import QRCode from 'qrcode';
 import { auth } from '@/lib/auth';
 import {
   TotpError,
@@ -44,6 +45,10 @@ export default async function SecurityPage({
 
   const { enabled } = await totpStatus({ id: session.id, schoolId: session.schoolId });
   const pending = enabled ? null : await pendingEnrollment({ id: session.id, schoolId: session.schoolId });
+  // Scanning is how real people do this — the QR is generated server-side
+  // from the otpauth URI so no QR library ships to the browser, and the
+  // manual key stays available for the apps that cannot scan.
+  const pendingQr = pending ? await QRCode.toDataURL(pending.uri, { margin: 1, width: 256 }) : null;
   const remaining = enabled
     ? await recoveryCodesRemaining({ id: session.id, schoolId: session.schoolId })
     : 0;
@@ -208,10 +213,17 @@ export default async function SecurityPage({
           </>
         ) : pending ? (
           <>
-            <p><strong>1.</strong> In your authenticator app, choose “Add account”, then enter this key (or choose “enter a setup key” / “manual entry”):</p>
-            <p className="totp-secret">{pending.secret}</p>
+            <p><strong>1.</strong> In your authenticator app, choose “Add account”, then scan this code:</p>
+            {pendingQr ? (
+              // eslint-disable-next-line @next/next/no-img-element -- data URL, not a remote asset
+              <p className="totp-qr"><img src={pendingQr} alt="Two-factor setup code for your authenticator app" width={256} height={256} /></p>
+            ) : null}
 
-            <p className="hint">If your app asks for it: type <em>Time-based</em>, <em>6 digits</em>, <em>30 seconds</em>.</p>
+            <details className="totp-manual">
+              <summary>Can&rsquo;t scan? Enter the key manually</summary>
+              <p className="totp-secret">{pending.secret}</p>
+              <p className="hint">If your app asks for it: type <em>Time-based</em>, <em>6 digits</em>, <em>30 seconds</em>.</p>
+            </details>
 
             <p><strong>2.</strong> Enter the six-digit code the app is showing now:</p>
 

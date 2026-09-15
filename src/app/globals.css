@@ -175,6 +175,10 @@ button[type='submit']:disabled { opacity: .6; cursor: default; }
 .opt-row .opt-key { width: 20px; font-weight: 700; margin: 0; }
 .opt-row input[type='text'] { flex: 1; margin: 0; }
 
+.totp-qr { margin: 6px 0 14px; }
+.totp-qr img { display: block; width: 256px; height: 256px;
+  background: #fff; border: 1px solid var(--line); border-radius: 9px; padding: 8px; }
+.totp-manual { margin-bottom: 14px; }
 .totp-secret { font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
   font-size: 17px; letter-spacing: 2px; word-break: break-all;
   background: var(--wash); border: 1px solid var(--line); border-radius: 9px;
