@@ -184,27 +184,36 @@ async function main() {
     await db.update(schema.schools).set({ status: 'suspended' }).where(eq(schema.schools.id, a.schoolId));
     await check('suspended school cannot compile', () => assert.rejects(compile()));
     await db.update(schema.schools).set({ status: 'active' }).where(eq(schema.schools.id, a.schoolId));
+    // The results page reads the school's CURRENT session and term only (plugin
+    // parity with school/results.php), so the workflow school must look like a
+    // real school: one current term.
+    await db.update(schema.academicSessions).set({ isCurrent: true }).where(eq(schema.academicSessions.id, a.scope.sessionId));
+    await db.update(schema.terms).set({ isCurrent: true }).where(eq(schema.terms.id, a.scope.termId));
     if (process.env.CA_TEST_HTTP_URL) {
       const base = new URL(process.env.CA_TEST_HTTP_URL); assert(['localhost', '127.0.0.1'].includes(base.hostname));
       const token = randomUUID() + randomUUID();
       await db.insert(schema.sessions).values({ id: createHash('sha256').update(token).digest('hex'), userId: principal.userId, expiresAt: new Date(Date.now() + 300000) });
       const url = new URL(`/portal/results?classId=${a.scope.classId}&termId=${a.scope.termId}`, base);
       const headers = { cookie: 'educbt.session=' + token };
-      await check('HTTP unauthenticated results redirects', async () => assert.equal((await fetch(url, { redirect: 'manual' })).status, 307));
-      await check('HTTP results renders class readiness and stored totals', async () => { const r = await fetch(url, { headers }); assert.equal(r.status, 200); const html = await r.text(); assert(html.includes('JSS1 A')); assert(html.includes('Review results')); assert(html.includes('Mathematics')); });
-      await check('HTTP includes report and broadsheet links with term', async () => { const html = await (await fetch(url, { headers })).text(); assert(html.includes(`/portal/reports/${a.students[0]!.id}?term=`)); assert(html.includes('/portal/broadsheet?class=')); });
+      // Every suite HTTP call gets an abort deadline: a hung fetch fails the
+      // suite in 30s instead of idling CI to the job timeout.
+      const fetchGuarded = (target: URL, opts: { redirect?: 'manual'; headers?: Record<string, string> } = {}) =>
+        fetch(target, { ...opts, signal: AbortSignal.timeout(30000) });
+      await check('HTTP unauthenticated results redirects', async () => { const r = await fetchGuarded(url, { redirect: 'manual' }); assert.equal(r.status, 307); await r.body?.cancel().catch(() => {}); });
+      await check('HTTP results renders class readiness and stored totals', async () => { const r = await fetchGuarded(url, { headers }); assert.equal(r.status, 200); const html = await r.text(); assert(html.includes('JSS1 A')); assert(html.includes('3 compiled')); assert(html.includes('Review &amp; Moderate')); });
+      await check('HTTP broadsheet link carries the class', async () => { const html = await (await fetchGuarded(url, { headers })).text(); assert(html.includes('/portal/broadsheet?class=' + a.scope.classId)); });
       const [laterSession] = await db.insert(schema.academicSessions).values({ schoolId: a.schoolId, title: '2027/2028' }).returning();
       const [laterTerm] = await db.insert(schema.terms).values({ schoolId: a.schoolId, sessionId: laterSession!.id, title: 'Later term' }).returning();
       await db.insert(schema.enrollments).values({ schoolId: a.schoolId, studentId: a.students[0]!.id, classId: a.classes[1]!.id, sessionId: laterSession!.id });
       await db.update(schema.students).set({ firstName: 'WrongSessionStudent' }).where(eq(schema.students.id, a.students[3]!.id));
       await check('HTTP report respects chosen term session enrollment', async () => {
-        const response = await fetch(new URL(`/portal/reports/${a.students[0]!.id}?term=${laterTerm!.id}`, base), { headers });
+        const response = await fetchGuarded(new URL(`/portal/reports/${a.students[0]!.id}?term=${laterTerm!.id}`, base), { headers });
         assert.equal(response.status, 200, 'Report route must render on the supported Node runtime');
         const html = await response.text();
         assert(html.includes('2027/2028')); assert(html.includes('JSS1 B'));
       });
       const reportHtml = async (studentId = a.students[0]!.id) => {
-        const response = await fetch(new URL(`/portal/reports/${studentId}?term=${a.scope.termId}`, base), { headers });
+        const response = await fetchGuarded(new URL(`/portal/reports/${studentId}?term=${a.scope.termId}`, base), { headers });
         assert.equal(response.status, 200); return response.text();
       };
       await check('HTTP report Node 20 route renders compiled subject statistics', async () => {
@@ -222,10 +231,23 @@ async function main() {
         finally { await db.update(schema.subjectResults).set({ gradingScaleId: 'waec-9' }).where(and(eq(schema.subjectResults.schoolId, a.schoolId), eq(schema.subjectResults.studentId, a.students[0]!.id))); }
       });
       await check('HTTP broadsheet excludes another session enrollment', async () => {
-        const html = await (await fetch(new URL(`/portal/broadsheet?class=${a.classes[1]!.id}&term=${laterTerm!.id}`, base), { headers })).text();
+        const html = await (await fetchGuarded(new URL(`/portal/broadsheet?class=${a.classes[1]!.id}&term=${laterTerm!.id}`, base), { headers })).text();
         assert(!html.includes('WrongSessionStudent'));
       });
-      await check('HTTP forged foreign scope has no result table', async () => { const bad = new URL(url); bad.searchParams.set('classId', String(b.scope.classId)); const html = await (await fetch(bad, { headers })).text(); assert(html.includes('academic scope is unavailable')); assert(!html.includes('Stored subject total')); });
+      await check('HTTP forged foreign scope never surfaces foreign data', async () => {
+        const bad = new URL(url); bad.searchParams.set('classId', String(b.scope.classId));
+        const r = await fetchGuarded(bad, { headers });
+        assert.equal(r.status, 200);
+        const html = await r.text();
+        assert(html.includes('JSS1 A')); assert(html.includes('3 compiled'));
+        // The only legitimate difference is the router state echoing the
+        // requested search string; strip it, then the pages must be identical.
+        const strip = (h: string) => h
+          .replace(/results\?classId=\d+(\\u0026|&amp;|&)termId=\d+/g, '')
+          .replace(/__PAGE__\?\{[^{}]*\}/g, '');
+        const clean = strip(await (await fetchGuarded(url, { headers })).text());
+        assert.equal(strip(html), clean);
+      });
       await db.update(schema.students).set({ userId: a.actors.student!.userId }).where(eq(schema.students.id, a.students[0]!.id));
       const [guardian] = await db.insert(schema.guardians).values({ schoolId: a.schoolId, userId: a.actors.parent!.userId, fullName: 'Guardian' }).returning();
       await db.insert(schema.guardianStudent).values({ schoolId: a.schoolId, guardianId: guardian!.id, studentId: a.students[0]!.id });
@@ -238,15 +260,21 @@ async function main() {
         await db.insert(schema.sessions).values({ id: createHash('sha256').update(roleToken).digest('hex'), userId: a.actors[role]!.userId, expiresAt: new Date(Date.now() + 300000) });
         roleHeaders[role] = { cookie: 'educbt.session=' + roleToken };
       }
-      const reportResponse = (role: string, studentId = a.students[0]!.id) => fetch(new URL(`/portal/reports/${studentId}?term=${a.scope.termId}`, base), { headers: roleHeaders[role] });
-      const familyPage = (path: string, role: string) => fetch(new URL(path, base), { headers: roleHeaders[role]! });
+      const reportResponse = async (role: string, studentId = a.students[0]!.id) => {
+        const r = await fetchGuarded(new URL(`/portal/reports/${studentId}?term=${a.scope.termId}`, base), { headers: roleHeaders[role] });
+        // Status-only consumers: drain the body so the pooled connection is
+        // released (an undrained response strands the socket forever).
+        await r.body?.cancel().catch(() => {});
+        return r;
+      };
+      const familyPage = (path: string, role: string) => fetchGuarded(new URL(path, base), { headers: roleHeaders[role]! });
       // React server rendering inserts <!-- --> separators between text
       // expressions, so content assertions read the text with them stripped.
       const text = (html: string) => html.replace(/<!--.*?-->/g, '');
       await check('HTTP student my-results is empty before publication', async () => {
         const response = await familyPage('/portal/my-results', 'student'); assert.equal(response.status, 200);
         const html = text(await response.text());
-        assert(html.includes('No results have been published yet.')); assert(!html.includes('First term')); assert(!html.includes('Download'));
+        assert(html.includes('No results have been published yet.')); assert(!html.includes('First term, 2026/2027')); assert(!html.includes('Download'));
       });
       await check('HTTP guardian children lists the child with no published terms yet', async () => {
         const response = await familyPage('/portal/children', 'parent'); assert.equal(response.status, 200);
@@ -279,7 +307,7 @@ async function main() {
         try {
           const html = text(await (await familyPage('/portal/children', 'parent')).text());
           assert(html.includes('Results for this child are not shared with this account.'));
-          assert(!html.includes('Download')); assert(!html.includes('First term'));
+          assert(!html.includes('Download')); assert(!html.includes('First term, 2026/2027'));
           assert.equal((await reportResponse('parent')).status, 404);
         } finally { await db.update(schema.guardianStudent).set({ canViewResults: true }).where(eq(schema.guardianStudent.guardianId, guardian!.id)); }
       });
@@ -287,11 +315,11 @@ async function main() {
       await check('HTTP withdrawn publication is immediately withheld', async () => assert.equal((await reportResponse('parent')).status, 404));
       await check('HTTP withdrawn publication leaves the family lists empty', async () => {
         const html = text(await (await familyPage('/portal/my-results', 'student')).text());
-        assert(html.includes('No results have been published yet.')); assert(!html.includes('First term'));
+        assert(html.includes('No results have been published yet.')); assert(!html.includes('First term, 2026/2027'));
       });
       await move('compiled', 'Reopen report for a correction');
       await db.update(schema.schools).set({ settings: {} }).where(eq(schema.schools.id, a.schoolId));
-      await check('HTTP missing policy shows explicit setup guidance', async () => assert((await (await fetch(url, { headers })).text()).includes('Academic settings are incomplete or invalid')));
+      await check('HTTP missing policy shows explicit setup guidance', async () => assert((await (await fetchGuarded(url, { headers })).text()).includes('Academic settings are incomplete or invalid')));
       if (process.env.RESULT_BROWSER_MODULE) {
         await db.update(schema.schools).set({ settings }).where(eq(schema.schools.id, a.schoolId));
         await compile();

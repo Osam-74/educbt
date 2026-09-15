@@ -117,9 +117,11 @@ export default async function ResultsPage() {
                   </td>
                   <td>
                     {c.stage !== '' || c.compiled > 0
-                      ? <>{c.compiled} compiled</>
+                      // Single text node, so the SSR html reads exactly like the
+                      // plugin's — no React comment markers inside the count.
+                      ? `${c.compiled} compiled`
                       : c.enrolled > 0
-                        ? <span className="muted">{c.enrolled} enrolled, none compiled</span>
+                        ? <span className="muted">{`${c.enrolled} enrolled, none compiled`}</span>
                         : <span className="muted">no students enrolled</span>}
                   </td>
                   <td>

@@ -44,6 +44,7 @@
     "bootstrap:platform-admin": "tsx scripts/bootstrap-platform-admin.ts",
     "test:comms": "tsx src/db/test-comms.ts",
     "test:settings": "tsx src/db/test-settings.ts",
+    "test:subjects": "tsx src/db/test-subjects.ts",
     "test:operational": "tsx src/db/test-operational-audit.ts",
     "test:roles": "tsx src/db/test-role-completeness.ts",
     "test:guardian-scope": "tsx src/db/test-guardian-scope.ts",

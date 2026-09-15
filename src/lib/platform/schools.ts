@@ -31,6 +31,7 @@
 import { and, desc, eq, ilike, inArray, or, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { asPlatformAdmin, schema, type Tx } from '@/db';
+import { seedStandardSubjects } from '@/lib/subjects/service';
 import { hashPassword, generateInitialPassword } from '@/lib/auth/password';
 import type { PlatformActor } from '@/lib/platform/session';
 
@@ -438,6 +439,12 @@ export async function createSchoolWithPrincipal(
         });
 
       await seedDefaultAcademicPeriod(tx, Number(school!.id));
+
+      // Seed the standard NERDC subject offering (see subjects/service.ts). A
+      // school otherwise opens its Subjects page to an empty list and types
+      // thirty-odd subjects every school types identically. Safe to leave in
+      // place permanently: it only ever runs for a school with no subjects.
+      await seedStandardSubjects(tx, Number(school!.id), false);
 
       const { principalName, loginId: principalUser_loginId } = await onboardPrincipalInTx(
         tx,
