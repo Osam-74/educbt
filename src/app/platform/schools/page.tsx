@@ -4,6 +4,7 @@ import { listSchools } from '@/lib/platform/schools';
 import { bestSchoolUrl } from '@/lib/platform/tenant-url';
 import { PaIcon } from '../icons';
 import { CopyButton } from '../CopyButton';
+import { CrestThumb, QuickViewButton } from './SchoolQuickView';
 
 export const dynamic = 'force-dynamic';
 
@@ -113,7 +114,7 @@ export default async function SchoolsPage({
                     <tr key={s.id} id={`schools-row-${s.id}`}>
                       <td>
                         <Link href={`/platform/schools/${s.id}`} className="pa-cell-name" style={{ textDecoration: 'none' }}>
-                          <span className="pa-icon-tile"><PaIcon name="building" width={15} height={15} /></span>
+                          <CrestThumb logoUrl={s.logoUrl} />
                           <span className="pa-cell-title">{s.name}</span>
                         </Link>
                       </td>
@@ -143,8 +144,9 @@ export default async function SchoolsPage({
                       <td style={{ color: 'var(--pa-stone-500)', fontSize: 12.5 }}>{s.createdAt.toLocaleDateString('en-GB')}</td>
                       <td className="pa-right">
                         <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
-                          <Link href={`/platform/schools/${s.id}`} className="pa-btn pa-btn--ghost pa-btn--sm" title="View complete details">
-                            <PaIcon name="eye" width={13} height={13} />
+                          <QuickViewButton school={s} url={url} />
+                          <Link href={`/platform/schools/${s.id}/edit`} className="pa-btn pa-btn--ghost pa-btn--sm" title="Edit school">
+                            <PaIcon name="edit" width={13} height={13} />
                           </Link>
                           <Link
                             href={`/platform/schools/${s.id}#status-action`}
@@ -177,7 +179,7 @@ export default async function SchoolsPage({
               <div key={s.id} className="pa-glass pa-mobile-card">
                 <div className="pa-mobile-card-top">
                   <div className="pa-cell-name">
-                    <span className="pa-icon-tile"><PaIcon name="building" width={15} height={15} /></span>
+                    <CrestThumb logoUrl={s.logoUrl} />
                     <div>
                       <div className="pa-cell-title" style={{ fontSize: 13.5 }}>{s.name}</div>
                       <div className="pa-cell-sub">{s.code}</div>
@@ -203,6 +205,7 @@ export default async function SchoolsPage({
                 <div className="pa-mobile-card-foot">
                   <span style={{ color: 'var(--pa-stone-400)' }}>Created: {s.createdAt.toLocaleDateString('en-GB')}</span>
                   <div style={{ display: 'flex', gap: 6 }}>
+                    <QuickViewButton school={s} url={url} />
                     <Link href={`/platform/schools/${s.id}`} className="pa-btn pa-btn--ghost pa-btn--sm">Details</Link>
                     <Link href={`/platform/schools/${s.id}#status-action`} className="pa-btn pa-btn--outline pa-btn--sm">
                       {s.status === 'active' ? 'Suspend' : 'Activate'}

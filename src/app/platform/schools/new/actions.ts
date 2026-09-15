@@ -19,6 +19,8 @@ import {
   PlatformPermissionError,
   type OnboardedSchool,
 } from '@/lib/platform/schools';
+import { normalizeImage } from '@/lib/settings/images';
+import { SettingsError } from '@/lib/settings/service';
 
 export type OnboardingState =
   | { status: 'idle' }
@@ -51,13 +53,19 @@ export async function createSchoolAction(
   };
 
   try {
-    const result = await createSchoolWithPrincipal(actor, input);
+    const crestFile = formData.get('crest');
+    const crest = crestFile instanceof File && crestFile.size ? await normalizeImage(crestFile) : undefined;
+
+    const result = await createSchoolWithPrincipal(actor, input, crest);
 
     revalidatePath('/platform');
     revalidatePath('/platform/schools');
 
     return { status: 'success', result };
   } catch (error) {
+    if (error instanceof SettingsError) {
+      return { status: 'error', message: error.message, fieldErrors: { crest: error.message } };
+    }
     if (error instanceof OnboardingValidationError) {
       return { status: 'error', message: error.message, fieldErrors: error.fieldErrors };
     }

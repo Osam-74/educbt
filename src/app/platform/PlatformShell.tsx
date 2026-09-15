@@ -19,10 +19,11 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
 import { PaIcon } from './icons';
+import { isNavItemActive, pageNameFor, type PlatformNavHref } from '@/lib/platform/nav';
 
 type NavItem = { href: string; label: string; icon: string; badge?: number };
 
-function navItemsFor(schoolsCount: number): NavItem[] {
+function navItemsFor(schoolsCount: number): (NavItem & { href: PlatformNavHref })[] {
   return [
     { href: '/platform', label: 'Dashboard', icon: 'dashboard' },
     { href: '/platform/schools', label: 'Schools', icon: 'schools', badge: schoolsCount },
@@ -31,32 +32,29 @@ function navItemsFor(schoolsCount: number): NavItem[] {
   ];
 }
 
-function pageNameFor(pathname: string): string {
-  if (pathname === '/platform') return 'Dashboard';
-  if (pathname === '/platform/schools') return 'Schools directory';
-  if (pathname === '/platform/schools/new') return 'New school';
-  if (/^\/platform\/schools\/\d+$/.test(pathname)) return 'School details';
-  if (pathname.startsWith('/platform/account/profile')) return 'Account profile';
-  if (pathname.startsWith('/platform/account/password')) return 'Password';
-  if (pathname.startsWith('/platform/account/security')) return 'Security';
-  return 'Platform';
-}
-
 export default function PlatformShell({
   children,
   loginId,
   schoolsCount,
   endSession,
+  fontClassName,
 }: {
   children: React.ReactNode;
   loginId: string;
   schoolsCount: number;
   endSession: () => Promise<void>;
+  /** next/font variable className (see ./font.ts) — applied on the shell root
+   * so platform-shell.css's `var(--font-montserrat)` resolves everywhere,
+   * including the native <dialog> mobile drawer portal-ed outside .pa-main. */
+  fontClassName?: string;
 }) {
   const pathname = usePathname();
   const navItems = navItemsFor(schoolsCount);
   const pageName = pageNameFor(pathname);
-  const matches = (href: string) => pathname === href || (href !== '/platform' && pathname.startsWith(href + '/'));
+  // Per-route matching (src/lib/platform/nav.ts) — see nav.test.ts for the
+  // exact bug this fixes: naive prefix matching made "Schools" and
+  // "New school" active together.
+  const matches = (href: PlatformNavHref) => isNavItemActive(href, pathname);
 
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -189,7 +187,7 @@ export default function PlatformShell({
   );
 
   return (
-    <div className="pa-shell">
+    <div className={`pa-shell${fontClassName ? ` ${fontClassName}` : ''}`}>
       {/* Desktop sidebar */}
       <aside id="pa-sidebar" className={`pa-sidebar${collapsed ? ' pa-sidebar--collapsed' : ''}`}>
         {sidebarContents()}

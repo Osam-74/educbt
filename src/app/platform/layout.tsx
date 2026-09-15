@@ -3,6 +3,7 @@ import { schoolsCount } from '@/lib/platform/schools';
 import { signOut } from '@/lib/auth';
 import PlatformShell from './PlatformShell';
 import './platform-shell.css';
+import { montserrat } from './font';
 
 /**
  * The platform administration shell.
@@ -34,7 +35,7 @@ export default async function PlatformLayout({ children }: { children: React.Rea
   }
 
   return (
-    <PlatformShell loginId={actor.loginId} schoolsCount={count} endSession={endSession}>
+    <PlatformShell loginId={actor.loginId} schoolsCount={count} endSession={endSession} fontClassName={montserrat.variable}>
       {children}
     </PlatformShell>
   );

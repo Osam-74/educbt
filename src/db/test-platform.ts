@@ -42,11 +42,13 @@ import {
   createSchoolWithPrincipal,
   createPrincipalForSchool,
   setSchoolStatus,
+  updateSchoolProfile,
   listSchools,
   platformOverview,
   schoolDetail,
   DuplicateValueError,
   OnboardingValidationError,
+  NotFoundError,
   PlatformPermissionError,
 } from '@/lib/platform/schools';
 
@@ -405,6 +407,50 @@ async function main() {
       readFileSync(f, 'utf8').includes('DATABASE_URL_UNPOOLED'),
     );
     check('no owner DB credential in application runtime modules (20)', !offender, offender ?? '');
+
+    // ── 21. Edit School — safe profile fields, immutable fields untouched ───
+    const CREST = 'data:image/png;base64,' + Buffer.from([1, 2, 3]).toString('base64');
+    const [beforeEdit] = await odb.select().from(core.schools).where(eq(core.schools.id, schoolAId)).limit(1);
+    const edited = await updateSchoolProfile(
+      actor,
+      schoolAId,
+      { name: 'School A Renamed', email: 'new@plt-a.test', phone: '0800000000', address: '1 New Street' },
+      CREST,
+    );
+    check('updateSchoolProfile returns the new name (21)', edited.name === 'School A Renamed');
+    const [afterEdit] = await odb.select().from(core.schools).where(eq(core.schools.id, schoolAId)).limit(1);
+    check('name/email/phone/address persisted (21)', afterEdit!.name === 'School A Renamed'
+      && afterEdit!.email === 'new@plt-a.test' && afterEdit!.phone === '0800000000'
+      && afterEdit!.address === '1 New Street');
+    check('crest persisted as the normalized data URL (21)', afterEdit!.logoUrl === CREST);
+    check('code is untouched by the edit (21)', afterEdit!.code === beforeEdit!.code && afterEdit!.code === CODE_A);
+    check('id is untouched by the edit (21)', Number(afterEdit!.id) === schoolAId);
+    check('status is untouched by the edit — suspend/reactivate owns that (21)', afterEdit!.status === beforeEdit!.status);
+
+    let editRoleGuardHeld = true;
+    for (const role of ['principal', 'teacher'] as const) {
+      try {
+        await updateSchoolProfile({ userId: 999999, loginId: 'x', role: role as unknown as 'platform_admin' }, schoolAId, { name: 'Hijacked' });
+        editRoleGuardHeld = false;
+      } catch (error) {
+        if (!(error instanceof PlatformPermissionError)) editRoleGuardHeld = false;
+      }
+    }
+    check('non-platform-admin actors cannot edit a school profile (21)', editRoleGuardHeld);
+
+    let editNotFoundHeld = false;
+    try {
+      await updateSchoolProfile(actor, 987654321, { name: 'Ghost School' });
+    } catch (error) {
+      editNotFoundHeld = error instanceof NotFoundError;
+    }
+    check('editing a non-existent school is refused, not silently ignored (21)', editNotFoundHeld);
+
+    const editAuditRows = await odb
+      .select({ action: people.auditLog.action })
+      .from(people.auditLog)
+      .where(and(eq(people.auditLog.schoolId, schoolAId), eq(people.auditLog.action, 'school.profile_updated')));
+    check('audit records school.profile_updated (21)', editAuditRows.length >= 1);
 
     // ── 19. Rerun safety: cleanup leaves no partial state for the next run ──
     await odb.delete(core.schools).where(

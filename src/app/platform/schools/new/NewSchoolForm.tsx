@@ -10,7 +10,7 @@
  * button, never stored or re-fetched.
  */
 
-import { useActionState } from 'react';
+import { useActionState, useState } from 'react';
 import { createSchoolAction, type OnboardingState } from './actions';
 import { PaIcon } from '../../icons';
 import { CopyButton } from '../../CopyButton';
@@ -26,6 +26,7 @@ export function NewSchoolForm({ loginUrlHint }: { loginUrlHint: string | null })
   const [state, formAction, pending] = useActionState(createSchoolAction, {
     status: 'idle',
   } as OnboardingState);
+  const [crestPreview, setCrestPreview] = useState<string | null>(null);
 
   if (state.status === 'success') {
     const { school, principal, temporaryPassword } = state.result;
@@ -117,6 +118,37 @@ export function NewSchoolForm({ loginUrlHint }: { loginUrlHint: string | null })
             The school will sign in at <code>{loginUrlHint ? '<name>' : '<name>'}.{loginUrlHint ?? 'your-platform-domain'}</code>. Set up later if unsure.
           </p>
           <FieldError field="subdomain" state={state} />
+        </div>
+
+        <div className="pa-field">
+          <label htmlFor="crest">School crest <span className="pa-optional">(optional)</span></label>
+          <div className="pa-crest-upload">
+            <div className="pa-crest-preview">
+              {crestPreview ? (
+                <img src={crestPreview} alt="Crest preview" />
+              ) : (
+                <PaIcon name="building" width={20} height={20} />
+              )}
+            </div>
+            <div>
+              <input
+                id="crest"
+                name="crest"
+                type="file"
+                accept="image/png,image/jpeg,image/webp"
+                className="pa-input"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (!file) { setCrestPreview(null); return; }
+                  const reader = new FileReader();
+                  reader.onload = () => setCrestPreview(String(reader.result));
+                  reader.readAsDataURL(file);
+                }}
+              />
+              <p className="pa-field-hint">PNG, JPEG or WebP, up to 2&nbsp;MB. Shown beside the school in the directory.</p>
+            </div>
+          </div>
+          <FieldError field="crest" state={state} />
         </div>
 
         <div className="pa-grid-2">

@@ -14,6 +14,11 @@ import {
 } from '@/lib/auth/totp-account';
 import '@/app/platform/platform-shell.css';
 import { PaIcon } from '@/app/platform/icons';
+import PlatformShell from '@/app/platform/PlatformShell';
+import { montserrat } from '@/app/platform/font';
+import { schoolsCount } from '@/lib/platform/schools';
+import { signOut } from '@/lib/auth';
+import type { PlatformActor } from '@/lib/platform/session';
 
 export const dynamic = 'force-dynamic';
 
@@ -44,6 +49,16 @@ export default async function PlatformSecurityPage({
   if (session.role !== 'platform_admin') redirect('/portal');
 
   const account = { id: session.id, schoolId: session.schoolId };
+  // Correction pass: restore the Platform Admin shell (sidebar/header/mobile
+  // drawer) around this page, built directly here — NOT via requirePlatformSession
+  // or the guarded layout — so a forced password change still cannot loop
+  // (this page has never gone through that guard; see the password page's note).
+  const shellActor: PlatformActor = { userId: session.id, loginId: session.loginId, role: 'platform_admin' };
+  const shellSchoolsCount = await schoolsCount(shellActor);
+  async function endSession() {
+    'use server';
+    await signOut({ redirectTo: '/sign-in' });
+  }
 
   const { enabled } = await totpStatus(account);
   const pending = enabled ? null : await pendingEnrollment(account);
@@ -150,8 +165,8 @@ export default async function PlatformSecurityPage({
   }
 
   return (
-    <div className="pa-shell" style={{ display: 'block', minHeight: '100dvh' }}>
-      <main style={{ display: 'grid', placeItems: 'center', minHeight: '100dvh', padding: 24 }}>
+    <PlatformShell loginId={shellActor.loginId} schoolsCount={shellSchoolsCount} endSession={endSession} fontClassName={montserrat.variable}>
+      <div style={{ display: 'grid', placeItems: 'center', padding: '24px 0' }}>
         <div className="pa-glass pa-form-card" style={{ width: '100%', maxWidth: 460 }}>
           <div className="pa-form-section-head" style={{ marginBottom: 4 }}>
             <span style={{ width: 40, height: 40, borderRadius: 12, background: 'var(--pa-emerald-100)', color: 'var(--pa-emerald-900)', display: 'grid', placeItems: 'center' }}>
@@ -255,7 +270,7 @@ export default async function PlatformSecurityPage({
             </a>
           </p>
         </div>
-      </main>
-    </div>
+      </div>
+    </PlatformShell>
   );
 }

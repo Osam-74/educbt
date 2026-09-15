@@ -2,6 +2,8 @@ import Link from 'next/link';
 import { requirePlatformSession } from '@/lib/platform/session';
 import { platformOverview } from '@/lib/platform/schools';
 import { PaIcon } from './icons';
+import { bestSchoolUrl } from '@/lib/platform/tenant-url';
+import { CrestThumb, QuickViewButton } from './schools/SchoolQuickView';
 
 export const dynamic = 'force-dynamic';
 
@@ -14,6 +16,7 @@ const STATUS_PILL: Record<string, string> = {
 export default async function PlatformDashboard() {
   const actor = await requirePlatformSession();
   const overview = await platformOverview(actor);
+  const platformDomain = (process.env.PLATFORM_DOMAIN ?? '').toLowerCase() || null;
 
   return (
     <div id="platform-dashboard-view">
@@ -103,11 +106,13 @@ export default async function PlatformDashboard() {
                     </tr>
                   </thead>
                   <tbody>
-                    {overview.recent.map((s) => (
+                    {overview.recent.map((s) => {
+                      const url = bestSchoolUrl(s, platformDomain);
+                      return (
                       <tr key={s.id} id={`recent-school-row-${s.id}`}>
                         <td>
                           <Link href={`/platform/schools/${s.id}`} className="pa-cell-name" style={{ textDecoration: 'none' }}>
-                            <span className="pa-icon-tile"><PaIcon name="building" width={15} height={15} /></span>
+                            <CrestThumb logoUrl={s.logoUrl} />
                             <span className="pa-cell-title">{s.name}</span>
                           </Link>
                         </td>
@@ -120,12 +125,14 @@ export default async function PlatformDashboard() {
                           </span>
                         </td>
                         <td className="pa-right">
-                          <Link href={`/platform/schools/${s.id}`} className="pa-btn pa-btn--ghost pa-btn--sm">
-                            <PaIcon name="eye" width={13} height={13} /> Details
-                          </Link>
+                          <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
+                            <QuickViewButton school={s} url={url} />
+                            <Link href={`/platform/schools/${s.id}`} className="pa-btn pa-btn--ghost pa-btn--sm">Details</Link>
+                          </div>
                         </td>
                       </tr>
-                    ))}
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>

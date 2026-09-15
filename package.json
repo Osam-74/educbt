@@ -49,7 +49,8 @@
     "test:guardian-scope": "tsx src/db/test-guardian-scope.ts",
     "load:seed": "tsx scripts/load-seed.ts",
     "load:observe": "tsx scripts/load-observe.ts",
-    "load:verify": "tsx scripts/load-verify.ts"
+    "load:verify": "tsx scripts/load-verify.ts",
+    "test:platform-nav": "tsx src/lib/platform/nav.test.ts"
   },
   "dependencies": {
     "@google-cloud/storage": "^7.22.0",

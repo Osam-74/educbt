@@ -46,8 +46,14 @@
   color: var(--pa-stone-800);
   min-height: 100dvh;
   display: flex;
+  /* UI/body/nav/forms: Montserrat (loaded via next/font, see ./font.ts),
+     Trebuchet MS as the practical fallback. Times New Roman is available
+     as .pa-serif for a genuinely formal/document-like accent — deliberately
+     unused elsewhere so the console stays modern, per the correction pass. */
+  font-family: var(--font-montserrat), 'Trebuchet MS', Arial, sans-serif;
 }
-.pa-shell a { color: inherit; }
+.pa-serif { font-family: 'Times New Roman', Times, serif; }
+:where(.pa-shell) a { color: inherit; }
 .pa-shell a:focus-visible, .pa-shell button:focus-visible, .pa-shell input:focus-visible, .pa-shell select:focus-visible {
   outline: 2px solid var(--pa-emerald-600);
   outline-offset: 2px;
@@ -182,7 +188,7 @@
 
 /* ── Shared page furniture ──────────────────────────────────────────────── */
 .pa-page-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 14px; margin-bottom: 24px; }
-.pa-page-head h1 { margin: 0; font-size: 26px; font-weight: 800; color: var(--pa-forest); letter-spacing: -0.5px; }
+.pa-page-head h1 { margin: 0; font-size: 23px; font-weight: 700; color: var(--pa-forest); letter-spacing: -0.3px; }
 .pa-page-head p { margin: 4px 0 0; font-size: 13.5px; color: var(--pa-stone-500); max-width: 60ch; }
 
 .pa-btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 10px 18px; border-radius: 12px; font-size: 13.5px; font-weight: 650; border: 1px solid transparent; cursor: pointer; text-decoration: none; transition: transform 0.15s, box-shadow 0.15s, background 0.15s; white-space: nowrap; }
@@ -223,7 +229,7 @@
 /* Panel with header + table */
 .pa-panel { overflow: hidden; }
 .pa-panel-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 16px 22px; border-bottom: 1px solid var(--pa-stone-200); background: rgba(255,255,255,0.5); }
-.pa-panel-head h2 { margin: 0; font-size: 15px; font-weight: 750; color: var(--pa-forest); }
+.pa-panel-head h2 { margin: 0; font-size: 15px; font-weight: 600; color: var(--pa-forest); }
 .pa-panel-head p { margin: 2px 0 0; font-size: 12px; color: var(--pa-stone-500); }
 .pa-panel-link { font-size: 12.5px; font-weight: 650; color: var(--pa-forest); text-decoration: none; display: inline-flex; align-items: center; gap: 4px; }
 .pa-panel-link:hover { color: var(--pa-emerald-700); }
@@ -261,14 +267,21 @@
 .pa-alert--error { background: var(--pa-rose-50); border: 1px solid var(--pa-rose-200); color: var(--pa-rose-700); }
 
 /* Filter bar */
-.pa-filter-bar { padding: 16px; margin-bottom: 20px; }
-.pa-filter-form { display: flex; flex-wrap: wrap; gap: 10px; align-items: stretch; }
-.pa-filter-input-wrap { position: relative; flex: 1; min-width: 220px; }
+.pa-filter-bar { padding: 14px 16px; margin-bottom: 20px; }
+.pa-filter-form { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.pa-filter-input-wrap { position: relative; flex: 1 1 200px; min-width: 0; }
 .pa-filter-input-wrap svg { position: absolute; left: 13px; top: 50%; transform: translateY(-50%); color: var(--pa-stone-400); }
 .pa-input, .pa-select, .pa-filter-input-wrap input { width: 100%; padding: 10px 14px; border-radius: 11px; border: 1px solid var(--pa-stone-300); background: rgba(255,255,255,0.9); font-size: 13.5px; color: var(--pa-stone-900); font: inherit; }
 .pa-filter-input-wrap input { padding-left: 36px; }
 .pa-input:focus, .pa-select:focus, .pa-filter-input-wrap input:focus { outline: none; border-color: var(--pa-emerald-600); box-shadow: 0 0 0 3px rgba(5, 150, 105, 0.15); }
 .pa-select { min-width: 150px; font-weight: 600; }
+/* Reference desktop view: search + status + Filter [+ Clear] on one row,
+   with a visibly smaller dropdown/button than the rest of the app's buttons.
+   Falls back to stacked rows only below 640px (handled by .pa-filter-form's
+   own flex-wrap, not a hard breakpoint, so it degrades gracefully). */
+.pa-filter-form .pa-select { flex: 0 1 150px; min-width: 128px; width: auto; padding: 8px 12px; font-size: 12.5px; }
+.pa-filter-form .pa-btn { flex: 0 0 auto; padding: 8px 14px; font-size: 12.5px; border-radius: 9px; }
+@media (min-width: 640px) { .pa-filter-form { flex-wrap: nowrap; } .pa-filter-input-wrap { flex: 1 1 auto; min-width: 160px; } }
 .pa-filter-summary { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--pa-stone-200); display: flex; align-items: center; justify-content: space-between; font-size: 12px; color: var(--pa-stone-500); flex-wrap: wrap; gap: 6px; }
 
 /* Mobile school cards (schools list on narrow screens) */
@@ -279,16 +292,33 @@
 .pa-mobile-card-grid > div > span:first-child { display: block; color: var(--pa-stone-400); font-size: 10px; text-transform: uppercase; }
 .pa-mobile-card-foot { display: flex; align-items: center; justify-content: space-between; padding-top: 10px; margin-top: 10px; border-top: 1px solid var(--pa-stone-200); font-size: 12px; }
 
+/* Crest thumbnails (schools table, mobile cards, dashboard, quick view) */
+.pa-crest-thumb { width: 32px; height: 32px; border-radius: 9px; object-fit: cover; flex-shrink: 0; border: 1px solid var(--pa-stone-200); background: white; }
+
+/* Crest upload widget (New school / Edit school forms) */
+.pa-crest-upload { display: flex; align-items: center; gap: 14px; }
+.pa-crest-preview { width: 56px; height: 56px; border-radius: 12px; background: rgba(16, 185, 129, 0.1); color: var(--pa-emerald-800); display: grid; place-items: center; flex-shrink: 0; overflow: hidden; border: 1px solid var(--pa-stone-200); }
+.pa-crest-preview img { width: 100%; height: 100%; object-fit: cover; }
+.pa-crest-upload input[type="file"] { padding: 7px 10px; font-size: 12.5px; cursor: pointer; }
+
+/* Quick-view modal (item 7): a lighter, info-dense variant of .pa-modal-card */
+.pa-quickview-card { max-width: 440px; text-align: left; position: relative; }
+.pa-quickview-close { position: absolute; top: 14px; right: 14px; width: 28px; height: 28px; border-radius: 8px; border: 0; background: var(--pa-stone-100); color: var(--pa-stone-500); display: grid; place-items: center; cursor: pointer; }
+.pa-quickview-head { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; padding-right: 30px; }
+.pa-quickview-head h3 { margin: 0; font-size: 16px; font-weight: 650; color: var(--pa-forest); }
+.pa-quickview-facts { grid-template-columns: 1fr 1fr; margin-bottom: 18px; }
+@media (max-width: 480px) { .pa-quickview-facts { grid-template-columns: 1fr; } }
+
 /* Form sections (new school) */
 .pa-form-card { padding: 28px 24px; }
 .pa-form-section { padding-bottom: 20px; margin-bottom: 20px; border-bottom: 1px solid var(--pa-stone-200); }
 .pa-form-section:last-of-type { border-bottom: 0; margin-bottom: 0; padding-bottom: 0; }
 .pa-form-section-head { display: flex; align-items: center; gap: 8px; margin-bottom: 16px; }
 .pa-form-section-head svg { color: var(--pa-emerald-800); }
-.pa-form-section-head h2 { margin: 0; font-size: 16px; font-weight: 750; color: var(--pa-forest); }
+.pa-form-section-head h2 { margin: 0; font-size: 16px; font-weight: 600; color: var(--pa-forest); }
 .pa-form-section-hint { margin: -8px 0 14px; font-size: 12.5px; color: var(--pa-stone-500); }
 .pa-field { margin-bottom: 14px; }
-.pa-field label { display: block; font-size: 11.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em; color: var(--pa-stone-700); margin-bottom: 6px; }
+.pa-field label { display: block; font-size: 11.5px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em; color: var(--pa-stone-700); margin-bottom: 6px; }
 .pa-field .pa-optional { color: var(--pa-stone-400); font-weight: 500; text-transform: none; }
 .pa-field .pa-required { color: var(--pa-rose-600); }
 .pa-field-hint { margin: 6px 0 0; font-size: 12px; color: var(--pa-stone-500); }
@@ -315,7 +345,7 @@
 /* School detail: forest header card */
 .pa-detail-header { padding: 22px 24px; background: var(--pa-forest); color: white; display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; border-radius: var(--pa-radius) var(--pa-radius) 0 0; }
 .pa-detail-icon { width: 48px; height: 48px; border-radius: 16px; background: rgba(6, 95, 70, 0.5); border: 1px solid rgba(16, 185, 129, 0.3); color: var(--pa-lime-300); display: grid; place-items: center; flex-shrink: 0; }
-.pa-detail-title { font-size: 20px; font-weight: 750; color: white; margin: 0; }
+.pa-detail-title { font-size: 20px; font-weight: 650; color: white; margin: 0; }
 .pa-detail-meta { display: flex; align-items: center; gap: 8px; margin-top: 6px; flex-wrap: wrap; }
 .pa-code-badge { font-family: ui-monospace, monospace; font-size: 11.5px; padding: 2px 8px; border-radius: 6px; background: rgba(6, 95, 70, 0.6); color: var(--pa-emerald-200); border: 1px solid rgba(6, 95, 70, 0.7); }
 .pa-detail-body { padding: 22px 24px; display: flex; flex-direction: column; gap: 18px; }
@@ -342,7 +372,7 @@
 .pa-modal-backdrop { position: fixed; inset: 0; z-index: 60; display: flex; align-items: center; justify-content: center; padding: 16px; background: rgba(0,0,0,0.6); backdrop-filter: blur(3px); border: 0; }
 .pa-modal-card { width: 100%; max-width: 380px; border-radius: 24px; background: white; padding: 24px; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.4); text-align: center; }
 .pa-modal-icon { margin: 0 auto 14px; width: 48px; height: 48px; border-radius: 16px; background: var(--pa-rose-50); color: var(--pa-rose-600); display: grid; place-items: center; }
-.pa-modal-card h3 { margin: 0 0 4px; font-size: 17px; font-weight: 750; color: var(--pa-stone-900); }
+.pa-modal-card h3 { margin: 0 0 4px; font-size: 17px; font-weight: 650; color: var(--pa-stone-900); }
 .pa-modal-card p { margin: 0 0 16px; font-size: 12.5px; color: var(--pa-stone-500); }
 .pa-modal-actions { display: flex; gap: 8px; }
 

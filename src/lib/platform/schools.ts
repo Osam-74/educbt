@@ -149,6 +149,35 @@ const onboardingSchema = z.object({
 export type OnboardingInput = z.input<typeof onboardingSchema>;
 export type ValidatedOnboarding = z.output<typeof onboardingSchema>;
 
+const editProfileSchema = z.object({
+  name: nameSchema,
+  email: z
+    .string()
+    .trim()
+    .toLowerCase()
+    .max(191, 'That email address is too long.')
+    .optional()
+    .transform((v) => (v === '' ? undefined : v))
+    .refine((v) => v === undefined || /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(v), {
+      message: 'Enter a valid email address, or leave it empty.',
+    }),
+  phone: z
+    .string()
+    .trim()
+    .max(50, 'That phone number is too long.')
+    .optional()
+    .transform((v) => (v === '' ? undefined : v)),
+  address: z
+    .string()
+    .trim()
+    .max(500, 'That address is too long.')
+    .optional()
+    .transform((v) => (v === '' ? undefined : v)),
+  subdomain: subdomainSchema.optional().transform((v) => (v === '' ? undefined : v)),
+});
+
+export type EditProfileInput = z.input<typeof editProfileSchema>;
+
 const statusChangeSchema = z.object({
   schoolId: z.coerce.number().int().positive(),
   status: z.enum(['active', 'suspended']),
@@ -256,6 +285,10 @@ export type OnboardedSchool = {
 export async function createSchoolWithPrincipal(
   actor: PlatformActor,
   rawInput: OnboardingInput,
+  /** A normalizeImage()-produced bounded PNG data URL for the school's
+   * crest, or undefined/null for none. Same bound enforced as the school
+   * portal's own branding upload (see settings/service.ts's saveProfile). */
+  logo?: string | null,
 ): Promise<OnboardedSchool> {
   assertPlatformAdmin(actor);
   const parsed = onboardingSchema.safeParse(rawInput);
@@ -267,6 +300,9 @@ export async function createSchoolWithPrincipal(
     );
   }
   const input = parsed.data;
+  if (logo != null && (!logo.startsWith('data:image/png;base64,') || logo.length > 400000)) {
+    throw new OnboardingValidationError({ logo: 'Invalid normalized crest.' });
+  }
 
   // Cryptographically secure, human-typeable. Hashed OUTSIDE the transaction —
   // Argon2 must never hold the single pooled connection hostage.
@@ -287,6 +323,7 @@ export async function createSchoolWithPrincipal(
           phone: input.phone ?? null,
           address: input.address ?? null,
           status: input.status,
+          logoUrl: logo ?? null,
         })
         .returning({
           id: schema.schools.id,
@@ -387,6 +424,89 @@ export async function createPrincipalForSchool(
   }
 }
 
+// ── Profile editing (item 4/5 of the correction pass) ───────────────────────
+
+/**
+ * Edit an EXISTING school's safe profile fields — name, contact details,
+ * address, subdomain, and crest. Deliberately narrower than onboarding:
+ * `code` (the internal identifier other records key off), `id`, audit
+ * history and tenant ownership are never accepted here — there is no field
+ * in editProfileSchema for any of them, so there is nothing to strip.
+ * `status` also stays OUT of this path on purpose: suspension/reactivation
+ * keeps its own reasoned, confirmed audit trail (setSchoolStatus) rather
+ * than becoming a silent side effect of a profile save.
+ */
+export async function updateSchoolProfile(
+  actor: PlatformActor,
+  schoolId: number,
+  rawInput: EditProfileInput,
+  /** A normalizeImage()-produced data URL to set the crest, `null` to
+   * remove it, or `undefined` to leave the current crest untouched. */
+  logo?: string | null,
+): Promise<{ schoolId: number; name: string }> {
+  assertPlatformAdmin(actor);
+  const parsed = editProfileSchema.safeParse(rawInput);
+  if (!parsed.success) {
+    throw new OnboardingValidationError(
+      Object.fromEntries(parsed.error.issues.map((issue) => [issue.path[0] ?? 'form', issue.message])),
+    );
+  }
+  const input = parsed.data;
+
+  // Same bound as settings/service.ts's saveProfile: the logo, if present,
+  // must already be the server-normalized bounded PNG data URL — never a
+  // raw upload or an arbitrary URL string.
+  if (logo !== undefined && logo !== null && (!logo.startsWith('data:image/png;base64,') || logo.length > 400000)) {
+    throw new OnboardingValidationError({ logo: 'Invalid normalized crest.' });
+  }
+
+  const reason = `Edit school #${schoolId} profile`;
+
+  try {
+    return await asPlatformAdmin(actor.userId, reason, async (tx) => {
+      const [before] = await tx
+        .select({
+          name: schema.schools.name,
+          email: schema.schools.email,
+          phone: schema.schools.phone,
+          address: schema.schools.address,
+          subdomain: schema.schools.subdomain,
+          logoUrl: schema.schools.logoUrl,
+        })
+        .from(schema.schools)
+        .where(eq(schema.schools.id, schoolId))
+        .limit(1);
+      if (!before) throw new NotFoundError();
+
+      const change = {
+        name: input.name,
+        email: input.email ?? null,
+        phone: input.phone ?? null,
+        address: input.address ?? null,
+        subdomain: input.subdomain ?? null,
+        ...(logo !== undefined ? { logoUrl: logo } : {}),
+      };
+
+      await tx.update(schema.schools).set({ ...change, updatedAt: new Date() }).where(eq(schema.schools.id, schoolId));
+
+      await tx.insert(schema.auditLog).values({
+        schoolId,
+        actorUserId: actor.userId,
+        actorRole: 'platform_admin',
+        action: 'school.profile_updated',
+        entityType: 'schools',
+        entityId: schoolId,
+        before,
+        after: { ...change, logoUrl: logo === undefined ? before.logoUrl : logo },
+      });
+
+      return { schoolId, name: input.name };
+    });
+  } catch (error) {
+    throw mapDuplicate(error);
+  }
+}
+
 // ── Status lifecycle ─────────────────────────────────────────────────────────
 
 export async function setSchoolStatus(
@@ -460,10 +580,16 @@ export type SchoolSummary = {
   customDomain: string | null;
   email: string | null;
   phone: string | null;
+  address: string | null;
+  logoUrl: string | null;
   createdAt: Date;
   principalName: string | null;
   principalLoginId: string | null;
   principalStatus: string | null;
+  /** The principal's staff number (e.g. "PRN-0001") — shown as their
+   * "Administrator Code" in the quick-view modal. */
+  principalCode: string | null;
+  principalEmail: string | null;
 };
 
 /**
@@ -502,6 +628,8 @@ export async function listSchools(
         customDomain: schema.schools.customDomain,
         email: schema.schools.email,
         phone: schema.schools.phone,
+        address: schema.schools.address,
+        logoUrl: schema.schools.logoUrl,
         createdAt: schema.schools.createdAt,
       })
       .from(schema.schools)
@@ -519,6 +647,8 @@ export async function listSchools(
         status: schema.users.status,
         firstName: schema.staff.firstName,
         lastName: schema.staff.lastName,
+        staffNumber: schema.staff.staffNumber,
+        email: schema.staff.email,
       })
       .from(schema.users)
       .innerJoin(schema.staff, eq(schema.staff.userId, schema.users.id))
@@ -545,6 +675,8 @@ export async function listSchools(
         principalName: p ? `${p.firstName} ${p.lastName}` : null,
         principalLoginId: p?.loginId ?? null,
         principalStatus: p?.status ?? null,
+        principalCode: p?.staffNumber ?? null,
+        principalEmail: p?.email ?? null,
       };
     });
   });
@@ -565,7 +697,10 @@ export type PlatformOverview = {
   active: number;
   suspended: number;
   archived: number;
-  recent: { id: number; name: string; code: string; status: string; createdAt: Date }[];
+  /** Full SchoolSummary shape (not just id/name/code/status) so the
+   * dashboard's "Recently created" table can open the SAME quick-view modal
+   * as the schools directory, with no second fetch. */
+  recent: SchoolSummary[];
 };
 
 /** Dashboard: tenant counts and the newest schools. Tenant metadata only. */
@@ -582,24 +717,64 @@ export async function platformOverview(
 
     const by = (s: string) => Number(counts.find((c) => c.status === s)?.n ?? 0);
 
-    const recent = await tx
+    const recentRows = await tx
       .select({
         id: schema.schools.id,
         name: schema.schools.name,
         code: schema.schools.code,
         status: schema.schools.status,
+        subdomain: schema.schools.subdomain,
+        customDomain: schema.schools.customDomain,
+        email: schema.schools.email,
+        phone: schema.schools.phone,
+        address: schema.schools.address,
+        logoUrl: schema.schools.logoUrl,
         createdAt: schema.schools.createdAt,
       })
       .from(schema.schools)
       .orderBy(desc(schema.schools.createdAt))
       .limit(5);
 
+    // Same one-query principal join as listSchools() — kept inline (rather
+    // than calling listSchools() from here) because this already runs inside
+    // an asPlatformAdmin transaction and the runtime pool is max:1; nesting
+    // a second asPlatformAdmin call would queue behind its own transaction.
+    const principals = recentRows.length
+      ? await tx
+          .select({
+            schoolId: schema.users.schoolId,
+            loginId: schema.users.loginId,
+            status: schema.users.status,
+            firstName: schema.staff.firstName,
+            lastName: schema.staff.lastName,
+            staffNumber: schema.staff.staffNumber,
+            email: schema.staff.email,
+          })
+          .from(schema.users)
+          .innerJoin(schema.staff, eq(schema.staff.userId, schema.users.id))
+          .where(and(eq(schema.users.role, 'principal'), inArray(schema.users.schoolId, recentRows.map((r) => Number(r.id)))))
+      : [];
+    const bySchool = new Map(principals.map((p) => [Number(p.schoolId), p]));
+
+    const recent: SchoolSummary[] = recentRows.map((r) => {
+      const p = bySchool.get(Number(r.id));
+      return {
+        ...r,
+        id: Number(r.id),
+        principalName: p ? `${p.firstName} ${p.lastName}` : null,
+        principalLoginId: p?.loginId ?? null,
+        principalStatus: p?.status ?? null,
+        principalCode: p?.staffNumber ?? null,
+        principalEmail: p?.email ?? null,
+      };
+    });
+
     return {
       total: counts.reduce((sum, c) => sum + Number(c.n), 0),
       active: by('active'),
       suspended: by('suspended'),
       archived: by('archived'),
-      recent: recent.map((r) => ({ ...r, id: Number(r.id) })),
+      recent,
     };
   });
 }
@@ -644,6 +819,8 @@ export async function schoolDetail(
         status: schema.users.status,
         firstName: schema.staff.firstName,
         lastName: schema.staff.lastName,
+        staffNumber: schema.staff.staffNumber,
+        email: schema.staff.email,
       })
       .from(schema.users)
       .leftJoin(schema.staff, eq(schema.staff.userId, schema.users.id))
@@ -674,11 +851,14 @@ export async function schoolDetail(
       email: school.email,
       phone: school.phone,
       address: school.address,
+      logoUrl: school.logoUrl,
       createdAt: school.createdAt,
       updatedAt: school.updatedAt,
       principalName: principal ? `${principal.firstName ?? ''} ${principal.lastName ?? ''}`.trim() || null : null,
       principalLoginId: principal?.loginId ?? null,
       principalStatus: principal?.status ?? null,
+      principalCode: principal?.staffNumber ?? null,
+      principalEmail: principal?.email ?? null,
       setup: {
         academicSessions: Number(setup?.sessions ?? 0),
         classes: Number(setup?.classes ?? 0),

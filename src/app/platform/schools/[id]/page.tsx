@@ -63,7 +63,11 @@ export default async function SchoolDetailPage({
       <div className="pa-card" style={{ marginBottom: 20, overflow: 'hidden' }}>
         <div className="pa-detail-header">
           <div style={{ display: 'flex', alignItems: 'flex-start', gap: 14 }}>
-            <span className="pa-detail-icon"><PaIcon name="building" width={22} height={22} /></span>
+            {school.logoUrl ? (
+              <img src={school.logoUrl} alt="" className="pa-detail-icon" style={{ objectFit: 'cover' }} />
+            ) : (
+              <span className="pa-detail-icon"><PaIcon name="building" width={22} height={22} /></span>
+            )}
             <div>
               <h2 className="pa-detail-title">{school.name}</h2>
               <div className="pa-detail-meta">
@@ -72,6 +76,9 @@ export default async function SchoolDetailPage({
               </div>
             </div>
           </div>
+          <Link href={`/platform/schools/${school.id}/edit`} className="pa-btn pa-btn--outline pa-btn--sm" style={{ flexShrink: 0, background: 'rgba(255,255,255,0.9)' }}>
+            <PaIcon name="edit" width={13} height={13} /> Edit
+          </Link>
         </div>
 
         <div className="pa-detail-body">
