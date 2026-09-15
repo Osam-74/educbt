@@ -432,7 +432,14 @@
 @media (max-width: 767px) {
   .pa-desktop-table { display: none !important; }
   .pa-mobile-cards { display: flex !important; }
-  .pa-stat-grid { grid-template-columns: 1fr; }
+  /* Two-column stat layout: the headline metric (Total schools) owns the
+     left column and stretches tall; Active and Suspended stack on the
+     right, so the three cards read as one balanced group on phones. */
+  .pa-stat-grid { grid-template-columns: 1.35fr 1fr; gap: 12px; }
+  .pa-stat-grid > .pa-stat:first-child { grid-row: span 2; display: flex; flex-direction: column; justify-content: center; }
+  .pa-stat-grid > .pa-stat:first-child .pa-stat-value { font-size: 42px; }
+  .pa-stat-grid > .pa-stat:not(:first-child) .pa-stat-desc { display: none; }
+  .pa-stat { padding: 14px 16px; }
   .pa-grid-2 { grid-template-columns: 1fr; }
   .pa-detail-facts { grid-template-columns: 1fr; }
 }
