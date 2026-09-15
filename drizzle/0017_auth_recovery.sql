@@ -53,14 +53,11 @@ CREATE UNIQUE INDEX "password_reset_tokens_token_uq" ON "password_reset_tokens" 
 --> statement-breakpoint
 CREATE INDEX "password_reset_tokens_user_idx" ON "password_reset_tokens" ("user_id", "created_at");
 --> statement-breakpoint
--- Creation is tenant-scoped; the single-use claim elevates per-tenant GUCs
--- (see rls.sql). Row-level security, same policy shape as every core table.
+-- Same pattern as totp_recovery_codes above: ENABLE + FORCE here; the
+-- tenant_isolation policy (which references the RLS helper functions that
+-- apply-rls.ts creates AFTER migrations) is applied by src/db/rls.sql.
 ALTER TABLE "password_reset_tokens" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "password_reset_tokens" FORCE ROW LEVEL SECURITY;
-DROP POLICY IF EXISTS tenant_isolation ON "password_reset_tokens";
-CREATE POLICY tenant_isolation ON "password_reset_tokens"
-  USING (school_id = current_school_id() OR is_platform_admin())
-  WITH CHECK (school_id = current_school_id() OR is_platform_admin());
 --> statement-breakpoint
 
 -- ── TOTP recovery codes ──────────────────────────────────────────────────────
