@@ -2,7 +2,7 @@
 import { revalidatePath } from 'next/cache';
 import { ZodError } from 'zod';
 import { requireSchoolSession } from '@/lib/session';
-import { createSession, saveAcademic, saveExamDefaults, saveProfile, saveRanges, saveSignature, saveTerm, selectPeriod, SettingsError } from '@/lib/settings/service';
+import { createSession, saveAcademic, saveProfile, saveRanges, saveSignature, saveTerm, selectPeriod, SettingsError } from '@/lib/settings/service';
 import { normalizeImage } from '@/lib/settings/images';
 import { saveManualRemark } from '@/lib/settings/remarks';
 
@@ -28,7 +28,6 @@ export async function settingsAction(_previous: SettingsState, form: FormData): 
       case 'signature': await saveSignature(actor, value, image); break;
       case 'ranges': await saveRanges(actor, String(form.get('role')), value); break;
       case 'remark': await saveManualRemark(actor, value); break;
-      case 'exam': await saveExamDefaults(actor, value); break;
       default: throw new SettingsError('Unknown settings operation.');
     }
     revalidatePath('/portal', 'layout');

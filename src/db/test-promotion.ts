@@ -388,6 +388,77 @@ async function main() {
     assert.ok(!JSON.stringify(row).includes(code), 'the code is not stored anywhere');
   });
 
+  console.log('── promotion office (legacy parity additions) ──');
+  await rejects('teacher cannot set promotion rules', () =>
+    promotion.savePromotionRules(T, F.l1, {}), 'Only the principal or vice principal');
+  await rejects('rules for a foreign level are refused', () =>
+    promotion.savePromotionRules(A, 999999, {}), 'not available');
+  const savedRules = await promotion.savePromotionRules(A, F.l1, {
+    passMark: 45, promoteAverage: 60, trialAverage: 50, minSubjectsPassed: 3,
+    mustPassCodes: ['ENG'], requireCore: false,
+  });
+  await check('per-level rules round-trip, merge with defaults, and are audited', async () => {
+    assert.deepEqual(await promotion.promotionRulesFor(A, F.l1), savedRules);
+    assert.deepEqual(await promotion.promotionRulesFor(A, F.l2), promotion.defaultRules(), 'an untouched level keeps the defaults');
+    const [school] = await db.select().from(schema.schools).where(eq(schema.schools.id, F.schoolId));
+    assert.deepEqual((school!.settings as { promotionRules?: Record<string, unknown> }).promotionRules![String(F.l1)], savedRules);
+    const [log] = await db.select().from(schema.auditLog)
+      .where(and(eq(schema.auditLog.schoolId, F.schoolId), eq(schema.auditLog.action, 'promotion.rules')));
+    assert.ok(log, 'the rule change is audited');
+  });
+
+  await rejects('individual search is denied to teachers', () =>
+    promotion.searchPromotionStudents(T, 'PROMO'), 'Only the principal or vice principal');
+  await check('the individual-move search matches admission number and name', async () => {
+    const byAdmission = await promotion.searchPromotionStudents(A, `${F.schoolCode}/PROMO`);
+    assert.equal(byAdmission.length, 1);
+    assert.equal(byAdmission[0]!.id, F.students.sPromo.id);
+    assert.ok(byAdmission[0]!.className, 'the current class is shown');
+    const byName = await promotion.searchPromotionStudents(A, 'unres');
+    assert.ok(byName.some(s => s.id === F.students.sUnresolved.id), 'case-insensitive name match');
+    assert.deepEqual(await promotion.searchPromotionStudents(A, '   '), []);
+  });
+
+  await rejects('a teacher cannot move a student', () =>
+    promotion.moveStudent(T, { studentId: F.students.sFew.id, toClassId: F.c2, outcome: 'promote', reason: 'A written reason.' }), 'Only the principal or vice principal');
+  await rejects('a move requires a written reason', () =>
+    promotion.moveStudent(A, { studentId: F.students.sFew.id, toClassId: F.c2, outcome: 'promote', reason: '  ' }), 'reason');
+  await rejects('a move to a foreign class is refused', () =>
+    promotion.moveStudent(A, { studentId: F.students.sFew.id, toClassId: 999999, outcome: 'promote', reason: 'Wrong class id.' }), 'not available');
+  await rejects('another school cannot move this student', () =>
+    promotion.moveStudent(B, { studentId: F.students.sFew.id, toClassId: F.c2, outcome: 'promote', reason: 'Not their student.' }), 'not in this school');
+  await check('an individual move rewrites the current enrollment in place', async () => {
+    await promotion.moveStudent(V, { studentId: F.students.sFew.id, toClassId: F.c1, outcome: 'repeat', reason: 'Repeating the year on medical advice.' });
+    const rows = await db.select().from(schema.enrollments)
+      .where(and(eq(schema.enrollments.studentId, F.students.sFew.id), eq(schema.enrollments.sessionId, F.sTo)));
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0]!.classId, F.c1);
+    assert.equal(rows[0]!.status, 'active');
+    const [log] = await db.select().from(schema.auditLog)
+      .where(and(eq(schema.auditLog.schoolId, F.schoolId), eq(schema.auditLog.action, 'promotion.moved')));
+    assert.ok(log, 'the move is audited');
+  });
+
+  await rejects('the transcript search is the principal\'s alone', () =>
+    transcript.searchTranscriptStudents(V, 'PROMO'), 'Only the principal');
+  await check('transcript search matches name or admission number and reports issue counts', async () => {
+    const byName = await transcript.searchTranscriptStudents(A, 'PROMO');
+    const row = byName.find(s => s.id === F.students.sPromo.id)!;
+    assert.ok(row, 'matches by name');
+    assert.equal(row.issuedCount, 1, 'the revoked copy is not counted');
+    assert.equal(row.latestSerial, reissued.serial);
+    const byAdmission = await transcript.searchTranscriptStudents(A, `${F.schoolCode}/TERMFAIL`);
+    assert.equal(byAdmission.length, 1);
+    assert.equal(byAdmission[0]!.issuedCount, 0, 'never-issued students show zero');
+  });
+  await check('the issued register groups by student', async () => {
+    const overview = await transcript.issuedTranscriptOverview(A);
+    assert.equal(overview.length, 1);
+    assert.equal(overview[0]!.name, 'PROMO Student');
+    assert.equal(overview[0]!.issuedCount, 1);
+    assert.equal(overview[0]!.latestSerial, reissued.serial);
+  });
+
   console.log('── cross-tenant ──');
   await rejects('another school cannot review this batch', () => promotion.promotionReview(B, batchId), 'does not exist');
   await rejects('another school cannot commit this batch', () => promotion.commitPromotion(B, batchId), 'does not exist');

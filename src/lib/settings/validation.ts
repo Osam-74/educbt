@@ -60,4 +60,3 @@ export const rangeSchema = z.array(z.object({ min: z.number().finite().min(0).ma
 export function suggestedRemark(ranges: z.infer<typeof rangeSchema>, average: number) {
   return [...ranges].sort((a, b) => b.min - a.min).find(r => average >= r.min)?.remark ?? null;
 }
-export const examDefaultsSchema = z.object({ durationMinutes: z.number().int().min(5).max(300) }).strict();

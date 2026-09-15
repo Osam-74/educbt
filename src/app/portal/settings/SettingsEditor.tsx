@@ -27,7 +27,6 @@ export function SettingsEditor(p: Props) {
   const [termId, setTermId] = useState(p.terms.find(t => t.sessionId === sessionId && t.isCurrent)?.id ?? p.terms.find(t => t.sessionId === sessionId)?.id ?? 0);
   const [newSession, setNewSession] = useState({ title: '', makeCurrent: false });
   const [config, setConfig] = useState(p.config);
-  const [duration, setDuration] = useState(Number((p.school.settings.examDefaults as { durationMinutes?: number } | undefined)?.durationMinutes ?? 60));
   const total = config.assessmentComponents.reduce((sum, c) => sum + c.maxScore, 0);
   const component = (i: number, patch: Partial<ResultConfig['assessmentComponents'][number]>) => setConfig({ ...config, assessmentComponents: config.assessmentComponents.map((c, j) => j === i ? { ...c, ...patch } : c) });
   return <div className="school-settings"><header className="settings-heading"><div><p className="settings-eyebrow">SCHOOL MANAGEMENT</p><h1>School Settings</h1><p>School identity, academic rules and the details behind every report.</p></div><span className="settings-badge">{p.canEdit ? 'Principal access' : 'School configuration · view only'}</span></header>
@@ -76,9 +75,7 @@ export function SettingsEditor(p: Props) {
         <Field label="Tiebreakers in order"><select value={config.rankingPolicy.tiebreakers.join(',') || 'none'} onChange={e => setConfig({ ...config, rankingPolicy: { ...config.rankingPolicy, tiebreakers: e.target.value.split(',') as ('exam' | 'ca' | 'none')[] } })}><option value="none">None</option><option value="exam">Exam score</option><option value="ca">CA score</option><option value="exam,ca">Exam, then CA</option><option value="ca,exam">CA, then exam</option></select></Field></div>
         <label><input type="checkbox" checked={config.rankingPolicy.rankIncomplete} onChange={e => setConfig({ ...config, rankingPolicy: { ...config.rankingPolicy, rankIncomplete: e.target.checked } })}/> Include incomplete results in ranking</label><p>Incomplete results still cannot be published. Ordinal ties ultimately use admission number for a stable order.</p>
       </SaveForm></section>}
-    {tab === 2 && <section className="settings-card"><h2>Default exam duration</h2><p>Used to prefill new examinations. Existing papers keep their own settings.</p>
-      <SaveForm kind="exam" payload={{ durationMinutes: duration }} disabled={!p.canEdit}><Field label="Default exam duration (minutes)"><input type="number" min="5" max="300" value={duration} onChange={e => setDuration(Number(e.target.value))}/></Field></SaveForm></section>}
-    {tab === 3 && <section className="settings-card"><h2>Your signatures & automatic remarks</h2><p>Signatures belong to your linked staff record. Automatic remarks are saved when results are compiled; changing ranges never rewrites a published report.</p>
+    {tab === 3 && <section className="settings-card"><h2>Your signature</h2><p>Signatures belong to your linked staff record. Report-card remarks are customised by class teachers at the point of result approval.</p>
       {!p.roles.length && <p className="settings-empty">No eligible staff role is linked to this account. A Principal or assigned Class Teacher can maintain report details.</p>}
       {p.roles.map(role => <PersonalEditor key={role} role={role} signature={p.signatures.find(s => s.role === role)} initialRanges={p.ranges.find(r => r.role === role)?.ranges ?? []}/>)}</section>}
   </div>;
@@ -116,11 +113,11 @@ function PersonalEditor({ role, signature, initialRanges }: { role: string; sign
       {value.type === 'text' && <Field label="Type your signature"><input required maxLength={191} value={value.text} placeholder="Sign here..." className="settings-signature-input" onChange={e => setValue({ ...value, text: e.target.value })}/><span className="settings-signature">{value.text}</span><small>Rendered in a script font on the report sheet.</small></Field>}
       {value.type === 'upload' && <Field label="Upload image"><input type="file" name="image" accept="image/png,image/jpeg" required/><small>Up to 2 MB. Choose a new image to replace the saved signature.</small></Field>}
     </div></SaveForm>
-    {role !== 'exam_officer' && <SaveForm kind="ranges" role={role} payload={ranges} label="Save remark ranges"><h4>Automatic remark ranges</h4>
-      <p>Set up score ranges and their corresponding remarks. When results are compiled, empty remarks on report cards are auto-filled based on the student's average score. Minimum thresholds cover scores up to the next higher minimum.</p>
-      <div className="settings-table"><table><thead><tr><th>Min average</th><th>Max average</th><th>Remark</th><th></th></tr></thead><tbody>
+    {role === 'class_teacher' && <SaveForm kind="ranges" role={role} payload={ranges} label="Save remark ranges"><h4>Automatic remark ranges</h4>
+      <p>Set up score ranges and their corresponding remarks. When results are compiled, empty remarks on report cards are auto-filled based on the student's average score. Each range covers scores from its minimum up to — but not including — the next higher minimum.</p>
+      <div className="settings-table"><table><thead><tr><th>Min average</th><th>Up to</th><th>Remark</th><th></th></tr></thead><tbody>
         {ranges.map((r, i) => <tr key={i}><td><input type="number" min="0" max="100" step=".01" value={r.min} onChange={e => setRanges(ranges.map((v, j) => i === j ? { ...v, min: Number(e.target.value) } : v))}/></td>
-          <td className="muted">{ranges.slice(i + 1).some(v => v.min > r.min) ? ranges.slice(i + 1).map(v => v.min).filter(m => m > r.min)[0] : 100}</td>
+          <td className="muted">{(() => { const next = ranges.slice(i + 1).map(v => v.min).filter(m => m > r.min).sort((a, b) => a - b)[0]; return next === undefined ? '100' : '< ' + next; })()}</td>
           <td><textarea required maxLength={500} value={r.remark} onChange={e => setRanges(ranges.map((v, j) => i === j ? { ...v, remark: e.target.value } : v))}/></td>
           <td><button type="button" onClick={() => setRanges(ranges.filter((_, j) => i !== j))}>Delete</button></td></tr>)}
       </tbody></table></div>

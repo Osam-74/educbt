@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { defaultConfig, parseAcademic, profileSchema, sessionSchema, termSchema, rangeSchema, suggestedRemark, componentStructure, examDefaultsSchema } from './validation';
+import { defaultConfig, parseAcademic, profileSchema, sessionSchema, termSchema, rangeSchema, suggestedRemark, componentStructure } from './validation';
 import { reportGradingKey } from '@/lib/reports/summary';
 let count = 0;
 function check(name: string, fn: () => void) { fn(); count++; console.log('PASS  ' + name); }
@@ -32,6 +32,5 @@ check('remark duplicate threshold rejected', () => assert(!rangeSchema.safeParse
 check('empty ranges disable automatic suggestions', () => assert.equal(suggestedRemark([], 60), null));
 check('decimal average selects correct half-open range', () => assert.equal(suggestedRemark([{ min: 0, remark: 'Keep trying' }, { min: 40, remark: 'Pass' }], 39.99), 'Keep trying'));
 check('true zero selects lowest remark', () => assert.equal(suggestedRemark([{ min: 0, remark: 'Keep trying' }], 0), 'Keep trying'));
-check('exam defaults use engine duration bounds', () => { assert(examDefaultsSchema.safeParse({ durationMinutes: 90 }).success); assert(!examDefaultsSchema.safeParse({ durationMinutes: 301 }).success); });
 check('historical school key uses stored snapshot', () => { const scale = { id: 'school-1', version: 2, name: 'School scale', bands: [{ min: 0, grade: 'P', remark: 'Pass' }] }; assert(reportGradingKey([{ scaleId: scale.id, scaleVersion: 2 }], [scale]).includes('P: 0–100')); });
 console.log(`${count} settings validation checks passed`);

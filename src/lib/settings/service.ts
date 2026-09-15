@@ -2,7 +2,7 @@ import { and, asc, eq, sql, inArray } from 'drizzle-orm';
 import { forSchool, schema, type Tx } from '@/db';
 import type { Actor } from '@/lib/session';
 import { resultConfig } from '@/lib/results/config';
-import { profileSchema, sessionSchema, termSchema, periodSchema, parseAcademic, componentStructure, signatureSchema, rangeSchema, examDefaultsSchema, normaliseSessionTitle, defaultRemarkBands } from './validation';
+import { profileSchema, sessionSchema, termSchema, periodSchema, parseAcademic, componentStructure, signatureSchema, rangeSchema, normaliseSessionTitle, defaultRemarkBands } from './validation';
 
 export class SettingsError extends Error {}
 export const fail = (message: string): never => { throw new SettingsError(message); };
@@ -191,6 +191,7 @@ export async function saveSignature(actor: Actor, input: unknown, image?: string
 export async function saveRanges(actor: Actor, role: string, input: unknown) {
   const ranges = rangeSchema.parse(input);
   if (!['principal', 'class_teacher'].includes(role)) fail('Choose a report remark role.');
+  if (role !== 'class_teacher') fail('Automatic remark ranges belong to the class teacher role only.');
   return forSchool(actor.schoolId, async tx => {
     await configLock(tx, actor.schoolId); await settingsAccess(tx, actor);
     const staff = await ownStaff(tx, actor, role);
@@ -198,13 +199,5 @@ export async function saveRanges(actor: Actor, role: string, input: unknown) {
     const change = { schoolId: actor.schoolId, staffId: staff.id, role, ranges, updatedAt: new Date() };
     await tx.insert(schema.staffRemarkRanges).values(change).onConflictDoUpdate({ target: [schema.staffRemarkRanges.schoolId, schema.staffRemarkRanges.staffId, schema.staffRemarkRanges.role], set: change });
     await audit(tx, actor, 'remark_ranges', before ?? null, change);
-  });
-}
-export async function saveExamDefaults(actor: Actor, input: unknown) {
-  const value = examDefaultsSchema.parse(input);
-  return forSchool(actor.schoolId, async tx => {
-    await configLock(tx, actor.schoolId); const school = await settingsAccess(tx, actor, true);
-    await tx.update(schema.schools).set({ settings: { ...school.settings, examDefaults: value }, updatedAt: new Date() }).where(eq(schema.schools.id, actor.schoolId));
-    await audit(tx, actor, 'exam_defaults', school.settings.examDefaults ?? null, value);
   });
 }

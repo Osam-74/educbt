@@ -15,12 +15,13 @@ export const dynamic = 'force-dynamic';
  * admin schools page pattern (fields + Filter + Clear + summary).
  */
 export default async function ActivityPage({ searchParams }: {
-  searchParams: Promise<{ page?: string; action?: string; user?: string }>;
+  searchParams: Promise<{ page?: string; action?: string; user?: string; q?: string }>;
 }) {
   const actor = await requireSchoolSession();
   const params = await searchParams;
   const requested = Math.max(1, Number(params.page) || 1);
   const filter = {
+    q: params.q?.trim() || undefined,
     action: params.action?.trim() || undefined,
     userId: params.user ? Number(params.user) || undefined : undefined,
   };
@@ -41,12 +42,12 @@ export default async function ActivityPage({ searchParams }: {
     sp.set('page', String(page));
     if (filter.action) sp.set('action', filter.action);
     if (filter.userId) sp.set('user', String(filter.userId));
+    if (filter.q) sp.set('q', filter.q);
     return `/portal/activity?${sp.toString()}`;
   };
   const previous = data.page > 1 ? qs(data.page - 1) : null;
   const next = data.page < data.pages ? qs(data.page + 1) : null;
-  const filtered = Boolean(filter.action || filter.userId);
-  const hasFilterOptions = Boolean(filters && (filters.actions.length || filters.actors.length));
+  const filtered = Boolean(filter.action || filter.userId || filter.q);
 
   const fmt = new Intl.DateTimeFormat('en-GB', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'Africa/Lagos' });
   const detail = (row: { entityType: string | null; entityId: number | null; reason: string | null }) => {
@@ -62,31 +63,33 @@ export default async function ActivityPage({ searchParams }: {
   return <>
     <h1 className="page-title">Activity Log</h1>
 
-    {hasFilterOptions && <div className="filter-bar">
+    <div className="filter-bar">
       <form method="get" className="filter-form">
-        {filters!.actions.length > 0 && <label className="filter-field">
-          <span>Action type</span>
-          <select name="action" defaultValue={filter.action ?? ''}>
-            <option value="">All actions</option>
-            {filters!.actions.map(a => <option key={a} value={a}>{activityTitle(a)}</option>)}
-          </select>
-        </label>}
-        {filters!.actors.length > 0 && <label className="filter-field">
-          <span>User</span>
-          <select name="user" defaultValue={filter.userId ? String(filter.userId) : ''}>
-            <option value="">All users</option>
-            {filters!.actors.map(u => <option key={u.id} value={u.id!}>{u.label}</option>)}
-          </select>
-        </label>}
-        <button type="submit" className="filter-submit">Filter</button>
-        {filtered && <Link href="/portal/activity" className="filter-clear">Clear</Link>}
+        <div className="filter-input-wrap">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+          <input id="activity-search-input" type="search" name="q" defaultValue={filter.q ?? ''} placeholder="Search action, user or detail"/>
+        </div>
+        {filters && filters.actions.length > 0 && <select id="activity-action-filter" name="action" className="filter-select" defaultValue={filter.action ?? ''}>
+          <option value="">All actions</option>
+          {filters.actions.map(a => <option key={a} value={a}>{activityTitle(a)}</option>)}
+        </select>}
+        {filters && filters.actors.length > 0 && <select id="activity-user-filter" name="user" className="filter-select" defaultValue={filter.userId ? String(filter.userId) : ''}>
+          <option value="">All users</option>
+          {filters.actors.map(u => <option key={u.id} value={u.id!}>{u.label}</option>)}
+        </select>}
+        <button type="submit" id="activity-filter-submit-btn" className="filter-submit">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3 5h18l-7 8v6l-4-2v-4Z"/></svg>
+          <span>Filter</span>
+        </button>
+        {filtered && <Link href="/portal/activity" id="activity-reset-filter-btn" className="filter-clear">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 2.6-6.4L3 8"/><path d="M3 3v5h5"/></svg>
+          <span>Clear</span>
+        </Link>}
       </form>
       <div className="filter-summary">
         <span>Showing <strong>{data.total}</strong> log entr{data.total === 1 ? 'y' : 'ies'}{filtered ? ' for this filter' : ''}</span>
       </div>
-    </div>}
-
-    {!hasFilterOptions && <p className="muted">{data.total} log entr{data.total === 1 ? 'y' : 'ies'}.</p>}
+    </div>
 
     <section className="card">
       {data.rows.length === 0 ? <p className="muted">No activity recorded{filtered ? ' for this filter' : ' yet'}.</p> : <><div className="table-wrap"><table className="tbl">

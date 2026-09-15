@@ -1,4 +1,4 @@
-import { and, asc, count, desc, eq, like, ne, sql } from 'drizzle-orm';
+import { and, asc, count, desc, eq, ilike, like, ne, or, sql } from 'drizzle-orm';
 import { forSchool, schema } from '@/db';
 import type { Actor } from '@/lib/session';
 import { resultAccess } from '@/lib/results/workflow';
@@ -88,15 +88,24 @@ export async function activityFilters(actor: Actor) {
   });
 }
 
-export async function activityPage(actor: Actor, page: number, filter?: { action?: string; userId?: number }) {
+export async function activityPage(actor: Actor, page: number, filter?: { action?: string; userId?: number; q?: string }) {
   if (!canViewActivity(actor)) return null;
   return forSchool(actor.schoolId, async tx => {
-    const where = filter?.action
-      ? and(schoolActivity(actor.schoolId), like(schema.auditLog.action, `%${filter.action}%`))
-      : schoolActivity(actor.schoolId);
-    const scoped = filter?.userId && filter.userId > 0
-      ? and(where, eq(schema.auditLog.actorUserId, filter.userId))
-      : where;
+    const conditions = [schoolActivity(actor.schoolId)];
+    if (filter?.action) conditions.push(like(schema.auditLog.action, `%${filter.action}%`));
+    if (filter?.userId && filter.userId > 0) conditions.push(eq(schema.auditLog.actorUserId, filter.userId));
+    // Free-text search, like the platform schools filter: matches the action
+    // name, the actor's sign-in ID, the written reason or anything stored in
+    // the before/after snapshots.
+    const q = filter?.q?.trim();
+    if (q) conditions.push(or(
+      like(schema.auditLog.action, `%${q}%`),
+      ilike(schema.auditLog.reason, `%${q}%`),
+      ilike(schema.users.loginId, `%${q}%`),
+      sql`${schema.auditLog.after}::text ILIKE ${'%' + q + '%'}`,
+      sql`${schema.auditLog.before}::text ILIKE ${'%' + q + '%'}`,
+    )!);
+    const scoped = and(...conditions);
     const [totalRow] = await tx.select({ n: count() }).from(schema.auditLog).where(scoped);
     const total = totalRow!.n;
     const pages = Math.max(1, Math.ceil(total / ACTIVITY_PER_PAGE));

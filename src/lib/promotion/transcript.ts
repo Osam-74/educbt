@@ -29,7 +29,7 @@
  * verify page checks BOTH before saying anything about the document.
  */
 
-import { and, asc, desc, eq, inArray } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm';
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import { forSchool, schema, type Tx } from '@/db';
 import type { Actor } from '@/lib/session';
@@ -354,5 +354,74 @@ export async function transcriptBySerial(actor: Actor, serial: string) {
       principalName: schema.schools.principalName,
     }).from(schema.schools).where(eq(schema.schools.id, actor.schoolId));
     return { transcript: row!, compiled, school };
+  });
+}
+
+/* ── The transcript office screen (legacy templates/portal/school/transcripts.php) ──
+ *
+ * Search by NAME or admission number — the legacy page never made you know the
+ * admission number — and an "Issued" register grouped by student: one row per
+ * student with the issue count and the latest serial, not one row per copy.
+ */
+export async function searchTranscriptStudents(actor: Actor, query: string) {
+  if (!canIssueTranscript(actor)) fail('Only the principal may prepare transcripts.');
+  const q = query.trim().slice(0, 100);
+  if (!q) return [] as Array<{ id: number; admissionNumber: string; firstName: string; lastName: string; status: string; issuedCount: number; latestSerial: string | null }>;
+  return forSchool(actor.schoolId, async tx => {
+    const like = `%${q}%`;
+    const found = await tx.select({
+      id: schema.students.id, admissionNumber: schema.students.admissionNumber,
+      firstName: schema.students.firstName, lastName: schema.students.lastName, status: schema.students.status,
+    }).from(schema.students)
+      .where(and(eq(schema.students.schoolId, actor.schoolId), sql`(
+        ${schema.students.admissionNumber} ILIKE ${like}
+        OR ${schema.students.firstName} ILIKE ${like}
+        OR ${schema.students.lastName} ILIKE ${like}
+        OR (${schema.students.firstName} || ' ' || ${schema.students.lastName}) ILIKE ${like}
+        OR (${schema.students.lastName} || ' ' || ${schema.students.firstName}) ILIKE ${like})`))
+      .orderBy(asc(schema.students.lastName)).limit(25);
+    if (!found.length) return [];
+    const ids = found.map(s => s.id);
+    const issues = await tx.select({
+      studentId: schema.transcripts.studentId, serial: schema.transcripts.serial,
+      issuedAt: schema.transcripts.issuedAt, status: schema.transcripts.status,
+    }).from(schema.transcripts)
+      .where(and(eq(schema.transcripts.schoolId, actor.schoolId), inArray(schema.transcripts.studentId, ids), inArray(schema.transcripts.status, ['issued', 'reissued'])))
+      .orderBy(desc(schema.transcripts.id));
+    return found.map(s => {
+      const own = issues.filter(i => i.studentId === s.id);
+      return { id: s.id, admissionNumber: s.admissionNumber, firstName: s.firstName, lastName: s.lastName, status: s.status,
+        issuedCount: own.length, latestSerial: own[0]?.serial ?? null };
+    });
+  });
+}
+
+/** The "Issued" register — grouped by student, newest issue first (limit 25). */
+export async function issuedTranscriptOverview(actor: Actor) {
+  if (!canIssueTranscript(actor)) fail('Only the principal may view the transcript register.');
+  return forSchool(actor.schoolId, async tx => {
+    const rows = await tx.select({
+      studentId: schema.transcripts.studentId,
+      admissionNumber: schema.students.admissionNumber,
+      firstName: schema.students.firstName,
+      lastName: schema.students.lastName,
+      serial: schema.transcripts.serial,
+      purpose: schema.transcripts.purpose,
+      issuedAt: schema.transcripts.issuedAt,
+    }).from(schema.transcripts)
+      .innerJoin(schema.students, eq(schema.students.id, schema.transcripts.studentId))
+      .where(and(eq(schema.transcripts.schoolId, actor.schoolId), inArray(schema.transcripts.status, ['issued', 'reissued'])))
+      .orderBy(desc(schema.transcripts.issuedAt)).limit(200);
+    const order: number[] = [];
+    const byStudent = new Map<number, { studentId: number; admissionNumber: string; name: string; issuedCount: number; latestSerial: string; latestPurpose: string | null; lastIssuedAt: Date }>();
+    for (const r of rows) {
+      if (!byStudent.has(r.studentId)) {
+        byStudent.set(r.studentId, { studentId: r.studentId, admissionNumber: r.admissionNumber, name: `${r.firstName} ${r.lastName}`,
+          issuedCount: 0, latestSerial: r.serial, latestPurpose: r.purpose, lastIssuedAt: r.issuedAt });
+        order.push(r.studentId);
+      }
+      byStudent.get(r.studentId)!.issuedCount++;
+    }
+    return order.map(id => byStudent.get(id)!);
   });
 }

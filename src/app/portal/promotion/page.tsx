@@ -3,32 +3,28 @@ import { and, asc, eq } from 'drizzle-orm';
 import { requireSchoolSession } from '@/lib/session';
 import { forSchool, schema } from '@/db';
 import {
-  canRunPromotion, canCommitPromotion, defaultRules, promotionRulesSchema,
+  canRunPromotion, canCommitPromotion, defaultRules,
   proposePromotion, promotionBatches, promotionReview,
-  overridePromotion, bulkOverridePromotion, commitPromotion, reversePromotion,
+  overridePromotion, commitPromotion, reversePromotion,
+  searchPromotionStudents, moveStudent, promotionRulesFor, savePromotionRules,
 } from '@/lib/promotion/promotion';
+import ChipSelect from './ChipSelect';
 
 export const dynamic = 'force-dynamic';
 
-const OUTCOMES = [
-  ['promote', 'Promote'],
-  ['trial', 'Promote on trial'],
-  ['repeat', 'Repeat the class'],
-  ['graduate', 'Graduate'],
-] as const;
+const OUTCOMES = [['promote', 'Promote'], ['trial', 'Trial'], ['repeat', 'Repeat'], ['graduate', 'Graduate']] as const;
 
 /**
- * Promotion office (legacy EduCBT Pro parity: templates/portal/promotion.php).
- *
- * Rule-driven batch with human review: the exam office proposes, the principal
- * reviews counts and exceptions on ONE screen, overrides individuals with a
- * written reason, and only the principal commits. The proposal is stored, not
- * applied — nothing moves until a human says so.
+ * Promotion office (legacy EduCBT Pro parity: templates/portal/school/promotion.php).
+ * The plugin's four blocks, in its order: an individual move search, the
+ * batch proposal form, per-level promotion rules (with the must-pass subject
+ * pill picker), and — for an open batch — the four summary numbers, the
+ * exceptions that need a human, and the commit button.
  */
 export default async function PromotionPage({
   searchParams,
 }: {
-  searchParams: Promise<{ batch?: string; error?: string; ok?: string }>;
+  searchParams: Promise<{ batch?: string; sq?: string; rules_level?: string; error?: string; ok?: string }>;
 }) {
   const actor = await requireSchoolSession();
   if (!canRunPromotion(actor)) redirect('/portal');
@@ -39,6 +35,9 @@ export default async function PromotionPage({
   const review = batchId ? await promotionReview(actor, batchId).catch(() => null) : null;
   const batches = await promotionBatches(actor);
 
+  const search = (query.sq ?? '').trim();
+  const found = search ? await searchPromotionStudents(actor, search) : [];
+
   const options = review ? null : await forSchool(actor.schoolId, async (tx) => ({
     sessions: await tx.select({ id: schema.academicSessions.id, title: schema.academicSessions.title })
       .from(schema.academicSessions).where(eq(schema.academicSessions.schoolId, actor.schoolId))
@@ -46,33 +45,72 @@ export default async function PromotionPage({
     levels: await tx.select({ id: schema.classLevels.id, name: schema.classLevels.name })
       .from(schema.classLevels).where(eq(schema.classLevels.schoolId, actor.schoolId))
       .orderBy(asc(schema.classLevels.levelOrder)),
+    classes: await tx.select({ id: schema.classes.id, displayName: schema.classes.displayName })
+      .from(schema.classes).where(and(eq(schema.classes.schoolId, actor.schoolId), eq(schema.classes.status, 'active')))
+      .orderBy(asc(schema.classes.displayName)),
+    subjects: await tx.select({ name: schema.subjects.name, code: schema.subjects.code })
+      .from(schema.subjects).where(and(eq(schema.subjects.schoolId, actor.schoolId), eq(schema.subjects.status, 'active')))
+      .orderBy(asc(schema.subjects.name)),
   }));
 
-  const defaults = defaultRules();
+  const rulesLevelId = Number(query.rules_level) || options?.levels[0]?.id || 0;
+  const savedRules = rulesLevelId ? await promotionRulesFor(actor, rulesLevelId).catch(() => defaultRules()) : defaultRules();
 
   async function propose(formData: FormData) {
     'use server';
     const inner = await requireSchoolSession();
-    const rules = promotionRulesSchema.safeParse({
-      passMark: Number(formData.get('passMark')),
-      promoteAverage: Number(formData.get('promoteAverage')),
-      trialAverage: Number(formData.get('trialAverage')),
-      minSubjectsPassed: Number(formData.get('minSubjectsPassed')),
-      requireCore: formData.get('requireCore') === '1',
-    });
-    if (!rules.success) redirect('/portal/promotion?error=' + encodeURIComponent('Enter valid promotion rules.'));
     let destination: string;
     try {
       const result = await proposePromotion(inner, {
         fromSessionId: Number(formData.get('fromSessionId')),
         toSessionId: Number(formData.get('toSessionId')),
         levelId: Number(formData.get('levelId')),
-        rules: rules.data,
       });
       destination = `/portal/promotion?batch=${result.batchId}&ok=${encodeURIComponent(
         `Proposal created: ${result.summary.promoted} promoted, ${result.summary.trial} on trial, ${result.summary.repeated} repeating, ${result.summary.graduated} graduating, ${result.summary.unresolved} unresolved.`)}`;
     } catch (error) {
       destination = `/portal/promotion?error=${encodeURIComponent(error instanceof Error ? error.message : 'Could not create the proposal.')}`;
+    }
+    redirect(destination);
+  }
+
+  async function move(formData: FormData) {
+    'use server';
+    const inner = await requireSchoolSession();
+    const back = `/portal/promotion?sq=${encodeURIComponent(String(formData.get('sq') ?? ''))}`;
+    let destination: string;
+    try {
+      await moveStudent(inner, {
+        studentId: Number(formData.get('studentId')),
+        toClassId: Number(formData.get('toClassId')),
+        outcome: String(formData.get('outcome') ?? ''),
+        reason: String(formData.get('reason') ?? ''),
+      });
+      destination = `${back}&ok=${encodeURIComponent('Student moved. The change is recorded in the activity log.')}`;
+    } catch (error) {
+      destination = `${back}&error=${encodeURIComponent(error instanceof Error ? error.message : 'Could not move that student.')}`;
+    }
+    redirect(destination);
+  }
+
+  async function saveRules(formData: FormData) {
+    'use server';
+    const inner = await requireSchoolSession();
+    const levelId = Number(formData.get('levelId'));
+    const back = `/portal/promotion?rules_level=${levelId}`;
+    let destination: string;
+    try {
+      await savePromotionRules(inner, levelId, {
+        passMark: Number(formData.get('passMark')),
+        promoteAverage: Number(formData.get('promoteAverage')),
+        trialAverage: Number(formData.get('trialAverage')),
+        minSubjectsPassed: Number(formData.get('minSubjectsPassed')),
+        mustPassCodes: formData.getAll('mustPassCodes').map(String),
+        requireCore: formData.get('requireCore') === '1',
+      });
+      destination = `${back}&ok=${encodeURIComponent('Promotion rules saved for this level.')}`;
+    } catch (error) {
+      destination = `${back}&error=${encodeURIComponent(error instanceof Error ? error.message : 'Could not save the rules.')}`;
     }
     redirect(destination);
   }
@@ -86,8 +124,7 @@ export default async function PromotionPage({
     const back = `/portal/promotion?batch=${batchId}`;
     let destination = `${back}&error=${encodeURIComponent('Select at least one student.')}`;
     try {
-      if (ids.length > 1) await bulkOverridePromotion(inner, batchId, ids, outcome, reason);
-      else if (ids.length === 1) await overridePromotion(inner, batchId, ids[0]!, outcome, reason);
+      for (const id of ids) await overridePromotion(inner, batchId, id, outcome, reason);
       destination = `${back}&ok=${encodeURIComponent(`Decision recorded for ${ids.length} student(s).`)}`;
     } catch (error) {
       destination = `${back}&error=${encodeURIComponent(error instanceof Error ? error.message : 'Could not record that decision.')}`;
@@ -125,6 +162,10 @@ export default async function PromotionPage({
     redirect(destination);
   }
 
+  const exceptions = review
+    ? review.decisions.filter(d => d.finalOutcome === 'unresolved' || review.borderline.includes(d.studentId) || d.proposedOutcome !== d.finalOutcome)
+    : [];
+
   return (
     <>
       <h1 className="page-title">Promotion</h1>
@@ -142,94 +183,70 @@ export default async function PromotionPage({
                 : 'This promotion was reversed. Nothing from it stands.'}
           </p>
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 12, margin: '16px 0' }}>
-            {[['Evaluated', review.summary.evaluated], ['Promote', review.summary.promoted], ['Trial', review.summary.trial],
-              ['Repeat', review.summary.repeated], ['Graduate', review.summary.graduated], ['Unresolved', review.summary.unresolved]]
-              .map(([label, value]) => (
-                <div key={label as string} className="stat">
-                  <b style={{ fontSize: 22 }}>{value as number}</b>
-                  <span className="muted">{label as string}</span>
-                </div>
-              ))}
+          <div className="stat-grid">
+            <div className="stat"><b>{review.summary.promoted}</b><span>Promoted</span></div>
+            <div className="stat"><b>{review.summary.trial}</b><span>On trial</span></div>
+            <div className="stat"><b>{review.summary.repeated}</b><span>Repeating</span></div>
+            <div className="stat"><b>{review.summary.unresolved}</b><span>Unresolved</span></div>
           </div>
 
-          {review.summary.unresolved > 0 ? (
-            <p className="alert" role="alert">
-              {review.summary.unresolved} student(s) have no published results. They cannot be left unresolved at
-              commit — decide each one with a reason.
-            </p>
-          ) : null}
-
-          {review.batch.status === 'proposed' ? (
-            <form action={override} style={{ margin: '16px 0' }}>
-              <fieldset>
-                <legend className="sub-head">Bulk review</legend>
-                <p className="muted">Select students, choose their outcome, and give a reason — &ldquo;why was my child not promoted&rdquo; must be answerable from the record.</p>
-                <table className="tbl">
-                  <thead>
-                    <tr><th></th><th>Student</th><th>From</th><th>To</th><th>Proposed</th><th>Final</th><th>Average</th><th>Passed</th><th>Note</th></tr>
-                  </thead>
-                  <tbody>
-                    {review.decisions.map((d) => (
-                      <tr key={d.studentId} style={review.borderline.includes(d.studentId) ? { background: 'var(--warn-bg, #fff7e0)' } : undefined}>
-                        <td><input type="checkbox" name="studentIds" value={d.studentId} aria-label={`Select ${d.name}`} /></td>
-                        <td>
-                          <strong>{d.name}</strong>
-                          <span className="muted"> · {d.admissionNumber}</span>
-                          {d.overridden ? <span className="muted"><br />Reason: {d.overrideReason}</span> : null}
-                        </td>
-                        <td>{d.fromClass ?? '—'}</td>
-                        <td>{d.toClass ?? '—'}</td>
-                        <td>{d.proposedOutcome}</td>
-                        <td><strong>{d.finalOutcome}</strong>{d.proposedOutcome !== d.finalOutcome ? ' (overridden)' : ''}</td>
-                        <td>{d.averageScore}%</td>
-                        <td>{d.subjectsPassed} of {d.subjectsOffered || '—'}</td>
-                        <td>{d.note ? d.note.replaceAll('_', ' ') : (review.borderline.includes(d.studentId) ? 'borderline' : '')}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginTop: 8 }}>
-                  <label htmlFor="outcome">Outcome</label>
-                  <select id="outcome" name="outcome" required>
-                    {OUTCOMES.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-                  </select>
-                  <input name="reason" placeholder="Written reason (min 10 characters)" style={{ flex: 1, minWidth: 240 }} required minLength={10} maxLength={255} />
-                  <button type="submit">Apply to selected</button>
-                </div>
-              </fieldset>
-            </form>
-          ) : (
-            <table className="tbl">
-              <thead>
-                <tr><th>Student</th><th>From</th><th>To</th><th>Final</th><th>Average</th><th>Reason</th></tr>
-              </thead>
-              <tbody>
-                {review.decisions.map((d) => (
-                  <tr key={d.studentId}>
-                    <td><strong>{d.name}</strong><span className="muted"> · {d.admissionNumber}</span></td>
-                    <td>{d.fromClass ?? '—'}</td>
-                    <td>{d.toClass ?? '—'}</td>
-                    <td><strong>{d.finalOutcome}</strong></td>
+          <section className="card">
+            <h2 className="sub-head">Needs a decision <span className="muted">({exceptions.length} of {review.summary.evaluated})</span></h2>
+            {exceptions.length === 0 ? <p className="muted">Every student is clear-cut.</p> : (
+              <table className="tbl">
+                <thead><tr><th>Student</th><th>Average</th><th>Passed</th><th>Proposed</th><th>Override</th></tr></thead>
+                <tbody>
+                  {exceptions.map(d => <tr key={d.studentId} style={review.borderline.includes(d.studentId) ? { background: 'var(--warn-bg, #fff7e0)' } : undefined}>
+                    <td><strong>{d.name}</strong><br /><span className="muted">{d.admissionNumber}</span></td>
                     <td>{d.averageScore}%</td>
-                    <td>{d.overrideReason || '—'}</td>
-                  </tr>
-                ))}
+                    <td>{d.subjectsPassed} of {d.subjectsOffered || '—'}</td>
+                    <td><span className="pill">{d.proposedOutcome}</span></td>
+                    <td>
+                      <form action={override} style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+                        <input type="hidden" name="studentIds" value={d.studentId} />
+                        <select name="outcome" aria-label={'Outcome for ' + d.name}>
+                          {OUTCOMES.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                        </select>
+                        <input name="reason" type="text" placeholder="Reason" required maxLength={255} style={{ width: 130 }} />
+                        <button type="submit">Set</button>
+                      </form>
+                    </td>
+                  </tr>)}
+                </tbody>
+              </table>
+            )}
+          </section>
+
+          <section className="card">
+            <h2 className="sub-head">Every student in the proposal</h2>
+            <table className="tbl">
+              <thead><tr><th>Student</th><th>From</th><th>To</th><th>Proposed</th><th>Final</th><th>Average</th><th>Note</th></tr></thead>
+              <tbody>
+                {review.decisions.map(d => <tr key={d.studentId}>
+                  <td><strong>{d.name}</strong><span className="muted"> · {d.admissionNumber}</span>
+                    {d.overrideReason ? <span className="muted"><br />Reason: {d.overrideReason}</span> : null}</td>
+                  <td>{d.fromClass ?? '—'}</td>
+                  <td>{d.toClass ?? '—'}</td>
+                  <td>{d.proposedOutcome}</td>
+                  <td><span className="pill">{d.finalOutcome}</span></td>
+                  <td>{d.averageScore}%</td>
+                  <td>{d.note ? d.note.replaceAll('_', ' ') : ''}</td>
+                </tr>)}
               </tbody>
             </table>
-          )}
+          </section>
 
           {review.batch.status === 'proposed' && canCommit ? (
-            <form action={commit} style={{ marginTop: 16 }}>
-              <button type="submit">Commit promotion</button>
+            <form action={commit} className="card">
+              <h2 className="sub-head">Commit</h2>
+              <button type="submit" className="primary">Commit promotion</button>
               <p className="muted">Committing writes next session&rsquo;s enrollments (and graduates the graduates). History is never changed.</p>
             </form>
           ) : null}
-          {!canCommit && review.batch.status === 'proposed' ? (
-            <p className="muted">Only the principal may commit a promotion.</p>
-          ) : null}
+          {!canCommit && review.batch.status === 'proposed' ? <p className="muted">Only the principal may commit a promotion.</p> : null}
           {review.batch.status === 'committed' && canCommit ? (
-            <form action={reverse} style={{ marginTop: 16 }}>
+            <form action={reverse} className="card">
+              <h2 className="sub-head">Reverse</h2>
               <input name="reason" placeholder="Reason for reversing (min 10 characters)" required minLength={10} maxLength={255} style={{ minWidth: 320 }} />
               <button type="submit" className="danger">Reverse promotion</button>
               <p className="muted">Reversing removes only the enrollments this batch wrote and reinstates graduates.</p>
@@ -238,74 +255,124 @@ export default async function PromotionPage({
         </>
       ) : (
         <>
-          <section style={{ marginBottom: 24 }}>
-            <h2 className="sub-head">New proposal</h2>
+          <section className="card">
+            <h2 className="sub-head">Promote or demote a student individually</h2>
+            <p className="muted">Search by name or admission number. Move a student to any class without running a full batch — for late joiners, mid-year transfers, or corrections.</p>
+            <form method="get" className="search-row">
+              <label htmlFor="sq" className="sr-only">Search student</label>
+              <input id="sq" name="sq" type="text" defaultValue={search} placeholder="Name or admission number" style={{ flex: 1, minWidth: 240 }} />
+              <button type="submit">Search</button>
+            </form>
+
+            {search !== '' ? (found.length === 0 ? <p className="muted">No student matched.</p> : (
+              <table className="tbl">
+                <thead><tr><th>Adm. no.</th><th>Name</th><th>Current class</th><th>Status</th><th>Move to</th></tr></thead>
+                <tbody>
+                  {found.map(s => <tr key={s.id}>
+                    <td><code>{s.admissionNumber}</code></td>
+                    <td>{s.name}</td>
+                    <td>{s.className ?? 'Not enrolled'}</td>
+                    <td className="muted" style={{ textTransform: 'capitalize' }}>{s.status}</td>
+                    <td>
+                      <form action={move} style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+                        <input type="hidden" name="studentId" value={s.id} />
+                        <input type="hidden" name="sq" value={search} />
+                        <label className="sr-only" htmlFor={'toClass-' + s.id}>Target class</label>
+                        <select id={'toClass-' + s.id} name="toClassId" required style={{ minWidth: 140 }}>
+                          <option value="">Select class</option>
+                          {options?.classes.map(c => <option key={c.id} value={c.id}>{c.displayName}</option>)}
+                        </select>
+                        <label className="sr-only" htmlFor={'outcome-' + s.id}>Outcome</label>
+                        <select id={'outcome-' + s.id} name="outcome" required>
+                          {OUTCOMES.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                        </select>
+                        <input name="reason" type="text" placeholder="Reason" required maxLength={255} style={{ width: 120 }} />
+                        <button type="submit" className="primary">Move</button>
+                      </form>
+                    </td>
+                  </tr>)}
+                </tbody>
+              </table>
+            )) : null}
+          </section>
+
+          <section className="card">
+            <h2 className="sub-head">Run a promotion</h2>
+            <p className="muted">Every student in the level is scored against the rules and a proposal is produced. <strong>Nothing moves until you commit it.</strong></p>
             <form action={propose}>
-              <div style={{ display: 'grid', gap: 8, gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', maxWidth: 900 }}>
+              <div className="form-grid">
+                <label>Level
+                  <select name="levelId" required>
+                    <option value="">Choose</option>
+                    {options?.levels.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
+                  </select>
+                </label>
                 <label>From session
                   <select name="fromSessionId" required>
                     {options?.sessions.map(s => <option key={s.id} value={s.id}>{s.title}</option>)}
                   </select>
                 </label>
-                <label>To session
+                <label>Into session
                   <select name="toSessionId" required>
                     {options?.sessions.map(s => <option key={s.id} value={s.id}>{s.title}</option>)}
                   </select>
-                </label>
-                <label>Class level
-                  <select name="levelId" required>
-                    {options?.levels.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
-                  </select>
-                </label>
-                <label>Pass mark (%)
-                  <input name="passMark" type="number" min={0} max={100} step="0.1" defaultValue={defaults.passMark} />
-                </label>
-                <label>Promote average (%)
-                  <input name="promoteAverage" type="number" min={0} max={100} step="0.1" defaultValue={defaults.promoteAverage} />
-                </label>
-                <label>Trial average (%)
-                  <input name="trialAverage" type="number" min={0} max={100} step="0.1" defaultValue={defaults.trialAverage} />
-                </label>
-                <label>Min subjects passed
-                  <input name="minSubjectsPassed" type="number" min={1} max={20} defaultValue={defaults.minSubjectsPassed} />
-                </label>
-                <label>Require English &amp; Maths
-                  <select name="requireCore" defaultValue="1">
-                    <option value="1">Yes</option>
-                    <option value="0">No</option>
-                  </select>
+                  <small className="muted">Add next year&rsquo;s session under Settings first.</small>
                 </label>
               </div>
-              <button type="submit" style={{ marginTop: 10 }}>Evaluate level</button>
-              <p className="muted">The proposal is stored, never applied. Every student gets a decision on file, with the annual average taken across all published terms.</p>
+              <button type="submit" className="primary">Produce a proposal</button>
             </form>
           </section>
 
-          <section>
-            <h2 className="sub-head">Batches</h2>
-            {batches.length === 0 ? (
-              <p className="muted">No promotion has been proposed yet.</p>
-            ) : (
-              <table className="tbl">
-                <thead>
-                  <tr><th>From</th><th>To</th><th>Level</th><th>Evaluated</th><th>Summary</th><th>Status</th><th></th></tr>
-                </thead>
-                <tbody>
-                  {batches.map(({ batch, levelName, fromTitle, toTitle }) => (
-                    <tr key={batch.id}>
-                      <td>{fromTitle}</td>
-                      <td>{toTitle}</td>
-                      <td>{levelName}</td>
-                      <td>{batch.totalEvaluated}</td>
-                      <td className="muted">
-                        {batch.totalPromoted} promote · {batch.totalTrial} trial · {batch.totalRepeated} repeat · {batch.totalGraduated} graduate · {batch.totalUnresolved} unresolved
-                      </td>
-                      <td><strong>{batch.status}</strong></td>
-                      <td><a href={`/portal/promotion?batch=${batch.id}`}>Review</a></td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+          {options && options.levels.length > 0 ? (
+            <section className="card">
+              <h2 className="sub-head">Promotion rules</h2>
+              <p className="muted">Set per level, so JSS3 can differ from SS2. Proposals use these rules for the chosen level.</p>
+              <form method="get" className="inline-form">
+                <label htmlFor="rules_level">Level</label>
+                <select id="rules_level" name="rules_level" defaultValue={String(rulesLevelId)}>
+                  {options.levels.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
+                </select>
+                <button type="submit">Load</button>
+              </form>
+              <form action={saveRules}>
+                <input type="hidden" name="levelId" value={rulesLevelId} />
+                <div className="form-grid">
+                  <label>Promote at average (%)
+                    <input name="promoteAverage" type="number" step="0.5" min="0" max="100" defaultValue={savedRules.promoteAverage} /></label>
+                  <label>On trial at average (%)
+                    <input name="trialAverage" type="number" step="0.5" min="0" max="100" defaultValue={savedRules.trialAverage} /></label>
+                  <label>A subject is passed at (%)
+                    <input name="passMark" type="number" step="0.5" min="0" max="100" defaultValue={savedRules.passMark} /></label>
+                  <label>Subjects that must be passed
+                    <input name="minSubjectsPassed" type="number" min="1" max="20" defaultValue={savedRules.minSubjectsPassed} />
+                    <small className="muted">Capped at the number a student actually offers.</small></label>
+                  <div style={{ gridColumn: '1 / -1' }}>
+                    <span className="field-label">Subjects that must be passed</span>
+                    <ChipSelect name="mustPassCodes" selected={savedRules.mustPassCodes}
+                      options={options.subjects.map(s => ({ value: s.code, label: `${s.name} (${s.code})` }))}
+                      placeholder="Click to select subjects…" />
+                    <small className="muted">Failing any of these means repeating the year, whatever the average.</small>
+                  </div>
+                </div>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 400 }}>
+                  <input type="checkbox" name="requireCore" value="1" defaultChecked={savedRules.requireCore} style={{ width: 'auto' }} />
+                  Enforce the compulsory subjects
+                </label>
+                <button type="submit" className="primary">Save rules</button>
+              </form>
+            </section>
+          ) : null}
+
+          <section className="card">
+            <h2 className="sub-head">Recent batches</h2>
+            {batches.length === 0 ? <p className="muted">No promotion has been proposed yet.</p> : (
+              <ul className="batch-list">
+                {batches.map(({ batch, levelName, fromTitle, toTitle }) => <li key={batch.id}>
+                  <span>Batch #{batch.id} — {levelName} · {fromTitle} → {toTitle} · {batch.totalEvaluated} students</span>
+                  <span className="pill">{batch.status}</span>
+                  <a href={`/portal/promotion?batch=${batch.id}`}>Review</a>
+                </li>)}
+              </ul>
             )}
           </section>
         </>

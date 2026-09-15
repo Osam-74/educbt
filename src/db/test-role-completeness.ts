@@ -128,8 +128,10 @@ async function main() {
       await assert.rejects(compileClassResults(actors.teacher!, scopeA), /do not have permission to manage results/i);
     });
     await check('can save their own class-teacher remark ranges', () => saveRanges(actors.teacher!, 'class_teacher', [{ min: 90, remark: 'Excellent' }, { min: 0, remark: 'Improve' }]));
+    // Remark ranges exist for the class-teacher role alone — nobody, teacher
+    // included, can save ranges under the principal role any more.
     await check('cannot save the principal ranges', async () => {
-      await assert.rejects(saveRanges(actors.teacher!, 'principal', [{ min: 90, remark: 'x' }, { min: 0, remark: 'y' }]), /not assigned|signature/i);
+      await assert.rejects(saveRanges(actors.teacher!, 'principal', [{ min: 90, remark: 'x' }, { min: 0, remark: 'y' }]), /class teacher role only|not assigned|signature/i);
     });
 
     console.log('\n— teacher (unassigned) —');
@@ -166,7 +168,10 @@ async function main() {
       await transitionClassResults(actors.principal!, scopeB, 'reviewed');
       await transitionClassResults(actors.principal!, scopeB, 'published');
     });
-    await check('can save principal remark ranges', () => saveRanges(actors.principal!, 'principal', [{ min: 90, remark: 'A brilliant report' }, { min: 0, remark: 'The next term will be better' }]));
+    // Owner decision (2026-09-15): remark ranges are class-teacher-only;
+    // the principal account never edits automatic remark ranges.
+    await check('cannot save principal remark ranges — class teachers own report remarks', () =>
+      assert.rejects(saveRanges(actors.principal!, 'principal', [{ min: 90, remark: 'A brilliant report' }, { min: 0, remark: 'The next term will be better' }]), /class teacher role only/));
     await check('can issue transcripts and families can verify them', async () => {
       assert.equal(canIssueTranscript(actors.principal!), true);
       const issued: any = await issueTranscript(actors.principal!, students[0]!.id, 'transfer');

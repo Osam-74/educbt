@@ -12,23 +12,70 @@ const item = (path: string, label: string, icon = 'grid'): Item => ({ href: '/po
 export function portalAreas(role: string, teaching: boolean, classTeacher: boolean): Area[] {
   const wide = ['principal', 'vice_principal', 'exam_officer'].includes(role);
   const areas: Area[] = [];
-  if (wide) areas.push({ label: 'School', items: [item('', 'Overview'), item('/staff', 'Staff', 'person'), item('/students', 'Students', 'school'), item('/classes', 'Classes', 'layers'), item('/subjects', 'Subjects', 'book'), item('/results', 'Results', 'chart'), item('/review', 'Review', 'check'), item('/broadsheet', 'Broadsheet', 'grid'), ...(role === 'principal' || role === 'vice_principal' ? [item('/promotion', 'Promotion', 'layers')] : []), ...(role === 'principal' ? [item('/transcripts', 'Transcripts', 'book')] : []), item('/ca', 'Record scores', 'edit'), ...(role === 'principal' || role === 'vice_principal' ? [item('/activity', 'Activity log', 'activity')] : [])] });
-  if (role === 'teacher' || role === 'exam_officer' || (wide && teaching)) areas.push({ label: 'Teaching', items: [item('', 'Dashboard'), item('/classes', 'My assignments', 'layers'), ...(classTeacher || wide ? [item('/students', 'My students', 'school')] : []), item('/ca', 'Record scores', 'edit')] });
-  if (wide) areas.find(a => a.label === 'School')!.items.push(item('/settings', 'School Settings', 'edit'));
+  // Legacy parity: the plugin's School area has NO score-entry item —
+  // recording scores is Teaching work, shown only where the teacher does it.
+  if (wide) areas.push({ label: 'School', items: [item('', 'Overview', 'area:school'), item('/staff', 'Staff', 'staff'), item('/students', 'Students', 'students'), item('/classes', 'Classes', 'classes'), item('/subjects', 'Subjects', 'subjects'), item('/results', 'Results', 'results'), item('/review', 'Review', 'approvals'), item('/broadsheet', 'Broadsheet', 'broadsheet'), ...(role === 'principal' || role === 'vice_principal' ? [item('/promotion', 'Promotion', 'promotion')] : []), ...(role === 'principal' ? [item('/transcripts', 'Transcripts', 'transcripts')] : []), ...(role === 'principal' || role === 'vice_principal' ? [item('/activity', 'Activity log', 'activity')] : [])] });
+  if (role === 'teacher' || role === 'exam_officer' || (wide && teaching)) areas.push({ label: 'Teaching', items: [item('', 'Dashboard', 'area:teacher'), item('/classes', 'My assignments', 'classes'), ...(classTeacher || wide ? [item('/students', 'My students', 'students')] : []), item('/ca', 'Record scores', 'scores')] });
+  if (wide) areas.find(a => a.label === 'School')!.items.push(item('/settings', 'School Settings', 'settings'));
   else if (role === 'teacher' && classTeacher) areas.find(a => a.label === 'Teaching')!.items.push(item('/settings', 'Signatures & remarks', 'edit'));
-  if (wide || role === 'teacher') areas.push({ label: 'Examinations', items: [...(wide ? [item('/exams', 'Exam office', 'book')] : []), item('/timetable', 'Timetable', 'calendar'), item('/invigilation', 'Invigilation', 'clock'), item('/invigilate', 'Live sessions', 'activity'), item('/questions', 'Question Bank', 'book'), item('/marking', 'Marking', 'edit')] });
-  if (role === 'student') areas.push({ label: 'Student', items: [item('', 'Dashboard'), item('/my-results', 'My results', 'chart'), item('/practice', 'Practice', 'edit')] });
-  if (role === 'parent') areas.push({ label: 'Parent', items: [item('', 'Dashboard'), item('/children', 'My children', 'person'), item('/timetable', 'Exam timetable', 'calendar')] });
+  if (wide || role === 'teacher') areas.push({ label: 'Examinations', items: [...(wide ? [item('/exams', 'Exam office', 'papers')] : []), item('/timetable', 'Timetable', 'timetable'), item('/invigilation', 'Invigilation', 'invigilation'), item('/invigilate', 'Live sessions', 'invigilate'), item('/questions', 'Question Bank', 'questions'), item('/marking', 'Marking', 'marking')] });
+  if (role === 'student') areas.push({ label: 'Student', items: [item('', 'Dashboard', 'area:student'), item('/my-results', 'My results', 'results'), item('/practice', 'Practice', 'tests')] });
+  if (role === 'parent') areas.push({ label: 'Parent', items: [item('', 'Dashboard', 'area:guardian'), item('/children', 'My children', 'children'), item('/timetable', 'Exam timetable', 'timetable')] });
   // Communications are for everyone: the inbox, the announcements board and
   // (for staff and parents) messages. Added as its own area so the sidebar
   // never buries the unread count.
   const msgRoles = ['principal', 'vice_principal', 'exam_officer', 'teacher', 'parent'];
-  areas.push({ label: 'Communications', items: [item('/notifications', 'Notifications', 'activity'), item('/announcements', 'Announcements', 'school'), ...(msgRoles.includes(role) ? [item('/messages', 'Messages', 'edit')] : [])] });
+  areas.push({ label: 'Communications', items: [item('/notifications', 'Notifications', 'notices'), item('/announcements', 'Announcements', 'notices'), ...(msgRoles.includes(role) ? [item('/messages', 'Messages', 'edit')] : [])] });
   return areas.length ? areas : [{ label: 'Account', items: [item('', 'Dashboard')] }];
 }
 export function PortalIcon({ name }: { name: string }) {
-  const paths: Record<string, string> = { grid: 'M3 3h7v7H3z M14 3h7v7h-7z M3 14h7v7H3z M14 14h7v7h-7z', person: 'M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8 M5 21v-2a7 7 0 0 1 14 0v2', school: 'M2 8l10-5 10 5-10 5z M6 11v6q6 5 12 0v-6', layers: 'M3 7l9-5 9 5-9 5z M3 12l9 5 9-5 M3 17l9 5 9-5', book: 'M4 4h7q1 0 1 2 0-2 1-2h7v15h-7q-1 0-1 2 0-2-1-2H4z M12 6v15', chart: 'M4 20V10 M12 20V4 M20 20v-7 M2 20h20', check: 'M4 12l5 5L20 6', edit: 'M14 5l5 5 M4 20l4-1L21 6l-4-4L4 15z', clock: 'M12 7v5l4 2 M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0', calendar: 'M3 5h18v16H3z M7 2v6 M17 2v6 M3 11h18', activity: 'M2 12h5l3-8 4 16 3-8h5', menu: 'M4 6h16 M4 12h16 M4 18h16' };
-  return <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d={paths[name] ?? paths.grid}/></svg>;
+  // Legacy EduCBT Pro parity: the plugin's icon set (templates/portal/shell.php,
+  // $educbt_icon_paths) ported verbatim — every menu keeps its original icon.
+  const icons: Record<string, string> = {
+    'area:school': '<path d="M4 21V9.5l8-5 8 5V21"/><path d="M9 21v-6h6v6"/>',
+    'area:exams': '<path d="M8 3h6l4 4v14H8a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Z"/><path d="M14 3v4h4"/>',
+    'area:teacher': '<rect x="3" y="4" width="18" height="12" rx="1.6"/><path d="M9 20h6M12 16v4"/>',
+    'area:student': '<path d="M12 4 2 9l10 5 10-5-10-5Z"/><path d="M6 11.4V17c0 1.4 2.7 3 6 3s6-1.6 6-3v-5.6"/>',
+    'area:guardian': '<path d="M12 20s-7.4-4.4-9.7-8.9C.7 8 2.5 4.8 6 4.8c2 0 3.4 1.2 6 3.6 2.6-2.4 4-3.6 6-3.6 3.5 0 5.3 3.2 3.7 6.3C19.4 15.6 12 20 12 20Z"/>',
+    grid: '<rect x="3" y="3" width="7.5" height="7.5" rx="1.6"/><rect x="13.5" y="3" width="7.5" height="7.5" rx="1.6"/><rect x="13.5" y="13.5" width="7.5" height="7.5" rx="1.6"/><rect x="3" y="13.5" width="7.5" height="7.5" rx="1.6"/>',
+    staff: '<circle cx="9" cy="8" r="3.2"/><path d="M3 20c0-3.6 2.7-6.4 6-6.4s6 2.8 6 6.4"/>',
+    students: '<path d="M12 4 2 9l10 5 10-5-10-5Z"/><path d="M6 11.4V17c0 1.4 2.7 3 6 3s6-1.6 6-3v-5.6"/>',
+    classes: '<path d="M12 3 3 8l9 5 9-5-9-5Z"/><path d="M3 12l9 5 9-5"/>',
+    subjects: '<path d="M4 4.6A2.6 2.6 0 0 1 6.6 2H20v17H6.6A2.6 2.6 0 0 0 4 21.6v-17Z"/>',
+    results: '<path d="M4 20V10M12 20V4M20 20v-7"/><path d="M2 20h20"/>',
+    promotion: '<path d="M3 17l6-6 4 4 7-8"/><path d="M15 6.5h5.5V12"/>',
+    transcripts: '<path d="M14 2H7.5A2 2 0 0 0 5.5 4v16a2 2 0 0 0 2 2H17a2 2 0 0 0 2-2V8l-5-6Z"/><path d="M14 2v6h5"/>',
+    notices: '<path d="M3 10.2v3.6h3l4.3 4.3V5.9L6 10.2H3Z"/><path d="M14.3 8.3a4.3 4.3 0 0 1 0 7.4"/>',
+    activity: '<path d="M3 12h4l2-7 4 14 2-7h6"/>',
+    settings: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.9.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.9-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.9V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z"/>',
+    papers: '<path d="M14 2H7.5A2 2 0 0 0 5.5 4v16a2 2 0 0 0 2 2H17a2 2 0 0 0 2-2V8l-5-6Z"/><path d="M14 2v6h5"/>',
+    timetable: '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 10h18"/>',
+    questions: '<circle cx="12" cy="12" r="9"/><path d="M9.3 9.2a2.7 2.7 0 0 1 5 1.4c0 1.9-2.2 1.8-2.7 3.4"/><path d="M12 17h.01"/>',
+    approvals: '<circle cx="12" cy="12" r="9"/><path d="M8 12.3l2.6 2.6L16 9.3"/>',
+    invigilate: '<path d="M2 12s3.6-7.2 10-7.2 10 7.2 10 7.2-3.6 7.2-10 7.2-10-7.2-10-7.2Z"/><circle cx="12" cy="12" r="3"/>',
+    invigilation: '<path d="M2 12s3.6-7.2 10-7.2 10 7.2 10 7.2-3.6 7.2-10 7.2-10-7.2-10-7.2Z"/><circle cx="12" cy="12" r="3"/>',
+    sessions: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/>',
+    marking: '<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5Z"/>',
+    broadsheet: '<rect x="3" y="4" width="18" height="16" rx="1.6"/><path d="M3 10h18M9 4v16"/>',
+    analysis: '<path d="M4 19V9M10 19V5M16 19v-7"/><path d="M2 19h20"/>',
+    scores: '<path d="M9 6h11M9 12h11M9 18h11"/>',
+    register: '<rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 4a3 3 0 0 1 6 0"/><path d="M8 12.5h8M8 16.5h5"/>',
+    tests: '<path d="M14 2H7.5A2 2 0 0 0 5.5 4v16a2 2 0 0 0 2 2H17a2 2 0 0 0 2-2V8l-5-6Z"/><path d="M14 2v6h5"/>',
+    exam: '<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5Z"/>',
+    children: '<path d="M12 20s-7.4-4.4-9.7-8.9C.7 8 2.5 4.8 6 4.8c2 0 3.4 1.2 6 3.6 2.6-2.4 4-3.6 6-3.6 3.5 0 5.3 3.2 3.7 6.3C19.4 15.6 12 20 12 20Z"/>',
+    // Legacy aliases used by dashboards and other call sites.
+    person: '<circle cx="9" cy="8" r="3.2"/><path d="M3 20c0-3.6 2.7-6.4 6-6.4s6 2.8 6 6.4"/>',
+    school: '<path d="M12 4 2 9l10 5 10-5-10-5Z"/><path d="M6 11.4V17c0 1.4 2.7 3 6 3s6-1.6 6-3v-5.6"/>',
+    layers: '<path d="M12 3 3 8l9 5 9-5-9-5Z"/><path d="M3 12l9 5 9-5"/>',
+    chart: '<path d="M4 20V10M12 20V4M20 20v-7"/><path d="M2 20h20"/>',
+    check: '<circle cx="12" cy="12" r="9"/><path d="M8 12.3l2.6 2.6L16 9.3"/>',
+    edit: '<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5Z"/>',
+    clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/>',
+    calendar: '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 10h18"/>',
+    menu: '<path d="M4 6h16M4 12h16M4 18h16"/>',
+  };
+  const body = icons[name] ?? icons.grid ?? '';
+  return <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" dangerouslySetInnerHTML={{ __html: body }} />;
 }
 
 export default function PortalShell({ children, school, displayName, role, calendar, teaching, classTeacher, signOut, unread = 0 }: { children: React.ReactNode; school: string; displayName: string; role: string; calendar: string; teaching: boolean; classTeacher: boolean; signOut: () => Promise<void>; unread?: number }) {

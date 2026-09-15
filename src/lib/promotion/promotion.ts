@@ -284,11 +284,14 @@ export async function proposePromotion(actor: Actor, input: unknown) {
   const parsed = proposeSchema.safeParse(input);
   if (!parsed.success) fail('Choose a valid from-session, to-session and level.');
   const { fromSessionId, toSessionId, levelId } = parsed.data!;
-  const rules = parsed.data!.rules ?? defaultRules();
+  const inlineRules = parsed.data!.rules ?? null;
 
   if (fromSessionId === toSessionId) fail('Promotion must move between two different sessions.');
 
   return forSchool(actor.schoolId, async tx => {
+    // Legacy rules_for: a proposal uses the rules saved for the level unless
+    // the caller passes a one-off ruleset explicitly.
+    const rules = inlineRules ?? await storedRules(tx, actor.schoolId, levelId);
     const [fromSession] = await tx.select().from(schema.academicSessions)
       .where(and(eq(schema.academicSessions.id, fromSessionId), eq(schema.academicSessions.schoolId, actor.schoolId)));
     const [toSession] = await tx.select().from(schema.academicSessions)
@@ -661,5 +664,128 @@ export async function promotionReview(actor: Actor, batchId: number) {
       })),
       borderline,
     };
+  });
+}
+
+/* ── Per-level promotion rules (legacy PromotionService::rules_for/set_rules) ──
+ *
+ * Legacy stored these in wp_options; here they live in the school's settings
+ * under promotionRules[levelId] — same school-scoped config pattern as the
+ * academic config. A proposal SNAPSHOTS the rules onto the batch, so changing
+ * rules later never re-explains an old batch.
+ */
+type StoredRules = Record<string, PromotionRules>;
+
+export async function promotionRulesFor(actor: Actor, levelId: number) {
+  if (!canRunPromotion(actor)) fail('Only the principal or vice principal may view promotion rules.');
+  return forSchool(actor.schoolId, async tx => storedRules(tx, actor.schoolId, levelId));
+}
+
+async function storedRules(tx: Tx, schoolId: number, levelId: number): Promise<PromotionRules> {
+  const [school] = await tx.select({ settings: schema.schools.settings }).from(schema.schools).where(eq(schema.schools.id, schoolId));
+  const stored = ((school?.settings as { promotionRules?: StoredRules } | undefined)?.promotionRules ?? {})[String(levelId)];
+  return stored ? promotionRulesSchema.parse({ ...defaultRules(), ...stored }) : defaultRules();
+}
+
+export async function savePromotionRules(actor: Actor, levelId: number, input: unknown) {
+  if (!canRunPromotion(actor)) fail('Only the principal or vice principal may set promotion rules.');
+  const rules = promotionRulesSchema.parse(input);
+  return forSchool(actor.schoolId, async tx => {
+    const [level] = await tx.select({ id: schema.classLevels.id })
+      .from(schema.classLevels).where(and(eq(schema.classLevels.id, levelId), eq(schema.classLevels.schoolId, actor.schoolId)));
+    if (!level) fail('That class level is not available in this school.');
+    const [school] = await tx.select().from(schema.schools).where(eq(schema.schools.id, actor.schoolId));
+    const before = ((school!.settings as { promotionRules?: StoredRules }).promotionRules ?? {})[String(levelId)] ?? null;
+    const promotionRules = { ...((school!.settings as { promotionRules?: StoredRules }).promotionRules ?? {}), [String(levelId)]: rules };
+    await tx.update(schema.schools).set({ settings: { ...school!.settings, promotionRules }, updatedAt: new Date() })
+      .where(eq(schema.schools.id, actor.schoolId));
+    await tx.insert(schema.auditLog).values({
+      schoolId: actor.schoolId, actorUserId: actor.userId, actorRole: actor.role,
+      action: 'promotion.rules', entityType: 'class_level',
+      before, after: rules,
+    });
+    return rules;
+  });
+}
+
+/* ── Individual move (legacy PromotionService::move_student + search_students) ── */
+
+/** Search by name or admission number for the individual move form. */
+export async function searchPromotionStudents(actor: Actor, query: string) {
+  if (!canRunPromotion(actor)) fail('Only the principal or vice principal may run promotion.');
+  const q = query.trim().slice(0, 100);
+  if (!q) return [] as Array<{ id: number; admissionNumber: string; name: string; status: string; className: string | null }>;
+  return forSchool(actor.schoolId, async tx => {
+    const like = `%${q}%`;
+    const rows = await tx.select({
+      id: schema.students.id,
+      admissionNumber: schema.students.admissionNumber,
+      firstName: schema.students.firstName,
+      lastName: schema.students.lastName,
+      status: schema.students.status,
+      className: schema.classes.displayName,
+    }).from(schema.students)
+      .leftJoin(schema.enrollments, and(eq(schema.enrollments.studentId, schema.students.id), eq(schema.enrollments.status, 'active')))
+      .leftJoin(schema.classes, eq(schema.classes.id, schema.enrollments.classId))
+      .where(and(eq(schema.students.schoolId, actor.schoolId), sql`(
+        ${schema.students.admissionNumber} ILIKE ${like}
+        OR ${schema.students.firstName} ILIKE ${like}
+        OR ${schema.students.lastName} ILIKE ${like}
+        OR (${schema.students.firstName} || ' ' || ${schema.students.lastName}) ILIKE ${like}
+        OR (${schema.students.lastName} || ' ' || ${schema.students.firstName}) ILIKE ${like})`))
+      .orderBy(asc(schema.students.lastName))
+      .limit(50);
+    const seen = new Set<number>();
+    return rows.filter(r => !seen.has(r.id) && !!seen.add(r.id))
+      .map(r => ({ id: r.id, admissionNumber: r.admissionNumber, name: `${r.firstName} ${r.lastName}`, status: r.status, className: r.className }));
+  });
+}
+
+/** Move ONE student to a chosen class — for late joiners, mid-year transfers
+ *  and corrections — without running a full batch (legacy move_student). */
+export async function moveStudent(actor: Actor, input: { studentId: number; toClassId: number; outcome: string; reason: string }) {
+  if (!canRunPromotion(actor)) fail('Only the principal or vice principal may move a student.');
+  const studentId = input.studentId, toClassId = input.toClassId;
+  const outcome = input.outcome as PromotionOutcome;
+  const reason = input.reason.trim();
+  if (!OVERRIDEABLE.includes(outcome)) fail('Choose a valid outcome for the move.');
+  if (reason.length < 3 || reason.length > 255) fail('Give a short written reason for the move.');
+
+  return forSchool(actor.schoolId, async tx => {
+    const [student] = await tx.select().from(schema.students)
+      .where(and(eq(schema.students.id, studentId), eq(schema.students.schoolId, actor.schoolId)));
+    if (!student) fail('That student is not in this school.');
+    const [target] = await tx.select().from(schema.classes)
+      .where(and(eq(schema.classes.id, toClassId), eq(schema.classes.schoolId, actor.schoolId), eq(schema.classes.status, 'active')));
+    if (!target) fail('That class is not available in this school.');
+
+    const [current] = await tx.select().from(schema.enrollments)
+      .where(and(eq(schema.enrollments.schoolId, actor.schoolId), eq(schema.enrollments.studentId, studentId), eq(schema.enrollments.status, 'active')))
+      .orderBy(desc(schema.enrollments.id)).limit(1);
+    const [currentSession] = await tx.select({ id: schema.academicSessions.id }).from(schema.academicSessions)
+      .where(and(eq(schema.academicSessions.schoolId, actor.schoolId), eq(schema.academicSessions.isCurrent, true)));
+    const sessionId = current?.sessionId ?? currentSession?.id ?? 0;
+    if (!sessionId) fail('Create an academic session before moving students.');
+
+    const before = current ? { enrollmentId: current.id, classId: current.classId, status: current.status } : null;
+    if (current && current.sessionId === sessionId) {
+      // Same session: the (student, session) pair is unique, so the move is an
+      // in-place class change on the existing enrollment.
+      await tx.update(schema.enrollments).set({ classId: toClassId }).where(eq(schema.enrollments.id, current.id));
+    } else {
+      if (current) await tx.update(schema.enrollments).set({ status: 'transferred' }).where(eq(schema.enrollments.id, current.id));
+      await tx.insert(schema.enrollments).values({ schoolId: actor.schoolId, studentId, classId: toClassId, sessionId, status: 'active' });
+    }
+    if (outcome === 'graduate') await tx.update(schema.students).set({ status: 'graduated', statusChangedAt: new Date() })
+      .where(and(eq(schema.students.id, studentId), eq(schema.students.schoolId, actor.schoolId)));
+
+    await tx.insert(schema.auditLog).values({
+      schoolId: actor.schoolId, actorUserId: actor.userId, actorRole: actor.role,
+      action: 'promotion.moved', entityType: 'enrollment',
+      before,
+      after: { studentId, toClassId, outcome, reason },
+    });
+
+    return { ok: true };
   });
 }
