@@ -514,8 +514,12 @@ async function main() {
     const teacherPage = await teacherHttp.plain('/portal/promotion');
     assert.equal(teacherPage.status, 307, 'a teacher is redirected away from promotion');
 
-    const transcriptsPage = await (await principalHttp.plain(`/portal/transcripts?student=${encodeURIComponent(`${F.schoolCode}/PROMO`)}`)).text();
-    assert.ok(transcriptsPage.includes('Cumulative average'), 'the transcript office renders the student summary');
+    // The rebuilt transcripts office searches by name or admission number
+    // (legacy search.php structure) and shows the issue/reissue register.
+    const transcriptsPage = await (await principalHttp.plain('/portal/transcripts?q=PROMO')).text();
+    assert.ok(transcriptsPage.includes('Issue a transcript'), 'the transcript office renders the search form');
+    assert.ok(transcriptsPage.includes(`${F.schoolCode}/PROMO`), 'the transcript office finds the student by admission number');
+    assert.ok(transcriptsPage.toLowerCase().includes('reissue'), 'previously issued students offer reissue');
     const document = await (await principalHttp.plain(`/portal/transcripts/${encodeURIComponent(reissued.serial)}`)).text();
     assert.ok(document.includes('Academic Transcript'), 'the issued document renders');
     assert.ok(document.includes('OFFICIAL COPY'), 'the document carries the official-copy watermark');
