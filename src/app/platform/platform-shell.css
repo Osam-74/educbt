@@ -153,7 +153,7 @@
 
 /* Mobile backdrop + drawer (native dialog, same convention as the portal shell) */
 .pa-backdrop { position: fixed; inset: 0; z-index: 45; background: rgba(0,0,0,0.6); backdrop-filter: blur(2px); border: 0; padding: 0; margin: 0; width: 100%; height: 100%; }
-.pa-drawer { border: 0; padding: 0; margin: 0; position: fixed; inset: 0 auto 0 0; height: 100dvh; max-height: 100dvh; width: 280px; max-width: 85vw; }
+.pa-drawer { border: 0; padding: 0; margin: 0; position: fixed; inset: 0 auto 0 0; height: 100dvh; max-height: 100dvh; width: 280px; max-width: 85vw; background: rgba(14, 38, 26, 0.97); }
 .pa-drawer::backdrop { background: rgba(0,0,0,0.6); }
 
 /* ── Main content area ──────────────────────────────────────────────────── */
@@ -394,6 +394,9 @@
 .pa-subdomain-box { padding: 14px; border-radius: 14px; background: var(--pa-stone-50); border: 1px solid var(--pa-stone-200); }
 .pa-url-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 9px 12px; border-radius: 11px; background: white; border: 1px solid var(--pa-stone-200); font-family: ui-monospace, monospace; font-size: 12.5px; margin-top: 8px; }
 .pa-url-row span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pa-url-copy { border: 0; background: none; padding: 4px; display: grid; place-items: center; color: var(--pa-stone-400); cursor: pointer; border-radius: 7px; flex-shrink: 0; }
+.pa-url-copy:hover { color: var(--pa-stone-700); }
+.pa-url-copy:focus-visible { outline: 2px solid var(--pa-emerald-600); outline-offset: -2px; }
 .pa-detail-facts { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; padding: 14px; border-radius: 14px; background: var(--pa-stone-50); border: 1px solid var(--pa-stone-200); font-size: 12.5px; }
 .pa-detail-facts > div span { display: block; font-size: 11px; color: var(--pa-stone-400); }
 .pa-detail-facts > div b { font-size: 13.5px; color: var(--pa-stone-800); font-weight: 650; }
@@ -434,8 +437,11 @@
   .pa-detail-facts { grid-template-columns: 1fr; }
 }
 @media (max-width: 900px) {
-  .pa-sidebar { transform: translateX(-100%); transition: transform 0.25s ease; }
-  .pa-sidebar--mobile-open { transform: translateX(0); width: 280px; }
+  /* The desktop aside is HIDDEN, not slid off-canvas: the old
+     translateX(-100%) rule also translated the drawer dialog's own
+     sidebar copy, leaving a blank white modal and no visible close
+     button — the page appeared frozen behind the native dialog. */
+  #pa-sidebar { display: none; }
   .pa-main, .pa-main--collapsed { margin-left: 0; }
   .pa-burger { display: inline-flex; }
   .pa-sidebar-close { display: inline-flex; }
