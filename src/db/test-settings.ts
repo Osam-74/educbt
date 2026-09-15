@@ -133,7 +133,7 @@ async function main() {
         await page.getByRole('button', { name: 'School profile', exact: true }).click();
         await check('mobile profile and burger navigation usable', async () => { await page.screenshot({ path: 'baseline-logs/settings-mobile.png', fullPage: true }); await page.getByRole('button', { name: 'Open navigation' }).click(); await page.getByRole('dialog').waitFor(); await page.screenshot({ path: 'baseline-logs/settings-mobile-menu.png', fullPage: true }); await page.getByRole('button', { name: 'Close menu ×' }).click(); });
         await page.getByRole('button', { name: 'Signatures & remarks', exact: true }).click();
-        await check('personal signature and range editors render on mobile', async () => { await page.getByRole('heading', { name: 'Your signatures & automatic remarks' }).waitFor(); assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)); await page.screenshot({ path: 'baseline-logs/settings-signatures-mobile.png', fullPage: true }); });
+        await check('personal signature editor renders on mobile', async () => { await page.getByRole('heading', { name: 'Your signature' }).waitFor(); assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)); await page.screenshot({ path: 'baseline-logs/settings-signatures-mobile.png', fullPage: true }); });
         await check('browser has no client runtime errors', () => assert.deepEqual(errors, []));
       } finally { await browser.close(); }
     }

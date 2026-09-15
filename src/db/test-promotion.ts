@@ -503,7 +503,7 @@ async function main() {
     const teacherHttp = await mkSession(F.teacher.id);
 
     const officePage = await (await principalHttp.plain('/portal/promotion')).text();
-    assert.ok(officePage.includes('New proposal'), 'the office renders the proposal form');
+    assert.ok(officePage.includes('Produce a proposal'), 'the office renders the proposal form');
     // This batch was committed earlier in the run — the principal holds the
     // reverse control, the VP holds nothing.
     const reviewPage = await (await principalHttp.plain(`/portal/promotion?batch=${batchId}`)).text();
