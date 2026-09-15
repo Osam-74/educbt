@@ -13,7 +13,8 @@
 
 body {
   margin: 0;
-  font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; /* exact plugin stack (educbt-portal.css:13) */
+  font-size: 15px; /* plugin base size (educbt-portal.css:14) */
   color: var(--ink);
   background: var(--wash);
   -webkit-font-smoothing: antialiased;
@@ -483,6 +484,11 @@ table.kv td { padding: 4px 0; }
   font-weight: 600; font-size: 14px; cursor: pointer; padding: 9px 18px; }
 .card form { margin: 0; }
 .search-row { display: flex; gap: 10px; align-items: flex-end; margin: 10px 0 4px; }
+/* input[type=text] carries a 16px trailing margin for stacked form fields — inside
+   this flex row it pushed the input's visible bottom edge 16px above the button's,
+   which flex-end aligns with no margin of its own. Zero it here so both bottoms meet. */
+.search-row input[type='text'] { margin-bottom: 0; }
+.search-row > label { flex: 1; margin-bottom: 0; }
 .field-label { display: block; font-size: 13.5px; color: var(--muted); margin-bottom: 6px; }
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
   overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }

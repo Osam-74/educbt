@@ -323,19 +323,24 @@ export default async function PromotionPage({
             </form>
           </section>
 
-          {options && options.levels.length > 0 ? (
-            <section className="card">
+          {/* The plugin renders this card unconditionally (promotion.php:182) —
+              a school with no class levels yet still sees the rules form, with an
+              empty level select. Our old levels.length gate hid the whole card,
+              which read as "promotion rules are missing" on a fresh school. */}
+          <section className="card">
               <h2 className="sub-head">Promotion rules</h2>
               <p className="muted">Set per level, so JSS3 can differ from SS2. Proposals use these rules for the chosen level.</p>
               <form method="get" className="inline-form">
                 <label htmlFor="rules_level">Level</label>
                 <select id="rules_level" name="rules_level" defaultValue={String(rulesLevelId)}>
-                  {options.levels.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
+                  {(options?.levels.length ?? 0) === 0 && <option value="0">No class levels yet — create classes first</option>}
+                  {options?.levels.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
                 </select>
                 <button type="submit">Load</button>
               </form>
               <form action={saveRules}>
                 <input type="hidden" name="levelId" value={rulesLevelId} />
+                {rulesLevelId === 0 && <p className="muted">Create classes (with levels) first — rules save against a level, exactly as the plugin does.</p>}
                 <div className="form-grid">
                   <label>Promote at average (%)
                     <input name="promoteAverage" type="number" step="0.5" min="0" max="100" defaultValue={savedRules.promoteAverage} /></label>
@@ -349,7 +354,7 @@ export default async function PromotionPage({
                   <div style={{ gridColumn: '1 / -1' }}>
                     <span className="field-label">Subjects that must be passed</span>
                     <ChipSelect name="mustPassCodes" selected={savedRules.mustPassCodes}
-                      options={options.subjects.map(s => ({ value: s.code, label: `${s.name} (${s.code})` }))}
+                      options={(options?.subjects ?? []).map(s => ({ value: s.code, label: `${s.name} (${s.code})` }))}
                       placeholder="Click to select subjects…" />
                     <small className="muted">Failing any of these means repeating the year, whatever the average.</small>
                   </div>
@@ -360,8 +365,7 @@ export default async function PromotionPage({
                 </label>
                 <button type="submit" className="primary">Save rules</button>
               </form>
-            </section>
-          ) : null}
+          </section>
 
           <section className="card">
             <h2 className="sub-head">Recent batches</h2>
