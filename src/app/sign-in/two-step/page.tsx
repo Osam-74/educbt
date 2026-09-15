@@ -1,3 +1,4 @@
+import PendingButton from '@/app/PendingButton';
 import { redirect } from 'next/navigation';
 import { auth, completeStagedSignIn, pendingSignIn, signOut } from '@/lib/auth';
 
@@ -74,7 +75,7 @@ export default async function TwoStepPage({
             autoFocus
             required
           />
-          <button type="submit">Verify</button>
+          <PendingButton pendingLabel="Verifying…">Verify</PendingButton>
         </form>
 
         <details className="recovery-details">
@@ -89,13 +90,13 @@ export default async function TwoStepPage({
               placeholder="XXXXX-XXXXX"
               required
             />
-            <button type="submit">Use recovery code</button>
+            <PendingButton pendingLabel="Verifying…">Use recovery code</PendingButton>
           </form>
         </details>
 
         <p className="auth-links">
           <form action={cancel}>
-            <button type="submit" className="linklike">Cancel and sign out</button>
+            <PendingButton className="linklike" pendingLabel="Signing out…">Cancel and sign out</PendingButton>
           </form>
         </p>
       </div>

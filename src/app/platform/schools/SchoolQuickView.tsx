@@ -4,7 +4,6 @@ import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import Link from 'next/link';
 import { PaIcon } from '../icons';
-import { CopyButton } from '../CopyButton';
 
 const STATUS_PILL: Record<string, string> = {
   active: 'pa-pill pa-pill--active',
@@ -56,6 +55,8 @@ export function CrestThumb({ logoUrl, size = 32 }: { logoUrl: string | null; siz
  * true viewport modal — never a descendant of the schools table's scrollable
  * / overflow-managed panel, which is what was clipping it before. */
 function QuickViewModal({ school, url, onClose }: { school: QuickViewSchool; url: string | null; onClose: () => void }) {
+  const [copied, setCopied] = useState(false);
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
     document.addEventListener('keydown', onKey);
@@ -86,7 +87,22 @@ function QuickViewModal({ school, url, onClose }: { school: QuickViewSchool; url
           <div className="pa-subdomain-box">
             <span className="pa-section-label" style={{ marginBottom: 8 }}><PaIcon name="globe" width={14} height={14} /> Web address</span>
             {url ? (
-              <div className="pa-url-row"><span>{url}</span></div>
+              <div className="pa-url-row">
+                <span>{url}</span>
+                <button
+                  type="button"
+                  className="pa-url-copy"
+                  aria-label={copied ? 'Web address copied' : 'Copy web address'}
+                  title={copied ? 'Copied' : 'Copy address'}
+                  onClick={() => {
+                    navigator.clipboard.writeText(url).catch(() => {});
+                    setCopied(true);
+                    setTimeout(() => setCopied(false), 1800);
+                  }}
+                >
+                  {copied ? <PaIcon name="check" width={14} height={14} /> : <PaIcon name="copy" width={14} height={14} />}
+                </button>
+              </div>
             ) : (
               <p style={{ fontSize: 12.5, color: 'var(--pa-stone-500)' }}>Not set — this school signs in only from the platform&apos;s own sign-in page.</p>
             )}
@@ -124,14 +140,6 @@ function QuickViewModal({ school, url, onClose }: { school: QuickViewSchool; url
           <Link href={`/platform/schools/${school.id}`} className="pa-btn pa-btn--primary pa-btn--sm">
             Full Details
           </Link>
-          {url ? (
-            <>
-              <CopyButton value={url} label="Copy URL" />
-              <a href={url} target="_blank" rel="noreferrer" className="pa-btn pa-btn--ghost pa-btn--sm">
-                <PaIcon name="external" width={13} height={13} /> Open Portal
-              </a>
-            </>
-          ) : null}
         </div>
       </div>
     </div>,

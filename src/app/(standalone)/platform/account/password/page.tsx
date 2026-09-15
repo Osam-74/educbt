@@ -1,4 +1,5 @@
 import { redirect } from 'next/navigation';
+import PendingButton from '@/app/PendingButton';
 import { auth, signOut } from '@/lib/auth';
 import { changeOwnPassword, PasswordChangeError } from '@/lib/auth/change-password';
 import '@/app/platform/platform-shell.css';
@@ -116,7 +117,7 @@ export default async function PlatformChangePasswordPage({
               <p className="pa-field-hint">At least 8 characters.</p>
             </div>
 
-            <button type="submit" className="pa-btn pa-btn--primary pa-btn--block">Save password</button>
+            <PendingButton className="pa-btn pa-btn--primary pa-btn--block" pendingLabel="Saving…">Save password</PendingButton>
           </form>
         </div>
       </div>

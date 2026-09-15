@@ -1,0 +1,125 @@
+import { requirePlatformSession } from '@/lib/platform/session';
+import { listPlatformManagers } from '@/lib/platform/managers';
+import { PaIcon } from '../icons';
+import { ManagersForm } from './ManagersForm';
+import { setManagerStatusAction } from './actions';
+
+export const dynamic = 'force-dynamic';
+
+/**
+ * PLATFORM MANAGERS: create, suspend and reactivate additional platform
+ * administrators. The directory reads through the same audited elevation
+ * as every other cross-tenant screen; the create form hands the temporary
+ * password back exactly once (see ManagersForm).
+ *
+ * Guardrails live in the service, not here: you cannot suspend yourself,
+ * and the last active manager cannot be suspended.
+ */
+export default async function ManagersPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ error?: string }>;
+}) {
+  const params = await searchParams;
+  const actor = await requirePlatformSession();
+  const managers = await listPlatformManagers(actor, 'View platform manager directory');
+
+  return (
+    <div id="platform-managers-view">
+      <div className="pa-page-head" style={{ marginBottom: 20 }}>
+        <div>
+          <h1>Managers</h1>
+          <p>Platform administrators with full access to this console.</p>
+        </div>
+      </div>
+
+      {params.error ? (
+        <div className="pa-alert pa-alert--error" style={{ marginBottom: 16 }}>
+          <PaIcon name="alert" width={15} height={15} />{params.error}
+        </div>
+      ) : null}
+
+      <div className="pa-managers-layout">
+        <section aria-label="Add a manager" style={{ maxWidth: 420 }}>
+          <ManagersForm />
+        </section>
+
+        <section aria-label="Manager directory" style={{ flex: 1, minWidth: 0 }}>
+          <div className="pa-glass pa-panel">
+            <div className="pa-panel-head" style={{ padding: '14px 18px' }}>
+              <span style={{ fontWeight: 700, fontSize: 13 }}>
+                Managers on the platform
+                <span className="pa-count-badge" style={{ marginLeft: 8 }}>{managers.length}</span>
+              </span>
+            </div>
+            <div className="pa-table-wrap">
+              <table className="pa-table" id="managers-table">
+                <thead>
+                  <tr>
+                    <th>Sign-in ID</th>
+                    <th>Email</th>
+                    <th>Two-factor</th>
+                    <th>Status</th>
+                    <th>Created</th>
+                    <th className="pa-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {managers.map((m) => {
+                    const isSelf = m.id === actor.userId;
+                    const active = m.status === 'active';
+                    return (
+                      <tr key={m.id} id={`managers-row-${m.id}`}>
+                        <td>
+                          <strong>{m.loginId}</strong>
+                          {isSelf ? (
+                            <span className="pa-pill" style={{ marginLeft: 8, background: 'var(--pa-emerald-50)', color: 'var(--pa-emerald-800)' }}>You</span>
+                          ) : null}
+                        </td>
+                        <td style={{ fontSize: 12.5 }}>
+                          {m.email ?? <span style={{ color: 'var(--pa-stone-400)' }}>—</span>}
+                        </td>
+                        <td style={{ fontSize: 12.5 }}>
+                          {m.totpEnabled ? (
+                            <span style={{ color: 'var(--pa-emerald-700)', fontWeight: 600 }}>On</span>
+                          ) : (
+                            <span style={{ color: 'var(--pa-stone-400)' }}>Not set up</span>
+                          )}
+                        </td>
+                        <td>
+                          <span className={active ? 'pa-pill pa-pill--active' : 'pa-pill pa-pill--suspended'}>
+                            {m.status}
+                          </span>
+                        </td>
+                        <td style={{ color: 'var(--pa-stone-500)', fontSize: 12.5 }}>
+                          {m.createdAt.toLocaleDateString('en-GB')}
+                        </td>
+                        <td className="pa-right">
+                          {isSelf ? (
+                            <span style={{ fontSize: 12, color: 'var(--pa-stone-400)' }}>Current session</span>
+                          ) : (
+                            <form action={setManagerStatusAction}>
+                              <input type="hidden" name="managerId" value={m.id} />
+                              <input type="hidden" name="status" value={active ? 'suspended' : 'active'} />
+                              <button
+                                type="submit"
+                                className={active ? 'pa-btn pa-btn--danger pa-btn--sm' : 'pa-btn pa-btn--outline pa-btn--sm'}
+                                title={active ? 'Suspend this manager' : 'Reactivate this manager'}
+                              >
+                                {active ? 'Suspend' : 'Reactivate'}
+                              </button>
+                            </form>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+      </div>
+    </div>
+  );
+}

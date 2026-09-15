@@ -372,6 +372,13 @@
 .pa-cred-row { font-size: 12.5px; margin-bottom: 8px; }
 .pa-cred-row span { display: block; color: var(--pa-stone-400); font-size: 11px; margin-bottom: 1px; }
 .pa-cred-password-box { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 10px; border-radius: 12px; background: rgba(0,0,0,0.35); border: 1px solid rgba(52, 211, 153, 0.4); margin-top: 6px; }
+
+/* ── Managers screen ────────────────────────────────────────────────────── */
+/* Form column + directory column; stacks to a single column on phones. */
+.pa-managers-layout { display: flex; gap: 20px; align-items: flex-start; flex-wrap: wrap; }
+.pa-managers-layout > section { min-width: 0; }
+.pa-field-help { margin: 5px 0 0; font-size: 11.5px; color: var(--pa-stone-400); }
+.pa-count-badge { font-family: ui-monospace, monospace; font-size: 11px; font-weight: 700; padding: 1px 8px; border-radius: 999px; background: rgba(6, 95, 70, 0.08); color: var(--pa-emerald-800); border: 1px solid rgba(6, 95, 70, 0.2); }
 .pa-cred-password-box strong { font-family: ui-monospace, monospace; font-size: 14px; letter-spacing: 0.04em; color: var(--pa-lime-300); word-break: break-all; }
 .pa-copy-btn { display: inline-flex; align-items: center; gap: 5px; padding: 6px 10px; border-radius: 9px; background: var(--pa-emerald-700); color: white; border: 0; font-size: 11.5px; font-weight: 650; cursor: pointer; flex-shrink: 0; }
 .pa-copy-btn:hover { background: var(--pa-emerald-600); }
@@ -444,6 +451,7 @@
   .pa-detail-facts { grid-template-columns: 1fr; }
 }
 @media (max-width: 900px) {
+  .pa-managers-layout { flex-direction: column; }
   /* The desktop aside is HIDDEN, not slid off-canvas: the old
      translateX(-100%) rule also translated the drawer dialog's own
      sidebar copy, leaving a blank white modal and no visible close

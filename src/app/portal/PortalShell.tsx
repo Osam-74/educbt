@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import PendingButton from '@/app/PendingButton';
 import { useEffect, useRef, useState } from 'react';
 
 export const roleLabels: Record<string, string> = { principal: 'Principal', vice_principal: 'Vice Principal', exam_officer: 'Examination Officer', teacher: 'Teacher', student: 'Student', parent: 'Parent' };
@@ -57,7 +58,7 @@ export default function PortalShell({ children, school, displayName, role, calen
       {areas.length > 1 && <div className="ps-areas"><p className="ps-label">Areas</p><div role="group" aria-label="Portal areas">{areas.map(a => <button type="button" key={a.label} aria-pressed={area.label === a.label} onClick={() => setSelected(a.label)}><PortalIcon name={a.label === 'School' ? 'school' : 'book'}/>{a.label}</button>)}</div></div>}
       <nav aria-label={`${area.label} navigation`}><p className="ps-label">{area.label}</p>{area.items.map(i => <Link key={i.href} href={i.href} aria-current={matches(i.href) ? 'page' : undefined} onClick={() => setOpen(false)}><PortalIcon name={i.icon}/>{i.label}</Link>)}</nav>
     </div>
-    <div className="ps-profile"><Link href="/portal/account/password" onClick={() => setOpen(false)}><span className="ps-avatar">{initials}</span><span><strong>{displayName}</strong><small>{roleLabels[role] ?? role} · My account</small></span></Link><form action={signOut}><button type="submit">Sign out</button></form></div>
+    <div className="ps-profile"><Link href="/portal/account/password" onClick={() => setOpen(false)}><span className="ps-avatar">{initials}</span><span><strong>{displayName}</strong><small>{roleLabels[role] ?? role} · My account</small></span></Link><form action={signOut}><PendingButton pendingLabel="Signing out…">Sign out</PendingButton></form></div>
   </>;
   return <div className="portal portal-shell">
     <a className="ps-skip" href="#portal-main">Skip to content</a>

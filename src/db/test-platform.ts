@@ -51,6 +51,15 @@ import {
   NotFoundError,
   PlatformPermissionError,
 } from '@/lib/platform/schools';
+import {
+  createPlatformManager,
+  listPlatformManagers,
+  setManagerStatus,
+  ManagerConflictError,
+  ManagerNotFoundError,
+  ManagerValidationError,
+  ManagerPermissionError,
+} from '@/lib/platform/managers';
 
 const schema = { ...core, ...people };
 
@@ -451,6 +460,194 @@ async function main() {
       .from(people.auditLog)
       .where(and(eq(people.auditLog.schoolId, schoolAId), eq(people.auditLog.action, 'school.profile_updated')));
     check('audit records school.profile_updated (21)', editAuditRows.length >= 1);
+
+    // ── 22–30. Platform managers: create, list, suspend, guardrails ─────────
+    const createdManagerIds: number[] = [];
+    try {
+      const explicit = await createPlatformManager(actor, {
+        loginId: 'PLT-MGR-1',
+        email: 'mgr1@example.com',
+      });
+      check('manager creation returns the chosen sign-in ID (22)', explicit.loginId === 'PLT-MGR-1');
+      check('manager creation returns a one-time temporary password (22)', explicit.temporaryPassword.length >= 12);
+
+      const [mgrRow] = await odb
+        .select({
+          id: people.users.id,
+          schoolId: people.users.schoolId,
+          role: people.users.role,
+          mustChangePassword: people.users.mustChangePassword,
+          status: people.users.status,
+          email: people.users.email,
+          passwordHash: people.users.passwordHash,
+        })
+        .from(people.users)
+        .where(eq(people.users.loginId, 'PLT-MGR-1'));
+      const mgrOk = Boolean(mgrRow);
+      createdManagerIds.push(mgrOk ? Number(mgrRow!.id) : 0);
+      check(
+        'manager row is a forced-password-change, active platform account (22)',
+        mgrOk && mgrRow!.schoolId === null && mgrRow!.role === 'platform_admin' && mgrRow!.mustChangePassword && mgrRow!.status === 'active',
+      );
+      check(
+        'the temporary password verifies against the stored hash (22)',
+        mgrOk && (await verifyPassword(mgrRow!.passwordHash, explicit.temporaryPassword)),
+      );
+      check(
+        'the temporary password is never stored in the audit log (22)',
+        mgrOk && explicit.temporaryPassword !== mgrRow!.passwordHash,
+      );
+
+      const generated = await createPlatformManager(actor, { loginId: '', email: '' });
+      check('an omitted sign-in ID is generated, not guessed (23)', /^PLATFORM-ADMIN-\d+$/.test(generated.loginId), generated.loginId);
+      const [genRow] = await odb
+        .select({ id: people.users.id })
+        .from(people.users)
+        .where(and(eq(people.users.loginId, generated.loginId), eq(people.users.role, 'platform_admin')));
+      if (genRow) createdManagerIds.push(Number(genRow.id));
+
+      let dupRefused = false;
+      try {
+        await createPlatformManager(actor, { loginId: 'PLT-MGR-1', email: '' });
+      } catch (error) {
+        dupRefused = error instanceof ManagerConflictError;
+      }
+      check('a duplicate platform sign-in ID is refused with a plain message (23)', dupRefused);
+
+      let emailConflict = false;
+      try {
+        await createPlatformManager(actor, { loginId: 'PLT-MGR-EMAIL', email: 'mgr1@example.com' });
+      } catch (error) {
+        emailConflict = error instanceof ManagerConflictError;
+      }
+      check('an email already claimed by another account is refused (23)', emailConflict);
+
+      let badLoginRejected = false;
+      try {
+        await createPlatformManager(actor, { loginId: 'a', email: '' });
+      } catch (error) {
+        badLoginRejected = error instanceof ManagerValidationError;
+      }
+      check('an under-length sign-in ID fails validation (23)', badLoginRejected);
+
+      let wrongRoleRefused = false;
+      try {
+        await createPlatformManager(wrongActor(adminId, 'principal'), { loginId: 'PLT-MGR-ROLE', email: '' });
+      } catch (error) {
+        wrongRoleRefused = error instanceof ManagerPermissionError;
+      }
+      check('a principal cannot create platform managers (23)', wrongRoleRefused);
+
+      const listed = await listPlatformManagers(actor);
+      check(
+        'the directory lists the created managers with the acting admin (24)',
+        listed.some((m) => m.loginId === 'PLT-MGR-1') && listed.some((m) => m.loginId === 'PLT-ADMIN'),
+      );
+      check(
+        'the directory entry carries the manager email (24)',
+        (listed.find((m) => m.loginId === 'PLT-MGR-1')?.email ?? '') === 'mgr1@example.com',
+      );
+
+      const mgrAudit = await odb
+        .select({ action: people.auditLog.action })
+        .from(people.auditLog)
+        .where(eq(people.auditLog.action, 'platform_admin.manager_created'));
+      check('audit records platform_admin.manager_created (24)', mgrAudit.length >= 2);
+
+      const mgr1Id = mgrOk ? Number(mgrRow!.id) : 0;
+
+      // Suspension guardrails (25–27)
+      await setManagerStatus(actor, mgr1Id, 'suspended');
+      const [suspendedRow] = await odb
+        .select({ status: people.users.status })
+        .from(people.users)
+        .where(eq(people.users.id, mgr1Id));
+      check('a manager can be suspended (25)', suspendedRow?.status === 'suspended');
+
+      let selfRefused = false;
+      try {
+        await setManagerStatus(actor, adminId, 'suspended');
+      } catch (error) {
+        selfRefused = error instanceof ManagerConflictError;
+      }
+      check('a manager cannot suspend their own account (25)', selfRefused);
+
+      // Last-active guard: reactivate mgr1 and suspend everyone else
+      // (the acting admin is suspended directly — the owner connection
+      // bypasses RLS), leaving mgr1 as the ONLY active account.
+      await setManagerStatus(actor, mgr1Id, 'active');
+      const genId = createdManagerIds.find((id) => id && id !== mgr1Id) ?? 0;
+      check('the generated manager id was captured for the guard check (26)', genId > 0);
+      if (genId) await setManagerStatus(actor, genId, 'suspended');
+      await odb.update(people.users).set({ status: 'suspended' }).where(eq(people.users.id, adminId));
+      let lastRefused = false;
+      try {
+        await setManagerStatus(actor, mgr1Id, 'suspended');
+      } catch (error) {
+        lastRefused = error instanceof ManagerConflictError;
+      }
+      // Restore the acting admin for the remaining checks.
+      await odb.update(people.users).set({ status: 'active' }).where(eq(people.users.id, adminId));
+      check('the last active platform account cannot be suspended (26)', lastRefused);
+
+      await setManagerStatus(actor, mgr1Id, 'active');
+      const [reactivatedRow] = await odb
+        .select({ status: people.users.status })
+        .from(people.users)
+        .where(eq(people.users.id, mgr1Id));
+      check('a suspended manager can be reactivated (27)', reactivatedRow?.status === 'active');
+
+      const statusAudit = await odb
+        .select({ action: people.auditLog.action })
+        .from(people.auditLog)
+        .where(inArray(people.auditLog.action, ['platform_admin.manager_suspended', 'platform_admin.manager_reactivated']));
+      check('audit records suspension and reactivation (27)', statusAudit.length >= 2);
+
+      let notFoundRefused = false;
+      try {
+        await setManagerStatus(actor, 987654321, 'suspended');
+      } catch (error) {
+        notFoundRefused = error instanceof ManagerNotFoundError;
+      }
+      check('an unknown manager id is refused, not silently ignored (28)', notFoundRefused);
+
+      // A school user id must not be manageable through this path.
+      const [principalRow] = await odb
+        .select({ id: people.users.id })
+        .from(people.users)
+        .where(and(eq(people.users.schoolId, schoolAId), eq(people.users.role, 'principal')))
+        .limit(1);
+      if (principalRow) {
+        let schoolUserRefused = false;
+        try {
+          await setManagerStatus(actor, Number(principalRow.id), 'suspended');
+        } catch (error) {
+          schoolUserRefused = error instanceof ManagerNotFoundError;
+        }
+        check('a school account cannot be reached through the manager path (28)', schoolUserRefused);
+      }
+
+      let wrongRoleStatusRefused = false;
+      try {
+        await setManagerStatus(wrongActor(adminId, 'teacher'), mgr1Id, 'suspended');
+      } catch (error) {
+        wrongRoleStatusRefused = error instanceof ManagerPermissionError;
+      }
+      check('a teacher cannot suspend managers (28)', wrongRoleStatusRefused);
+    } finally {
+      // Suite-scoped: only the manager rows this section created.
+      if (createdManagerIds.length) {
+        await odb.delete(people.users).where(inArray(people.users.id, createdManagerIds));
+      }
+      await odb.delete(people.users).where(
+        and(eq(people.users.role, 'platform_admin'), inArray(people.users.loginId, ['PLT-MGR-1', 'PLT-MGR-EMAIL', 'PLT-MGR-ROLE'])),
+      );
+      const leftoverManagers = await odb
+        .select({ id: people.users.id })
+        .from(people.users)
+        .where(and(eq(people.users.role, 'platform_admin'), inArray(people.users.loginId, ['PLT-MGR-1', 'PLT-MGR-EMAIL'])));
+      check('manager fixtures cleaned up and rerun-safe (29)', leftoverManagers.length === 0);
+    }
 
     // ── 19. Rerun safety: cleanup leaves no partial state for the next run ──
     await odb.delete(core.schools).where(

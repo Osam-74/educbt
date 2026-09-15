@@ -1,4 +1,5 @@
 import { redirect } from 'next/navigation';
+import PendingButton from '@/app/PendingButton';
 import { auth, signOut } from '@/lib/auth';
 import { totpStatus } from '@/lib/auth/totp-account';
 import { profileView, setRecoveryEmail, RecoveryEmailError } from '@/lib/auth/recovery-email';
@@ -163,7 +164,7 @@ export default async function AccountSettingsPage({
             <label htmlFor="loginIdPassword">Current password</label>
             <PasswordEyeInput id="loginIdPassword" name="currentPassword" autoComplete="current-password" required />
           </div>
-          <button type="submit" className="pa-btn pa-btn--primary">Change sign-in ID</button>
+          <PendingButton className="pa-btn pa-btn--primary" pendingLabel="Saving…">Change sign-in ID</PendingButton>
         </form>
       </div>
 
@@ -194,7 +195,7 @@ export default async function AccountSettingsPage({
             <PasswordEyeInput id="currentPassword" name="currentPassword" autoComplete="current-password" required />
           </div>
 
-          <button type="submit" className="pa-btn pa-btn--primary">{email ? 'Change email' : 'Save email'}</button>
+          <PendingButton className="pa-btn pa-btn--primary" pendingLabel="Saving…">{email ? 'Change email' : 'Save email'}</PendingButton>
         </form>
 
         <p className="pa-field-hint" style={{ marginTop: 14 }}>
@@ -225,7 +226,7 @@ export default async function AccountSettingsPage({
             <PasswordEyeInput id="confirm" name="confirm" autoComplete="new-password" minLength={8} required />
             <p className="pa-field-hint">At least 8 characters. You will be signed out of all devices afterwards.</p>
           </div>
-          <button type="submit" className="pa-btn pa-btn--primary">Save password</button>
+          <PendingButton className="pa-btn pa-btn--primary" pendingLabel="Saving…">Save password</PendingButton>
         </form>
       </div>
 

@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation';
 import { tenantFromHost } from '@/lib/tenant';
 import { auth, signIn } from '@/lib/auth';
 import PasswordInput from './PasswordInput';
+import PendingButton from '@/app/PendingButton';
 
 // Never cached: the page is per-hostname and reflects session state.
 export const dynamic = 'force-dynamic';
@@ -115,17 +116,13 @@ export default async function SignInPage({
             <label htmlFor="password">Password</label>
             <PasswordInput />
 
-            <button type="submit">Sign in</button>
+            <PendingButton pendingLabel="Signing in…">Sign in</PendingButton>
           </form>
 
           <p className="auth-links">
             <a href="/forgot-password">Forgot password?</a>
           </p>
 
-          <p className="hint">
-            This address is not linked to a school. School staff and students
-            sign in at their school&apos;s own address.
-          </p>
         </div>
       </main>
     );
@@ -197,7 +194,7 @@ export default async function SignInPage({
           <label htmlFor="password">Password</label>
           <PasswordInput />
 
-          <button type="submit">Sign in</button>
+          <PendingButton pendingLabel="Signing in…">Sign in</PendingButton>
         </form>
 
         <p className="auth-links">

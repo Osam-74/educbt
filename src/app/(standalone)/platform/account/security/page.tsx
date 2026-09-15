@@ -1,4 +1,5 @@
 import { cookies } from 'next/headers';
+import PendingButton from '@/app/PendingButton';
 import QRCode from 'qrcode';
 import { redirect } from 'next/navigation';
 import { auth } from '@/lib/auth';
@@ -221,7 +222,7 @@ export default async function PlatformSecurityPage({
               <form action={disable} className="pa-field">
                 <label htmlFor="code">Code from your authenticator</label>
                 <input id="code" name="code" type="text" inputMode="numeric" pattern="[0-9]*" maxLength={6} autoComplete="one-time-code" required className="pa-input" style={{ marginBottom: 12 }} />
-                <button type="submit" className="pa-btn pa-btn--danger pa-btn--block">Turn off two-factor</button>
+                <PendingButton className="pa-btn pa-btn--danger pa-btn--block" pendingLabel="Turning off…">Turn off two-factor</PendingButton>
               </form>
 
               <details style={{ marginTop: 16 }}>
@@ -231,7 +232,7 @@ export default async function PlatformSecurityPage({
                 <form action={regenerate} className="pa-field" style={{ marginTop: 10 }}>
                   <label htmlFor="rcode">Code from your authenticator</label>
                   <input id="rcode" name="code" type="text" inputMode="numeric" pattern="[0-9]*" maxLength={6} autoComplete="one-time-code" required className="pa-input" style={{ marginBottom: 12 }} />
-                  <button type="submit" className="pa-btn pa-btn--outline pa-btn--block">Generate new codes</button>
+                  <PendingButton className="pa-btn pa-btn--outline pa-btn--block" pendingLabel="Generating…">Generate new codes</PendingButton>
                 </form>
               </details>
             </>
@@ -263,12 +264,12 @@ export default async function PlatformSecurityPage({
               <form action={confirm} className="pa-field">
                 <label htmlFor="code">Current code</label>
                 <input id="code" name="code" type="text" inputMode="numeric" pattern="[0-9]*" maxLength={6} autoComplete="one-time-code" required className="pa-input" style={{ marginBottom: 12 }} />
-                <button type="submit" className="pa-btn pa-btn--primary pa-btn--block">Confirm and turn on</button>
+                <PendingButton className="pa-btn pa-btn--primary pa-btn--block" pendingLabel="Turning on…">Confirm and turn on</PendingButton>
               </form>
             </>
           ) : (
             <form action={start}>
-              <button type="submit" className="pa-btn pa-btn--primary pa-btn--block">Start setup</button>
+              <PendingButton className="pa-btn pa-btn--primary pa-btn--block" pendingLabel="Starting…">Start setup</PendingButton>
             </form>
           )}
 

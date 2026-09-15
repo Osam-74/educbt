@@ -1,4 +1,5 @@
 import { redirect } from 'next/navigation';
+import PendingButton from '@/app/PendingButton';
 import { auth, signOut } from '@/lib/auth';
 import { changeOwnPassword, PasswordChangeError } from '@/lib/auth/change-password';
 
@@ -74,7 +75,7 @@ export default async function ChangePasswordPage({
           <label htmlFor="confirm">Confirm new password</label>
           <input id="confirm" name="confirm" type="password" autoComplete="new-password" minLength={8} required />
 
-          <button type="submit">Save password</button>
+          <PendingButton pendingLabel="Saving…">Save password</PendingButton>
         </form>
 
         {['principal', 'vice_principal', 'exam_officer', 'teacher'].includes(session.role) ? (

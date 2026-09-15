@@ -1,4 +1,5 @@
 import { cookies } from 'next/headers';
+import PendingButton from '@/app/PendingButton';
 import { redirect } from 'next/navigation';
 import QRCode from 'qrcode';
 import { auth } from '@/lib/auth';
@@ -199,7 +200,7 @@ export default async function SecurityPage({
               <label htmlFor="code">Code from your authenticator</label>
               <input id="code" name="code" type="text" inputMode="numeric" pattern="[0-9]*" maxLength={6} autoComplete="one-time-code" required />
 
-              <button type="submit">Turn off two-factor</button>
+              <PendingButton pendingLabel="Turning off…">Turn off two-factor</PendingButton>
             </form>
 
             <details className="recovery-details">
@@ -207,7 +208,7 @@ export default async function SecurityPage({
               <form action={regenerate}>
                 <label htmlFor="rcode">Code from your authenticator</label>
                 <input id="rcode" name="code" type="text" inputMode="numeric" pattern="[0-9]*" maxLength={6} autoComplete="one-time-code" required />
-                <button type="submit">Generate new codes</button>
+                <PendingButton pendingLabel="Generating…">Generate new codes</PendingButton>
               </form>
             </details>
           </>
@@ -231,12 +232,12 @@ export default async function SecurityPage({
               <label htmlFor="code">Current code</label>
               <input id="code" name="code" type="text" inputMode="numeric" pattern="[0-9]*" maxLength={6} autoComplete="one-time-code" required />
 
-              <button type="submit">Confirm and turn on</button>
+              <PendingButton pendingLabel="Turning on…">Confirm and turn on</PendingButton>
             </form>
           </>
         ) : (
           <form action={start}>
-            <button type="submit">Start setup</button>
+            <PendingButton pendingLabel="Starting…">Start setup</PendingButton>
           </form>
         )}
 

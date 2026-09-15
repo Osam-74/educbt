@@ -19,6 +19,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
 import { PaIcon } from './icons';
+import PendingButton from '@/app/PendingButton';
 import { isNavItemActive, pageNameFor, type PlatformNavHref } from '@/lib/platform/nav';
 
 type NavItem = { href: string; label: string; icon: string; badge?: number };
@@ -29,6 +30,7 @@ function navItemsFor(schoolsCount: number): (NavItem & { href: PlatformNavHref }
     { href: '/platform/schools', label: 'Schools', icon: 'schools', badge: schoolsCount },
     { href: '/platform/schools/new', label: 'New school', icon: 'plus' },
     { href: '/platform/branding', label: 'Branding', icon: 'spark' },
+    { href: '/platform/managers', label: 'Managers', icon: 'shield' },
     { href: '/platform/account', label: 'Account', icon: 'userCheck' },
   ];
 }
@@ -155,15 +157,15 @@ export default function PlatformShell({
 
       <div className="pa-sidebar-foot">
         <form action={endSession}>
-          <button
-            type="submit"
+          <PendingButton
             id="pa-sidebar-signout-btn"
             className={`pa-signout-btn${collapsed && !mobileOpen ? ' pa-nav-item--collapsed' : ''}`}
             title="Sign out"
+            pendingLabel="Signing out…"
           >
             <span className="pa-nav-icon"><PaIcon name="logout" /></span>
             {(!collapsed || mobileOpen) && <span>Sign out</span>}
-          </button>
+          </PendingButton>
         </form>
         <div className="pa-collapse-btn-row">
           <button
@@ -283,7 +285,7 @@ export default function PlatformShell({
                 Cancel
               </button>
               <form action={endSession} className="pa-btn--block" style={{ flex: 1 }}>
-                <button type="submit" className="pa-btn pa-btn--danger pa-btn--block">Sign out</button>
+                <PendingButton className="pa-btn pa-btn--danger pa-btn--block" pendingLabel="Signing out…">Sign out</PendingButton>
               </form>
             </div>
           </div>

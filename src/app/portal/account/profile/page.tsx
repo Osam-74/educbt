@@ -1,4 +1,5 @@
 import { redirect } from 'next/navigation';
+import PendingButton from '@/app/PendingButton';
 import { auth } from '@/lib/auth';
 import { totpStatus } from '@/lib/auth/totp-account';
 import {
@@ -99,7 +100,7 @@ export default async function ProfilePage({
             required
           />
 
-          <button type="submit">{email ? 'Change email' : 'Save email'}</button>
+          <PendingButton pendingLabel="Saving…">{email ? 'Change email' : 'Save email'}</PendingButton>
         </form>
 
         <p className="hint">

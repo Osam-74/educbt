@@ -20,6 +20,7 @@ const activeSet = (pathname: string) => ({
   newSchool: isNavItemActive('/platform/schools/new', pathname),
   account: isNavItemActive('/platform/account', pathname),
   branding: isNavItemActive('/platform/branding', pathname),
+  managers: isNavItemActive('/platform/managers', pathname),
 });
 
 // ── The reported bug, precisely ──────────────────────────────────────────────
@@ -56,6 +57,10 @@ const activeSet = (pathname: string) => ({
   check('Branding active, and only Branding, on /platform/branding', a.branding && !a.dashboard && !a.schools && !a.newSchool && !a.account);
 }
 {
+  const a = activeSet('/platform/managers');
+  check('Managers active, and only Managers, on /platform/managers', a.managers && !a.dashboard && !a.schools && !a.newSchool && !a.branding && !a.account);
+}
+{
   const a = activeSet('/platform/account/password');
   check('Account active on the forced password-change page /platform/account/password', a.account);
 }
@@ -77,6 +82,7 @@ check('pageNameFor: dashboard', pageNameFor('/platform') === 'Dashboard');
 check('pageNameFor: schools directory', pageNameFor('/platform/schools') === 'Schools directory');
 check('pageNameFor: new school', pageNameFor('/platform/schools/new') === 'New school');
 check('pageNameFor: branding', pageNameFor('/platform/branding') === 'Branding');
+check('pageNameFor: managers', pageNameFor('/platform/managers') === 'Managers');
 check('pageNameFor: school detail', pageNameFor('/platform/schools/7') === 'School details');
 check('pageNameFor: edit school', pageNameFor('/platform/schools/7/edit') === 'Edit school');
 check('pageNameFor: forced password-change page', pageNameFor('/platform/account/password') === 'Account');
