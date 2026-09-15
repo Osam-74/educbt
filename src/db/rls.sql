@@ -484,3 +484,21 @@ DROP POLICY IF EXISTS tenant_isolation ON email_events;
 CREATE POLICY tenant_isolation ON email_events
   USING (school_id = current_school_id() OR is_platform_admin())
   WITH CHECK (school_id = current_school_id() OR is_platform_admin());
+
+-- ── Platform-owned table (no school_id) ──────────────────────────────────────
+-- platform_settings: the platform's own branding — the logo rendered in the
+-- admin shell. A logo is public presentation data (the same visibility class
+-- as a school crest on a print document), so SELECT is open: the shell reads
+-- it on every page without an audited elevation, which asPlatformAdmin()
+-- would otherwise demand per request. WRITES stay platform-admin-only —
+-- branding is set from /platform/branding by the elevated transaction.
+ALTER TABLE platform_settings ENABLE ROW LEVEL SECURITY;
+ALTER TABLE platform_settings FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS branding_public_read ON platform_settings;
+CREATE POLICY branding_public_read ON platform_settings
+  FOR SELECT
+  USING (true);
+DROP POLICY IF EXISTS branding_platform_admin_write ON platform_settings;
+CREATE POLICY branding_platform_admin_write ON platform_settings
+  FOR ALL
+  WITH CHECK (is_platform_admin());

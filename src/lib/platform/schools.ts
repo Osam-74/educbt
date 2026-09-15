@@ -139,11 +139,34 @@ const onboardingSchema = z.object({
     .trim()
     .min(2, 'Enter the principal’s last name.')
     .max(100, 'That name is too long.'),
+  // OPTIONAL override. Left empty, the sign-in ID is GENERATED from the
+  // principal's staff number (PRN-0001, PRN-0002, … — the existing staff
+  // convention: loginId == staffNumber with '/' → '.'), checked for
+  // uniqueness inside the creation transaction. The platform admin no longer
+  // invents one manually unless they specifically want to.
   principalLoginId: z
     .string()
     .trim()
-    .min(3, 'Enter a sign-in ID for the principal (usually their email address).')
-    .max(191, 'That sign-in ID is too long.'),
+    .max(191, 'That sign-in ID is too long.')
+    .optional()
+    .transform((v) => (v && v.length > 0 ? v : undefined))
+    .refine((v) => v === undefined || /^[A-Za-z0-9][A-Za-z0-9._\/-]{2,190}$/.test(v), {
+      message: 'Use letters, numbers, dots, hyphens or slashes.',
+    }),
+  // The PRINCIPAL'S OWN address — their account identity/recovery email,
+  // NOT the school's institutional address (that is `email` above). Stored
+  // on the users row (login + password recovery, item 12) and on the staff
+  // record. Globally unique on lower(email); enforced by users_email_lc_uq.
+  principalEmail: z
+    .string()
+    .trim()
+    .toLowerCase()
+    .max(320, 'That email address is too long.')
+    .optional()
+    .transform((v) => (v === '' ? undefined : v))
+    .refine((v) => v === undefined || /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(v), {
+      message: 'Enter a valid email address, or leave it empty.',
+    }),
 });
 
 export type OnboardingInput = z.input<typeof onboardingSchema>;
@@ -204,6 +227,35 @@ function assertPlatformAdmin(actor: PlatformActor): void {
 // ── Shared transaction body ──────────────────────────────────────────────────
 
 /**
+ * The next free PRN-00NN sign-in ID inside this school, decided within the
+ * creation transaction. The staff convention is loginId == staffNumber, and
+ * PRN-0001 is a brand-new school's first principal; the loop only ever walks
+ * past 0001 on the replacement-principal path, where the incumbent may still
+ * hold the number.
+ */
+async function nextFreePrincipalLoginId(tx: Tx, schoolId: number): Promise<string> {
+  for (let n = 1; n <= 999; n++) {
+    const candidate = `PRN-${String(n).padStart(4, '0')}`;
+    const [existing] = await tx
+      .select({ id: schema.users.id })
+      .from(schema.users)
+      .where(
+        and(
+          eq(schema.users.schoolId, schoolId),
+          eq(schema.users.loginId, candidate),
+        ),
+      )
+      .limit(1);
+    if (!existing) return candidate;
+  }
+  // Practically unreachable (a school with 999 users named PRN-…), and the
+  // per-school unique index still guards the insert itself.
+  throw new OnboardingValidationError({
+    principalLoginId: 'A sign-in ID could not be generated automatically. Enter one manually.',
+  });
+}
+
+/**
  * The principal-creation half of onboarding, inside the caller's platform
  * transaction. Kept separate so a school that already exists (rare recovery
  * paths, tests) can be given its first administrator with the SAME rules —
@@ -215,14 +267,24 @@ async function onboardPrincipalInTx(
   input: ValidatedOnboarding,
   passwordHash: string,
   actorUserId: number,
-): Promise<{ principalUserId: number; principalName: string }> {
+): Promise<{ principalUserId: number; principalName: string; loginId: string }> {
+  // Generated sign-in ID when the platform admin did not override it: the
+  // principal's own staff number (PRN-0001, PRN-0002 …) follows the existing
+  // staff convention (loginId == staffNumber). Uniqueness is decided INSIDE
+  // the transaction — a fresh school has no users yet, but the replacement-
+  // principal path must not collide with the incumbent's login ID.
+  const principalLoginId = input.principalLoginId ?? (await nextFreePrincipalLoginId(tx, schoolId));
+
   const [principalUser] = await tx
     .insert(schema.users)
     .values({
       schoolId,
       role: 'principal',
-      loginId: input.principalLoginId,
+      loginId: principalLoginId,
       passwordHash,
+      // The principal's own address: this is what email login (item 12) and
+      // password recovery resolve — unverified until the principal confirms.
+      email: input.principalEmail ?? null,
       // The temporary password must be replaced at first sign-in.
       mustChangePassword: true,
       status: 'active',
@@ -236,7 +298,9 @@ async function onboardPrincipalInTx(
     staffNumber: 'PRN-0001',
     firstName: input.principalFirstName,
     lastName: input.principalLastName,
-    email: input.email,
+    // The PRINCIPAL's address, not the school's (that was the old bug):
+    // a school's institutional inbox is not a person's identity.
+    email: input.principalEmail ?? null,
     role: 'principal',
     status: 'active',
   });
@@ -251,14 +315,16 @@ async function onboardPrincipalInTx(
     entityType: 'users',
     entityId: Number(principalUser!.id),
     after: {
-      loginId: input.principalLoginId,
+      loginId: principalLoginId,
+      loginIdGenerated: !input.principalLoginId,
       name: principalName,
       role: 'principal',
+      email: input.principalEmail ?? null,
       temporaryPasswordIssued: true, // the value itself is never recorded
     },
   });
 
-  return { principalUserId: Number(principalUser!.id), principalName };
+  return { principalUserId: Number(principalUser!.id), principalName, loginId: principalUser!.loginId };
 }
 
 // ── School creation ───────────────────────────────────────────────────────────
@@ -333,7 +399,7 @@ export async function createSchoolWithPrincipal(
           status: schema.schools.status,
         });
 
-      const { principalName } = await onboardPrincipalInTx(
+      const { principalName, loginId: principalUser_loginId } = await onboardPrincipalInTx(
         tx,
         Number(school!.id),
         input,
@@ -366,7 +432,7 @@ export async function createSchoolWithPrincipal(
           subdomain: school!.subdomain,
           status: school!.status,
         },
-        principal: { name: principalName, loginId: input.principalLoginId },
+        principal: { name: principalName, loginId: principalUser_loginId },
         temporaryPassword,
       };
     });
@@ -410,14 +476,14 @@ export async function createPrincipalForSchool(
         .limit(1);
       if (!school) throw new NotFoundError();
 
-      const { principalName } = await onboardPrincipalInTx(
+      const principal = await onboardPrincipalInTx(
         tx,
         Number(school.id),
         input,
         passwordHash,
         actor.userId,
       );
-      return { principalName, temporaryPassword };
+      return { principalName: principal.principalName, temporaryPassword };
     });
   } catch (error) {
     throw mapDuplicate(error);
@@ -891,6 +957,12 @@ function mapDuplicate(error: unknown): Error {
   }
   if (msg.includes('users_school_login_uq')) {
     return new DuplicateValueError('principalLoginId', 'That sign-in ID is already used at this school.');
+  }
+  if (msg.includes('users_email_lc_uq')) {
+    return new DuplicateValueError(
+      'principalEmail',
+      'That email address is already in use on another account.',
+    );
   }
   if (msg.includes('staff_school_number_uq')) {
     return new DuplicateValueError(

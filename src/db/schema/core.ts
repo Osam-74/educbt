@@ -186,3 +186,15 @@ export const subjects = pgTable('subjects', {
   schoolCodeUq: uniqueIndex('subjects_school_code_uq').on(t.schoolId, t.code),
   schoolIdx: index('subjects_school_idx').on(t.schoolId),
 }));
+
+// ── Platform branding (correction-pass items 6–7) ────────────────────────────
+// The platform's OWN identity — logo shown in the admin shell and the favicon.
+// A singleton by construction: id is forced to 1, and the RLS policy in
+// src/db/rls.sql lets anyone READ a logo (it is public presentation data,
+// the same visibility class as a school crest) while only an elevated
+// platform admin can WRITE it.
+export const platformSettings = pgTable('platform_settings', {
+  id: integer('id').primaryKey().default(1),
+  logoUrl: text('logo_url'),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+});

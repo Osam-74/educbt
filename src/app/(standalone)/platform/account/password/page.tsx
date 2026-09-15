@@ -3,7 +3,9 @@ import { auth, signOut } from '@/lib/auth';
 import { changeOwnPassword, PasswordChangeError } from '@/lib/auth/change-password';
 import '@/app/platform/platform-shell.css';
 import { PaIcon } from '@/app/platform/icons';
+import PasswordEyeInput from '@/app/platform/PasswordEyeInput';
 import PlatformShell from '@/app/platform/PlatformShell';
+import { viewPlatformBranding } from '@/lib/platform/branding';
 import { montserrat } from '@/app/platform/font';
 import { schoolsCount } from '@/lib/platform/schools';
 import type { PlatformActor } from '@/lib/platform/session';
@@ -43,6 +45,7 @@ export default async function PlatformChangePasswordPage({
   // the forced-password-change redirect this page is the TARGET of can never loop.
   const shellActor: PlatformActor = { userId: session.id, loginId: session.loginId, role: 'platform_admin' };
   const shellSchoolsCount = await schoolsCount(shellActor);
+  const { logoUrl: brandLogoUrl } = await viewPlatformBranding();
   async function endSession() {
     'use server';
     await signOut({ redirectTo: '/sign-in' });
@@ -73,7 +76,13 @@ export default async function PlatformChangePasswordPage({
   }
 
   return (
-    <PlatformShell loginId={shellActor.loginId} schoolsCount={shellSchoolsCount} endSession={endSession} fontClassName={montserrat.variable}>
+    <PlatformShell
+      loginId={shellActor.loginId}
+      schoolsCount={shellSchoolsCount}
+      endSession={endSession}
+      fontClassName={montserrat.variable}
+      brandLogoUrl={brandLogoUrl}
+    >
       <div style={{ display: 'grid', placeItems: 'center', padding: '24px 0' }}>
         <div className="pa-glass pa-form-card" style={{ width: '100%', maxWidth: 420 }}>
           <div className="pa-form-section-head" style={{ marginBottom: 4 }}>
@@ -93,17 +102,17 @@ export default async function PlatformChangePasswordPage({
           <form action={change}>
             <div className="pa-field">
               <label htmlFor="current">Current password</label>
-              <input id="current" name="current" type="password" autoComplete="current-password" required className="pa-input" />
+              <PasswordEyeInput id="current" name="current" autoComplete="current-password" required />
             </div>
 
             <div className="pa-field">
               <label htmlFor="next">New password</label>
-              <input id="next" name="next" type="password" autoComplete="new-password" minLength={8} required className="pa-input" />
+              <PasswordEyeInput id="next" name="next" autoComplete="new-password" minLength={8} required />
             </div>
 
             <div className="pa-field">
               <label htmlFor="confirm">Confirm new password</label>
-              <input id="confirm" name="confirm" type="password" autoComplete="new-password" minLength={8} required className="pa-input" />
+              <PasswordEyeInput id="confirm" name="confirm" autoComplete="new-password" minLength={8} required />
               <p className="pa-field-hint">At least 8 characters.</p>
             </div>
 

@@ -1,5 +1,6 @@
 import { requirePlatformSession } from '@/lib/platform/session';
 import { schoolsCount } from '@/lib/platform/schools';
+import { viewPlatformBranding } from '@/lib/platform/branding';
 import { signOut } from '@/lib/auth';
 import PlatformShell from './PlatformShell';
 import './platform-shell.css';
@@ -28,6 +29,7 @@ export const dynamic = 'force-dynamic';
 export default async function PlatformLayout({ children }: { children: React.ReactNode }) {
   const actor = await requirePlatformSession();
   const count = await schoolsCount(actor);
+  const { logoUrl: brandLogoUrl } = await viewPlatformBranding();
 
   async function endSession() {
     'use server';
@@ -35,7 +37,7 @@ export default async function PlatformLayout({ children }: { children: React.Rea
   }
 
   return (
-    <PlatformShell loginId={actor.loginId} schoolsCount={count} endSession={endSession} fontClassName={montserrat.variable}>
+    <PlatformShell loginId={actor.loginId} schoolsCount={count} endSession={endSession} fontClassName={montserrat.variable} brandLogoUrl={brandLogoUrl}>
       {children}
     </PlatformShell>
   );

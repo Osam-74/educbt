@@ -49,7 +49,9 @@ export async function createSchoolAction(
     status,
     principalFirstName: String(formData.get('principalFirstName') ?? ''),
     principalLastName: String(formData.get('principalLastName') ?? ''),
+    // Empty means "generate one from the principal's staff number".
     principalLoginId: String(formData.get('principalLoginId') ?? ''),
+    principalEmail: String(formData.get('principalEmail') ?? ''),
   };
 
   try {

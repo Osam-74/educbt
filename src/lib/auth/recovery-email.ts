@@ -16,7 +16,7 @@
  * from another's tenant under RLS, and TOCTOU pre-checks are not guarantees.
  */
 
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { db, schema, forSchool } from '@/db';
 import { verifyPassword } from '@/lib/auth/password';
 
@@ -91,7 +91,7 @@ export async function profileView(
  * takeover is reconstructable from the trail.
  */
 export async function setRecoveryEmail(
-  session: { id: number; schoolId: number | null; loginId: string },
+  session: { id: number; schoolId: number | null; loginId: string; role: string },
   input: { email: string; currentPassword: string },
 ): Promise<void> {
   const email = input.email.trim().toLowerCase();
@@ -153,6 +153,22 @@ export async function setRecoveryEmail(
   if (session.schoolId) {
     await forSchool(session.schoolId, write);
   } else {
-    await db.transaction(async (tx) => write(tx));
+    // Platform admin: schoolId is null (schema guarantee — only the platform
+    // account belongs to no school), so the audit row below is written with
+    // schoolId: null. Under RLS that row is only insertable while
+    // app.platform_admin = 'on' for THIS transaction — the same elevation
+    // asPlatformAdmin() uses (db/index.ts). Without it the audit INSERT's
+    // WITH CHECK fails (school_id = current_school_id() is null = null →
+    // NULL, is_platform_admin() is false) and the whole save 42501s, which
+    // is exactly the bug this guards against. The role check is defense in
+    // depth against a caller ever reaching this branch without actually
+    // being the platform admin.
+    if (session.role !== 'platform_admin') {
+      throw new RecoveryEmailError('Account not found.');
+    }
+    await db.transaction(async (tx) => {
+      await tx.execute(sql`select set_config('app.platform_admin', 'on', true)`);
+      return write(tx);
+    });
   }
 }

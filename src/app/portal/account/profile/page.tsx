@@ -39,7 +39,7 @@ export default async function ProfilePage({
     let destination = '/portal/account/profile';
     try {
       await setRecoveryEmail(
-        { id: inner.id, schoolId: inner.schoolId, loginId: inner.loginId },
+        { id: inner.id, schoolId: inner.schoolId, loginId: inner.loginId, role: inner.role },
         {
           email: String(formData.get('email') ?? ''),
           currentPassword: String(formData.get('currentPassword') ?? ''),
@@ -103,8 +103,10 @@ export default async function ProfilePage({
         </form>
 
         <p className="hint">
-          Password-reset links go here. Clear the field to remove it — then only
-          the school office can recover your account.
+          Password-reset requests are queued to this address. Outbound email is not
+          switched on yet — queued messages go out as soon as delivery is configured,
+          so don&rsquo;t rely on a reset email reaching this inbox today. Clear the field
+          to remove it — then only the school office can recover your account.
         </p>
 
         <p className="auth-links">

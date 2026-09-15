@@ -82,6 +82,16 @@ function sessionUserFrom(user: typeof schema.users.$inferSelect, staffId: number
  */
 async function findUserForSignIn(loginId: string, schoolId: number | null) {
   const needle = loginId.toLowerCase();
+  // EMAIL LOGIN (correction-pass item 12): an address in the sign-in box
+  // matches the account's recovery/login email too — the principal created
+  // with a generated PRN-0001 ID types their email at the door. users_email_lc_uq
+  // is global and lower-cased, so an email match is unambiguous; the
+  // loginId match keeps working for staff/admission numbers. Anything that
+  // is not obviously an address only ever tests loginId.
+  const looksLikeEmail = needle.includes('@');
+  const idOrEmail = looksLikeEmail
+    ? sql`(lower(${schema.users.loginId}) = ${needle} or lower(${schema.users.email}) = ${needle})`
+    : sql`lower(${schema.users.loginId}) = ${needle}`;
 
   if (schoolId) {
     return forSchool(schoolId, async (tx) => {
@@ -91,7 +101,7 @@ async function findUserForSignIn(loginId: string, schoolId: number | null) {
         .where(
           and(
             eq(schema.users.schoolId, schoolId),
-            sql`lower(${schema.users.loginId}) = ${needle}`,
+            idOrEmail,
           ),
         )
         .limit(2);
@@ -106,7 +116,7 @@ async function findUserForSignIn(loginId: string, schoolId: number | null) {
       and(
         eq(schema.users.role, 'platform_admin'),
         isNull(schema.users.schoolId),
-        sql`lower(${schema.users.loginId}) = ${needle}`,
+        idOrEmail,
       ),
     )
     .limit(2);

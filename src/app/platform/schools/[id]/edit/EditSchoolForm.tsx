@@ -139,7 +139,7 @@ export function EditSchoolForm({ school, loginUrlHint }: { school: EditableSchoo
 
         <div className="pa-grid-2">
           <div className="pa-field">
-            <label htmlFor="email">Contact email <span className="pa-optional">(optional)</span></label>
+            <label htmlFor="email">School email <span className="pa-optional">(optional)</span></label>
             <input id="email" name="email" type="text" defaultValue={school.email ?? ''} className="pa-input" />
             <FieldError field="email" state={state} />
           </div>

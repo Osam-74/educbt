@@ -145,7 +145,7 @@ export function NewSchoolForm({ loginUrlHint }: { loginUrlHint: string | null })
                   reader.readAsDataURL(file);
                 }}
               />
-              <p className="pa-field-hint">PNG, JPEG or WebP, up to 2&nbsp;MB. Shown beside the school in the directory.</p>
+              <p className="pa-field-hint">PNG, JPEG or WebP, up to 2&nbsp;MB.</p>
             </div>
           </div>
           <FieldError field="crest" state={state} />
@@ -153,8 +153,9 @@ export function NewSchoolForm({ loginUrlHint }: { loginUrlHint: string | null })
 
         <div className="pa-grid-2">
           <div className="pa-field">
-            <label htmlFor="email">Contact email <span className="pa-optional">(optional)</span></label>
+            <label htmlFor="email">School email <span className="pa-optional">(optional)</span></label>
             <input id="email" name="email" type="text" placeholder="e.g. office@gci.edu.ng" className="pa-input" />
+            <p className="pa-field-hint">The school&rsquo;s official inbox — shown in the directory, not tied to any person.</p>
             <FieldError field="email" state={state} />
           </div>
           <div className="pa-field">
@@ -201,9 +202,16 @@ export function NewSchoolForm({ loginUrlHint }: { loginUrlHint: string | null })
         </div>
 
         <div className="pa-field">
-          <label htmlFor="principalLoginId">Sign-in ID <span className="pa-required">*</span></label>
-          <input id="principalLoginId" name="principalLoginId" type="text" required placeholder="e.g. s.adeyemi@gci.edu.ng" className="pa-input pa-num" />
-          <p className="pa-field-hint">What the principal types at sign-in — usually their email address or staff number.</p>
+          <label htmlFor="principalEmail">Principal email <span className="pa-optional">(optional)</span></label>
+          <input id="principalEmail" name="principalEmail" type="text" placeholder="e.g. s.adeyemi@gci.edu.ng" className="pa-input" />
+          <p className="pa-field-hint">The principal&rsquo;s own address — used to sign in and recover a forgotten password. Not the school&rsquo;s official inbox.</p>
+          <FieldError field="principalEmail" state={state} />
+        </div>
+
+        <div className="pa-field">
+          <label htmlFor="principalLoginId">Sign-in ID <span className="pa-optional">(optional)</span></label>
+          <input id="principalLoginId" name="principalLoginId" type="text" placeholder="e.g. PRN-0001 — set only to override" className="pa-input pa-num" />
+          <p className="pa-field-hint">Generated automatically from the principal&rsquo;s staff number (e.g. PRN-0001). Enter one only if the school uses its own convention.</p>
           <FieldError field="principalLoginId" state={state} />
         </div>
       </div>

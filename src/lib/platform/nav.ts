@@ -16,7 +16,8 @@ export const PLATFORM_NAV_HREFS = [
   '/platform',
   '/platform/schools',
   '/platform/schools/new',
-  '/platform/account/password',
+  '/platform/branding',
+  '/platform/account',
 ] as const;
 
 export type PlatformNavHref = (typeof PLATFORM_NAV_HREFS)[number];
@@ -33,11 +34,13 @@ export function isNavItemActive(href: PlatformNavHref, pathname: string): boolea
       return pathname === '/platform/schools' || /^\/platform\/schools\/\d+(\/edit)?$/.test(pathname);
     case '/platform/schools/new':
       return pathname === '/platform/schools/new';
-    case '/platform/account/password':
-      // The password and TOTP-security pages are one flow in the UI
-      // (see the correction pass: security page restored into this shell) —
-      // both light up the same "Password" nav item.
-      return pathname.startsWith('/platform/account/password') || pathname.startsWith('/platform/account/security');
+    case '/platform/branding':
+      return pathname === '/platform/branding';
+    case '/platform/account':
+      // Settings → Account owns the whole account tree: the consolidated
+      // screen itself, plus the standalone flows it links into (forced
+      // password change, TOTP enrolment).
+      return pathname.startsWith('/platform/account');
     default:
       return pathname === href;
   }
@@ -48,10 +51,9 @@ export function pageNameFor(pathname: string): string {
   if (pathname === '/platform') return 'Dashboard';
   if (pathname === '/platform/schools') return 'Schools directory';
   if (pathname === '/platform/schools/new') return 'New school';
+  if (pathname === '/platform/branding') return 'Branding';
   if (/^\/platform\/schools\/\d+\/edit$/.test(pathname)) return 'Edit school';
   if (/^\/platform\/schools\/\d+$/.test(pathname)) return 'School details';
-  if (pathname.startsWith('/platform/account/profile')) return 'Account profile';
-  if (pathname.startsWith('/platform/account/password')) return 'Password';
-  if (pathname.startsWith('/platform/account/security')) return 'Security';
+  if (pathname.startsWith('/platform/account')) return 'Account';
   return 'Platform';
 }

@@ -34,6 +34,7 @@ import {
   resetPasswordWithToken,
 } from '@/lib/auth/recovery';
 import { setRecoveryEmail, profileView } from '@/lib/auth/recovery-email';
+import assert from 'node:assert/strict';
 import { remainingRecoveryCodes, hashCode } from '@/lib/auth/recovery-codes';
 import * as comms from './schema/comms';
 
@@ -108,7 +109,7 @@ async function main() {
     let refused = '';
     try {
       await setRecoveryEmail(
-        { id: PRIN_ID, schoolId, loginId: 'RECOV-PRIN' },
+        { id: PRIN_ID, schoolId, loginId: 'RECOV-PRIN', role: 'principal' },
         { email: 'prin@fixture.example', currentPassword: 'wrong-password' },
       );
     } catch (e) {
@@ -118,7 +119,7 @@ async function main() {
       refused.includes('not recognised'), refused);
 
     await setRecoveryEmail(
-      { id: PRIN_ID, schoolId, loginId: 'RECOV-PRIN' },
+      { id: PRIN_ID, schoolId, loginId: 'RECOV-PRIN', role: 'principal' },
       { email: 'Prin@Fixture.example', currentPassword: PASSWORD },
     );
     const view = await profileView({ id: PRIN_ID, schoolId, role: 'principal', loginId: 'RECOV-PRIN' });
@@ -130,7 +131,7 @@ async function main() {
     let dup = '';
     try {
       await setRecoveryEmail(
-        { id: Number(student!.id), schoolId, loginId: 'RECOV-STU' },
+        { id: Number(student!.id), schoolId, loginId: 'RECOV-STU', role: 'student' },
         { email: 'prin@fixture.example', currentPassword: PASSWORD },
       );
     } catch (e) {
@@ -142,6 +143,85 @@ async function main() {
       sql`select action from audit_log where school_id = ${schoolId} and action = 'auth.recovery_email_changed'`,
     );
     check('the email change is audited', auditRows.length >= 1);
+
+    // ── 1b. Platform-admin recovery-email save (production 42501 regression) ─
+    // Reproduces exactly the reported bug: Platform Admin has schoolId null,
+    // so setRecoveryEmail runs the plain-transaction branch. Before the fix
+    // that branch never elevated app.platform_admin, so the audit INSERT
+    // (schoolId: null) failed RLS's WITH CHECK — the update itself would have
+    // gone through, then the whole save 42501'd on the audit write. This must
+    // now succeed end to end AND leave a school_id=null audit row behind.
+    const PLATFORM_ID = Number(platformAdmin!.id);
+    await setRecoveryEmail(
+      { id: PLATFORM_ID, schoolId: null, loginId: 'RECOV-PLATFORM', role: 'platform_admin' },
+      { email: 'platform-owner@fixture.example', currentPassword: PASSWORD },
+    );
+    const platformView = await profileView({ id: PLATFORM_ID, schoolId: null, role: 'platform_admin', loginId: 'RECOV-PLATFORM' });
+    check('platform admin recovery-email save succeeds under RLS',
+      platformView.email === 'platform-owner@fixture.example');
+
+    const platformAuditRows = await odb.execute<{ school_id: string | null; actor_role: string | null }>(
+      sql`select school_id::text, actor_role from audit_log
+          where actor_user_id = ${PLATFORM_ID} and action = 'auth.recovery_email_changed'
+          order by id desc limit 1`,
+    );
+    check('the platform-admin change is audited with a NULL (platform-scope) school_id',
+      platformAuditRows.length === 1 && platformAuditRows[0]!.school_id === null,
+      JSON.stringify(platformAuditRows[0]));
+    check('the audit row records the platform_admin actor role',
+      platformAuditRows[0]?.actor_role === 'platform_admin');
+
+    // Reset — section 2 below independently proves the "no email queues
+    // nothing" behaviour starting from a NULL email; leaving this address in
+    // place would silently invalidate that check.
+    await odb
+      .update(people.users)
+      .set({ email: null, emailVerifiedAt: null })
+      .where(eq(people.users.id, PLATFORM_ID));
+
+    // ── 1c. A school actor cannot exploit the same policy for platform scope ─
+    // is_platform_admin() must be OFF for an ordinary school transaction — a
+    // school user must not be able to write school_id=NULL "platform" audit
+    // rows just because the OR-branch exists in the policy.
+    const { forSchool: appForSchool, schema: appSchema } = await import('@/db');
+    await assert.rejects(
+      appForSchool(schoolId, (tx) =>
+        tx.insert(appSchema.auditLog).values({
+          schoolId: null,
+          actorUserId: PRIN_ID,
+          actorRole: 'principal',
+          action: 'exploit.fake_platform_audit',
+        } as never),
+      ),
+      /row-level security|permission denied/i,
+      'a school-scoped actor must not be able to insert a NULL-school audit row',
+    );
+    check('a school user cannot forge a platform-scope (school_id NULL) audit entry', true);
+
+    // ── 1d. Cross-school audit insert remains denied ─────────────────────────
+    await odb.delete(core.schools).where(eq(core.schools.code, 'RECOV-FIXTURE-B'));
+    const [otherSchool] = await odb
+      .insert(core.schools)
+      .values({
+        name: 'Recovery Fixture School B', code: 'RECOV-FIXTURE-B',
+        subdomain: 'recovfixtureb', status: 'active',
+      } as never)
+      .returning();
+    const otherSchoolId = Number(otherSchool!.id);
+
+    await assert.rejects(
+      appForSchool(schoolId, (tx) =>
+        tx.insert(appSchema.auditLog).values({
+          schoolId: otherSchoolId,
+          actorUserId: PRIN_ID,
+          actorRole: 'principal',
+          action: 'exploit.cross_school_audit',
+        } as never),
+      ),
+      /row-level security|permission denied/i,
+      'a school-scoped actor must not be able to insert an audit row scoped to a DIFFERENT school',
+    );
+    check('a cross-school audit insert is denied under RLS', true);
 
     // ── 2. Forgot-password: eligible request ───────────────────────────────
     const requested = await requestPasswordReset({

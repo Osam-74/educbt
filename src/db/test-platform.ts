@@ -117,7 +117,7 @@ async function main() {
         status: 'active',
         principalFirstName: 'Amaka',
         principalLastName: 'Obi',
-        principalLoginId: 'a.obi@plt-a.test',
+        principalLoginId: 'amaka.obi',
       });
     } catch (error) {
       check('platform admin can create School A', false, String(error));
@@ -137,7 +137,7 @@ async function main() {
     const [principal] = await odb
       .select()
       .from(people.users)
-      .where(eq(people.users.loginId, 'a.obi@plt-a.test'))
+      .where(eq(people.users.loginId, 'amaka.obi'))
       .limit(1);
 
     check('initial Principal created (2)', !!principal);
@@ -172,7 +172,7 @@ async function main() {
         code: CODE_DUP,
         principalFirstName: 'Test',
         principalLastName: 'Case',
-        principalLoginId: 'dup@plt.test',
+        principalLoginId: 'dup.login',
       });
     } catch (error) {
       dupFailed = error instanceof DuplicateValueError;
@@ -183,7 +183,7 @@ async function main() {
       dupFailed && /already in use/.test(dupMessage) && !/SQLSTATE|duplicate key|constraint/i.test(dupMessage),
       dupMessage,
     );
-    const dupCount = await odb.select({ id: people.users.id }).from(people.users).where(eq(people.users.loginId, 'dup@plt.test'));
+    const dupCount = await odb.select({ id: people.users.id }).from(people.users).where(eq(people.users.loginId, 'dup.login'));
     check('rejected onboarding left no user behind (7)', dupCount.length === 0);
 
     // ── 8. Atomicity ────────────────────────────────────────────────────────
@@ -197,13 +197,13 @@ async function main() {
         subdomain: 'plt-a',
         principalFirstName: 'Test',
         principalLastName: 'Case',
-        principalLoginId: 'atomic@plt.test',
+        principalLoginId: 'atomic.login',
       });
     } catch (error) {
       atomicFailed = error instanceof DuplicateValueError;
     }
     const atomicSchool = await odb.select({ id: core.schools.id }).from(core.schools).where(eq(core.schools.code, CODE_ATOMIC));
-    const atomicUser = await odb.select({ id: people.users.id }).from(people.users).where(eq(people.users.loginId, 'atomic@plt.test'));
+    const atomicUser = await odb.select({ id: people.users.id }).from(people.users).where(eq(people.users.loginId, 'atomic.login'));
     check(
       'school+principal creation is atomic (8)',
       atomicFailed && atomicSchool.length === 0 && atomicUser.length === 0,
@@ -219,7 +219,7 @@ async function main() {
         code: CODE_A,
         principalFirstName: 'Second',
         principalLastName: 'Principal',
-        principalLoginId: 'a.obi@plt-a.test',
+        principalLoginId: 'amaka.obi',
       });
     } catch (error) {
       principalDupFailed = error instanceof DuplicateValueError;
@@ -244,7 +244,7 @@ async function main() {
           subdomain,
           principalFirstName: 'Test',
           principalLastName: 'Case',
-          principalLoginId: 'validate@plt.test',
+          principalLoginId: 'validate.login',
         });
       } catch (error) {
         rejected = error instanceof OnboardingValidationError;
@@ -262,7 +262,7 @@ async function main() {
           code: 'PLT-FORBIDDEN',
           principalFirstName: 'Test',
           principalLastName: 'Case',
-          principalLoginId: 'forbidden@plt.test',
+          principalLoginId: 'forbidden.login',
         });
       } catch (error) {
         refused = error instanceof PlatformPermissionError;
@@ -279,7 +279,7 @@ async function main() {
       status: 'active',
       principalFirstName: 'Bola',
       principalLastName: 'Ada',
-      principalLoginId: 'b.ada@plt-b.test',
+      principalLoginId: 'b.ada',
     });
     const [schoolB] = await odb.select().from(core.schools).where(eq(core.schools.code, CODE_B)).limit(1);
     const schoolBId = Number(schoolB!.id);
@@ -296,7 +296,7 @@ async function main() {
     const visibleIds = visibleUsers.map((u) => u.loginId);
     check(
       'School A cannot see School B users (17)',
-      visibleIds.includes('a.obi@plt-a.test') && !visibleIds.includes('b.ada@plt-b.test'),
+      visibleIds.includes('amaka.obi') && !visibleIds.includes('b.ada'),
       visibleIds.join(','),
     );
     const visibleStudents = await forSchool(schoolAId, async (tx) =>
@@ -314,11 +314,11 @@ async function main() {
     const overview = await platformOverview(actor);
     check('dashboard overview counts include the fixture tenants (18)', overview.total >= 2 && overview.active >= 2);
     const detail = await schoolDetail(actor, schoolAId);
-    check('school detail shows the administrator and setup counts', detail.principalLoginId === 'a.obi@plt-a.test' && detail.setup.staff === 1);
+    check('school detail shows the administrator and setup counts', detail.principalLoginId === 'amaka.obi' && detail.setup.staff === 1);
 
     // ── 12–14. Suspension lifecycle against a LIVE session ──────────────────
     const signedIn = await authenticateCredentials({
-      loginId: 'a.obi@plt-a.test',
+      loginId: 'amaka.obi',
       password: result.temporaryPassword,
       schoolId: schoolAId,
     });

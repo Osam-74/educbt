@@ -28,7 +28,8 @@ function navItemsFor(schoolsCount: number): (NavItem & { href: PlatformNavHref }
     { href: '/platform', label: 'Dashboard', icon: 'dashboard' },
     { href: '/platform/schools', label: 'Schools', icon: 'schools', badge: schoolsCount },
     { href: '/platform/schools/new', label: 'New school', icon: 'plus' },
-    { href: '/platform/account/password', label: 'Password', icon: 'key' },
+    { href: '/platform/branding', label: 'Branding', icon: 'spark' },
+    { href: '/platform/account', label: 'Account', icon: 'userCheck' },
   ];
 }
 
@@ -38,10 +39,13 @@ export default function PlatformShell({
   schoolsCount,
   endSession,
   fontClassName,
+  brandLogoUrl,
 }: {
   children: React.ReactNode;
   loginId: string;
   schoolsCount: number;
+  /** Uploaded platform logo (Branding page), or null for the default mark. */
+  brandLogoUrl?: string | null;
   endSession: () => Promise<void>;
   /** next/font variable className (see ./font.ts) — applied on the shell root
    * so platform-shell.css's `var(--font-montserrat)` resolves everywhere,
@@ -124,7 +128,13 @@ export default function PlatformShell({
       <div className="pa-sidebar-head">
         <Link href="/platform" className="pa-brand" onClick={onNavigate}>
           <span className="pa-brand-mark">
-            <PaIcon name="building" width={19} height={19} />
+            {brandLogoUrl ? (
+              // Uploaded platform logo (Branding page) replaces the default
+              // building mark; same slot, same size, object-fit for any shape.
+              <img src={brandLogoUrl} alt="" style={{ width: 22, height: 22, objectFit: 'contain' }} />
+            ) : (
+              <PaIcon name="building" width={19} height={19} />
+            )}
             <span className="pa-dot" />
           </span>
           {(!collapsed || mobileOpen) && (
@@ -241,14 +251,11 @@ export default function PlatformShell({
                   <div className="pa-dropdown-name">{loginId}</div>
                   <div className="pa-dropdown-role">Platform Administrator</div>
                 </div>
-                <Link href="/platform/account/profile" className="pa-dropdown-item" onClick={() => setProfileOpen(false)}>
-                  <PaIcon name="userCheck" width={15} height={15} /> Profile & recovery email
+                <Link href="/platform/account" className="pa-dropdown-item" onClick={() => setProfileOpen(false)}>
+                  <PaIcon name="userCheck" width={15} height={15} /> Account settings
                 </Link>
                 <Link href="/platform/account/security" className="pa-dropdown-item" onClick={() => setProfileOpen(false)}>
                   <PaIcon name="shield" width={15} height={15} /> Two-factor security
-                </Link>
-                <Link href="/platform/account/password" className="pa-dropdown-item" onClick={() => setProfileOpen(false)}>
-                  <PaIcon name="key" width={15} height={15} /> Change password
                 </Link>
                 <button
                   type="button"

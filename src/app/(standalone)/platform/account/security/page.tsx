@@ -15,6 +15,7 @@ import {
 import '@/app/platform/platform-shell.css';
 import { PaIcon } from '@/app/platform/icons';
 import PlatformShell from '@/app/platform/PlatformShell';
+import { viewPlatformBranding } from '@/lib/platform/branding';
 import { montserrat } from '@/app/platform/font';
 import { schoolsCount } from '@/lib/platform/schools';
 import { signOut } from '@/lib/auth';
@@ -55,6 +56,7 @@ export default async function PlatformSecurityPage({
   // (this page has never gone through that guard; see the password page's note).
   const shellActor: PlatformActor = { userId: session.id, loginId: session.loginId, role: 'platform_admin' };
   const shellSchoolsCount = await schoolsCount(shellActor);
+  const { logoUrl: brandLogoUrl } = await viewPlatformBranding();
   async function endSession() {
     'use server';
     await signOut({ redirectTo: '/sign-in' });
@@ -165,7 +167,13 @@ export default async function PlatformSecurityPage({
   }
 
   return (
-    <PlatformShell loginId={shellActor.loginId} schoolsCount={shellSchoolsCount} endSession={endSession} fontClassName={montserrat.variable}>
+    <PlatformShell
+      loginId={shellActor.loginId}
+      schoolsCount={shellSchoolsCount}
+      endSession={endSession}
+      fontClassName={montserrat.variable}
+      brandLogoUrl={brandLogoUrl}
+    >
       <div style={{ display: 'grid', placeItems: 'center', padding: '24px 0' }}>
         <div className="pa-glass pa-form-card" style={{ width: '100%', maxWidth: 460 }}>
           <div className="pa-form-section-head" style={{ marginBottom: 4 }}>
@@ -265,8 +273,8 @@ export default async function PlatformSecurityPage({
           )}
 
           <p style={{ marginTop: 16 }}>
-            <a href="/platform/account/password" style={{ fontSize: 12.5, color: 'var(--pa-emerald-700)', fontWeight: 600, textDecoration: 'none' }}>
-              &larr; Back to password
+            <a href="/platform/account" style={{ fontSize: 12.5, color: 'var(--pa-emerald-700)', fontWeight: 600, textDecoration: 'none' }}>
+              &larr; Back to account settings
             </a>
           </p>
         </div>
