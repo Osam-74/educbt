@@ -1,6 +1,7 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import Link from 'next/link';
 import { PaIcon } from '../icons';
 import { CopyButton } from '../CopyButton';
@@ -51,6 +52,93 @@ export function CrestThumb({ logoUrl, size = 32 }: { logoUrl: string | null; siz
   );
 }
 
+/** The card content, portalled straight to document.body so it renders as a
+ * true viewport modal — never a descendant of the schools table's scrollable
+ * / overflow-managed panel, which is what was clipping it before. */
+function QuickViewModal({ school, url, onClose }: { school: QuickViewSchool; url: string | null; onClose: () => void }) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
+  return createPortal(
+    <div className="pa-modal-backdrop" id="school-quickview-backdrop" onClick={onClose}>
+      <div className="pa-schoolview-card" onClick={(e) => e.stopPropagation()}>
+        <button type="button" className="pa-schoolview-close" aria-label="Close" onClick={onClose}>
+          <PaIcon name="close" width={15} height={15} />
+        </button>
+
+        <div className="pa-detail-header">
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 14 }}>
+            <CrestThumb logoUrl={school.logoUrl} size={44} />
+            <div>
+              <h2 className="pa-detail-title" style={{ fontSize: 17 }}>{school.name}</h2>
+              <div className="pa-detail-meta">
+                <span className="pa-code-badge">{school.code}</span>
+                <span className={STATUS_PILL[school.status] ?? 'pa-pill'}>{school.status}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="pa-schoolview-body">
+          <div className="pa-subdomain-box">
+            <span className="pa-section-label" style={{ marginBottom: 8 }}><PaIcon name="globe" width={14} height={14} /> Web address</span>
+            {url ? (
+              <div className="pa-url-row"><span>{url}</span></div>
+            ) : (
+              <p style={{ fontSize: 12.5, color: 'var(--pa-stone-500)' }}>Not set — this school signs in only from the platform&apos;s own sign-in page.</p>
+            )}
+          </div>
+
+          <div>
+            <div className="pa-section-label"><PaIcon name="userCheck" width={14} height={14} /> Administrator</div>
+            {school.principalName ? (
+              <div className="pa-detail-facts">
+                <div><span>Full name</span><b>{school.principalName}</b></div>
+                <div><span>Sign-in ID</span><b className="pa-num" style={{ fontSize: 12.5 }}>{school.principalLoginId ?? '—'}</b></div>
+                <div><span>Code</span><b>{school.principalCode ?? '—'}</b></div>
+                <div><span>Email</span><b>{school.principalEmail ?? '—'}</b></div>
+              </div>
+            ) : (
+              <p style={{ fontSize: 12.5, color: 'var(--pa-stone-500)' }}>No principal is on record for this school.</p>
+            )}
+          </div>
+
+          <div>
+            <div className="pa-section-label">School &amp; contact</div>
+            <div className="pa-contact-list">
+              <div><PaIcon name="mail" width={15} height={15} /> {school.email ?? 'No official contact email provided'}</div>
+              <div><PaIcon name="phone" width={15} height={15} /> {school.phone ?? 'No contact phone provided'}</div>
+              <div><PaIcon name="mapPin" width={15} height={15} /> {school.address ?? 'Standard cluster deployment'}</div>
+              <div><PaIcon name="calendar" width={15} height={15} /> Created {school.createdAt.toLocaleDateString('en-GB')}</div>
+            </div>
+          </div>
+        </div>
+
+        <div className="pa-schoolview-actions">
+          <Link href={`/platform/schools/${school.id}/edit`} className="pa-btn pa-btn--outline pa-btn--sm">
+            <PaIcon name="edit" width={13} height={13} /> Edit School
+          </Link>
+          <Link href={`/platform/schools/${school.id}`} className="pa-btn pa-btn--primary pa-btn--sm">
+            Full Details
+          </Link>
+          {url ? (
+            <>
+              <CopyButton value={url} label="Copy URL" />
+              <a href={url} target="_blank" rel="noreferrer" className="pa-btn pa-btn--ghost pa-btn--sm">
+                <PaIcon name="external" width={13} height={13} /> Open Portal
+              </a>
+            </>
+          ) : null}
+        </div>
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
 /** The eye-icon trigger + the quick-view modal itself, for one row/card. */
 export function QuickViewButton({ school, url }: { school: QuickViewSchool; url: string | null }) {
   const [open, setOpen] = useState(false);
@@ -65,71 +153,7 @@ export function QuickViewButton({ school, url }: { school: QuickViewSchool; url:
       >
         <PaIcon name="eye" width={13} height={13} />
       </button>
-
-      {open ? (
-        <div className="pa-modal-backdrop" onClick={() => setOpen(false)}>
-          <div className="pa-modal-card pa-quickview-card" onClick={(e) => e.stopPropagation()}>
-            <button type="button" className="pa-quickview-close" aria-label="Close" onClick={() => setOpen(false)}>
-              <PaIcon name="close" width={15} height={15} />
-            </button>
-
-            <div className="pa-quickview-head">
-              <CrestThumb logoUrl={school.logoUrl} size={48} />
-              <div>
-                <h3>{school.name}</h3>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 4 }}>
-                  <span className="pa-code-badge">{school.code}</span>
-                  <span className={STATUS_PILL[school.status] ?? 'pa-pill'}>{school.status}</span>
-                </div>
-              </div>
-            </div>
-
-            <div className="pa-detail-facts pa-quickview-facts">
-              <div>
-                <span className="pa-section-label">Contact</span>
-                <b>{school.email || school.phone ? [school.email, school.phone].filter(Boolean).join(' · ') : '—'}</b>
-              </div>
-              <div>
-                <span className="pa-section-label">Address</span>
-                <b>{school.address ?? '—'}</b>
-              </div>
-              <div>
-                <span className="pa-section-label">Web address</span>
-                {url ? (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <b className="pa-num">{school.customDomain ?? school.subdomain}</b>
-                    <CopyButton value={url} label="" />
-                  </div>
-                ) : <b>Not set</b>}
-              </div>
-              <div>
-                <span className="pa-section-label">Administrator</span>
-                <b>{school.principalName ?? 'No principal on record'}</b>
-                {school.principalLoginId ? (
-                  <div className="pa-cell-sub">{school.principalLoginId}{school.principalCode ? ` · ${school.principalCode}` : ''}</div>
-                ) : null}
-              </div>
-              <div>
-                <span className="pa-section-label">Administrator email</span>
-                <b>{school.principalEmail ?? '—'}</b>
-              </div>
-              <div>
-                <span className="pa-section-label">Created</span>
-                <b>{school.createdAt.toLocaleDateString('en-GB')}</b>
-              </div>
-            </div>
-
-            <div className="pa-modal-actions">
-              <Link href={`/platform/schools/${school.id}/edit`} className="pa-btn pa-btn--outline pa-btn--block">
-                <PaIcon name="edit" width={14} height={14} /> Edit
-              </Link>
-              <Link href={`/platform/schools/${school.id}`} className="pa-btn pa-btn--primary pa-btn--block">
-                Full details
-              </Link>
-            </div>
-          </div>
-        </div>
-      ) : null}
+      {open ? <QuickViewModal school={school} url={url} onClose={() => setOpen(false)} /> : null}
     </>
   );
 }

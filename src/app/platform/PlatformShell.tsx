@@ -143,16 +143,6 @@ export default function PlatformShell({
         {navList(onNavigate)}
       </nav>
 
-      {(!collapsed || mobileOpen) && (
-        <div className="pa-sidebar-status">
-          <div className="pa-sidebar-status-row">
-            <span className="pa-ping" />
-            <span className="pa-sidebar-status-title">System online</span>
-          </div>
-          <p className="pa-sidebar-status-desc">Platform administration console</p>
-        </div>
-      )}
-
       <div className="pa-sidebar-foot">
         <form action={endSession}>
           <button

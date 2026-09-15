@@ -132,14 +132,6 @@
 .pa-nav-badge { font-size: 11px; font-weight: 700; padding: 1px 8px; border-radius: 999px; background: #022c22; color: var(--pa-emerald-300); border: 1px solid rgba(6, 95, 70, 0.6); font-family: ui-monospace, monospace; }
 .pa-nav-item--active .pa-nav-badge { background: rgba(163, 230, 53, 0.2); color: var(--pa-lime-300); border-color: rgba(163, 230, 53, 0.3); }
 
-.pa-sidebar-status { margin: 4px 12px 12px; padding: 12px; border-radius: 12px; background: linear-gradient(160deg, rgba(6, 78, 59, 0.5), rgba(9, 26, 17, 0.7)); border: 1px solid rgba(6, 95, 70, 0.4); }
-.pa-sidebar-status-row { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
-.pa-ping { position: relative; width: 8px; height: 8px; }
-.pa-ping::before { content: ''; position: absolute; inset: 0; border-radius: 50%; background: var(--pa-lime-400); opacity: 0.75; animation: pa-ping 1.8s cubic-bezier(0,0,0.2,1) infinite; }
-.pa-ping::after { content: ''; position: absolute; inset: 0; border-radius: 50%; background: var(--pa-lime-400); }
-@keyframes pa-ping { 75%, 100% { transform: scale(2.2); opacity: 0; } }
-.pa-sidebar-status-title { font-size: 12px; font-weight: 650; color: var(--pa-emerald-200); }
-.pa-sidebar-status-desc { font-size: 10.5px; color: rgba(110, 231, 183, 0.65); line-height: 1.5; margin: 0; }
 
 .pa-sidebar-foot { padding: 10px; border-top: 1px solid rgba(6, 95, 70, 0.3); background: rgba(9, 26, 17, 0.55); display: flex; flex-direction: column; gap: 6px; flex-shrink: 0; }
 .pa-signout-btn { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 40px; padding: 8px 12px; border-radius: 12px; border: 0; background: none; color: #d6d3d1; font-size: 13px; font-weight: 500; cursor: pointer; }
@@ -280,7 +272,7 @@
    Falls back to stacked rows only below 640px (handled by .pa-filter-form's
    own flex-wrap, not a hard breakpoint, so it degrades gracefully). */
 .pa-filter-form .pa-select { flex: 0 1 150px; min-width: 128px; width: auto; padding: 8px 12px; font-size: 12.5px; }
-.pa-filter-form .pa-btn { flex: 0 0 auto; padding: 8px 14px; font-size: 12.5px; border-radius: 9px; }
+.pa-filter-form .pa-btn { flex: 0 0 auto; width: auto; padding: 8px 14px; font-size: 12.5px; border-radius: 9px; }
 @media (min-width: 640px) { .pa-filter-form { flex-wrap: nowrap; } .pa-filter-input-wrap { flex: 1 1 auto; min-width: 160px; } }
 .pa-filter-summary { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--pa-stone-200); display: flex; align-items: center; justify-content: space-between; font-size: 12px; color: var(--pa-stone-500); flex-wrap: wrap; gap: 6px; }
 
@@ -301,13 +293,28 @@
 .pa-crest-preview img { width: 100%; height: 100%; object-fit: cover; }
 .pa-crest-upload input[type="file"] { padding: 7px 10px; font-size: 12.5px; cursor: pointer; }
 
-/* Quick-view modal (item 7): a lighter, info-dense variant of .pa-modal-card */
-.pa-quickview-card { max-width: 440px; text-align: left; position: relative; }
-.pa-quickview-close { position: absolute; top: 14px; right: 14px; width: 28px; height: 28px; border-radius: 8px; border: 0; background: var(--pa-stone-100); color: var(--pa-stone-500); display: grid; place-items: center; cursor: pointer; }
-.pa-quickview-head { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; padding-right: 30px; }
-.pa-quickview-head h3 { margin: 0; font-size: 16px; font-weight: 650; color: var(--pa-forest); }
-.pa-quickview-facts { grid-template-columns: 1fr 1fr; margin-bottom: 18px; }
-@media (max-width: 480px) { .pa-quickview-facts { grid-template-columns: 1fr; } }
+/* School quick-view modal — deliberately its OWN card, not a variant of
+   .pa-modal-card (that's the small centered sign-out confirm dialog; this is
+   a wider, left-aligned info card with the same dark-forest header used on
+   the school detail page). Rendered through a React portal straight into
+   document.body, so it is never a descendant of the filtered/scrollable
+   table or card panels and can never be visually constrained by them. */
+.pa-schoolview-card {
+  width: 100%; max-width: 576px; text-align: left; border-radius: 20px;
+  background: white; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.4);
+  overflow: hidden; max-height: calc(100vh - 32px); display: flex; flex-direction: column; position: relative;
+}
+.pa-schoolview-card .pa-detail-header { border-radius: 20px 20px 0 0; }
+.pa-schoolview-close {
+  position: absolute; top: 18px; right: 18px; width: 30px; height: 30px; border-radius: 9px;
+  border: 0; background: rgba(255,255,255,0.14); color: white; display: grid; place-items: center; cursor: pointer;
+}
+.pa-schoolview-close:hover { background: rgba(255,255,255,0.26); }
+.pa-schoolview-body { padding: 20px 24px; display: flex; flex-direction: column; gap: 18px; overflow-y: auto; }
+.pa-schoolview-actions { display: flex; flex-wrap: wrap; gap: 8px; padding: 16px 24px; border-top: 1px solid var(--pa-stone-200); background: var(--pa-stone-50); flex-shrink: 0; }
+.pa-schoolview-actions .pa-btn { flex: 1 1 auto; justify-content: center; }
+.pa-schoolview-actions .pa-copy-btn { flex: 1 1 auto; justify-content: center; padding: 10px 14px; font-size: 12.5px; }
+@media (max-width: 480px) { .pa-schoolview-actions { flex-direction: column; } }
 
 /* Form sections (new school) */
 .pa-form-card { padding: 28px 24px; }
