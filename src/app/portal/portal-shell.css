@@ -47,3 +47,17 @@ a.sd-stat:hover { border-color:#96bc9e; }.sd-icon { width:42px; height:42px; dis
 .ps-bell { margin-left: auto; display: inline-flex; align-items: center; position: relative; color: var(--ps-lime); }
 .ps-bell:hover { opacity: 0.8; }
 .ps-badge { position: absolute; top: -7px; right: -10px; min-width: 18px; text-align: center; background: #d54f2f; color: #fff; font-size: 11px; font-weight: 700; border-radius: 999px; padding: 1px 5px; }
+
+/* ── Filter bar (platform-admin schools page pattern, portal palette) ── */
+.filter-bar { background: var(--white); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px 16px; margin-bottom: 20px; }
+.filter-form { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end; }
+.filter-field { display: flex; flex-direction: column; gap: 5px; min-width: 170px; }
+.filter-field > span { font-size: .8rem; font-weight: 600; color: var(--ink); }
+.filter-field select { padding: 9px 12px; border: 1.5px solid var(--line); border-radius: 10px; background: var(--white); color: var(--ink); font: inherit; font-size: 13.5px; min-width: 150px; }
+.filter-field select:focus { outline: none; border-color: var(--forest); box-shadow: 0 0 0 3px rgba(15, 40, 24, 0.12); }
+.filter-submit { padding: 9px 18px; border: 0; border-radius: 10px; width: auto; background: var(--forest); color: var(--lime); font-weight: 600; font-size: 13.5px; cursor: pointer; }
+.filter-submit:hover { opacity: .92; }
+.filter-clear { padding: 8px 16px; border: 1.5px solid var(--line); border-radius: 10px; background: var(--white); color: var(--ink); font-size: 13.5px; font-weight: 500; text-decoration: none; display: inline-flex; align-items: center; }
+.filter-clear:hover { background: var(--wash); }
+.filter-summary { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line); color: var(--muted); font-size: 13.5px; }
+.filter-summary strong { color: var(--ink); font-weight: 700; }

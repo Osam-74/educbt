@@ -26,7 +26,10 @@ export async function ownStaff(tx: Tx, actor: Actor, role: string) {
     eq(schema.staff.schoolId, actor.schoolId), eq(schema.staff.status, 'active')));
   if (!staff || staff.id !== actor.staffId) fail('An active linked staff record is required.');
   if (role === 'principal' && actor.role === 'principal') return staff!;
-  if (role === 'exam_officer' && ['exam_officer', 'vice_principal', 'principal'].includes(actor.role)) return staff!;
+  // Legacy signatures.php: one role per account, derived from capabilities —
+  // principals see the Principal's signature only; the exam officer's
+  // signature editor lives on the exam officer's own account.
+  if (role === 'exam_officer' && actor.role === 'exam_officer') return staff!;
   if (role === 'class_teacher') {
     const [assignment] = await tx.select({ id: schema.staffAssignments.id }).from(schema.staffAssignments).where(and(
       eq(schema.staffAssignments.staffId, staff!.id), eq(schema.staffAssignments.assignmentType, 'class_teacher'), eq(schema.staffAssignments.status, 'active')));

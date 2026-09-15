@@ -1,5 +1,7 @@
+import Link from 'next/link';
 import { requireSchoolSession } from '@/lib/session';
 import { activityFilters, activityPage, activityTitle } from '@/lib/portal-dashboard';
+
 
 export const dynamic = 'force-dynamic';
 
@@ -9,7 +11,8 @@ export const dynamic = 'force-dynamic';
  * question, not a URL question — canViewActivity decides inside the page,
  * and the query itself is school-scoped by the session, excluding the
  * platform admin's onboarding trail. A teacher or exam officer typing the
- * URL gets a refusal, never the trail.
+ * URL gets a refusal, never the trail. The filter bar follows the platform
+ * admin schools page pattern (fields + Filter + Clear + summary).
  */
 export default async function ActivityPage({ searchParams }: {
   searchParams: Promise<{ page?: string; action?: string; user?: string }>;
@@ -43,6 +46,7 @@ export default async function ActivityPage({ searchParams }: {
   const previous = data.page > 1 ? qs(data.page - 1) : null;
   const next = data.page < data.pages ? qs(data.page + 1) : null;
   const filtered = Boolean(filter.action || filter.userId);
+  const hasFilterOptions = Boolean(filters && (filters.actions.length || filters.actors.length));
 
   const fmt = new Intl.DateTimeFormat('en-GB', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'Africa/Lagos' });
   const detail = (row: { entityType: string | null; entityId: number | null; reason: string | null }) => {
@@ -58,21 +62,31 @@ export default async function ActivityPage({ searchParams }: {
   return <>
     <h1 className="page-title">Activity Log</h1>
 
-    {filters && (filters.actions.length > 0 || filters.actors.length > 0) && (
-      <form className="filters" method="get">
-        <select name="action" defaultValue={filter.action ?? ''}>
-          <option value="">All actions</option>
-          {filters.actions.map(a => <option key={a} value={a}>{a.replace(/_/g, ' ')}</option>)}
-        </select>
-        <select name="user" defaultValue={filter.userId ? String(filter.userId) : ''}>
-          <option value="">All users</option>
-          {filters.actors.map(u => <option key={u.id} value={u.id!}>{u.label}</option>)}
-        </select>
-        <button type="submit">Apply</button>
+    {hasFilterOptions && <div className="filter-bar">
+      <form method="get" className="filter-form">
+        {filters!.actions.length > 0 && <label className="filter-field">
+          <span>Action type</span>
+          <select name="action" defaultValue={filter.action ?? ''}>
+            <option value="">All actions</option>
+            {filters!.actions.map(a => <option key={a} value={a}>{activityTitle(a)}</option>)}
+          </select>
+        </label>}
+        {filters!.actors.length > 0 && <label className="filter-field">
+          <span>User</span>
+          <select name="user" defaultValue={filter.userId ? String(filter.userId) : ''}>
+            <option value="">All users</option>
+            {filters!.actors.map(u => <option key={u.id} value={u.id!}>{u.label}</option>)}
+          </select>
+        </label>}
+        <button type="submit" className="filter-submit">Filter</button>
+        {filtered && <Link href="/portal/activity" className="filter-clear">Clear</Link>}
       </form>
-    )}
+      <div className="filter-summary">
+        <span>Showing <strong>{data.total}</strong> log entr{data.total === 1 ? 'y' : 'ies'}{filtered ? ' for this filter' : ''}</span>
+      </div>
+    </div>}
 
-    <p className="muted">{data.total} log entr{data.total === 1 ? 'y' : 'ies'}{filtered ? ' for this filter' : ''}.</p>
+    {!hasFilterOptions && <p className="muted">{data.total} log entr{data.total === 1 ? 'y' : 'ies'}.</p>}
 
     <section className="card">
       {data.rows.length === 0 ? <p className="muted">No activity recorded{filtered ? ' for this filter' : ' yet'}.</p> : <><div className="table-wrap"><table className="tbl">

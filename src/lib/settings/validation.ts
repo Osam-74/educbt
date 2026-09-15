@@ -10,7 +10,7 @@ const ordered = (v: { startsOn: string; endsOn: string }) => !v.startsOn || !v.e
 export const profileSchema = z.object({ name: text(191).min(1), address: text(1000), phone: text(50),
   email: z.union([z.literal(''), z.string().email().max(191)]), principalName: text(191),
   website: z.union([z.literal(''), z.string().url().max(191).refine(s => /^https?:\/\//i.test(s))]) }).strict();
-export const sessionSchema = z.object({ title: text(100).min(1), ...dates, makeCurrent: z.boolean() }).strict().refine(ordered, 'End date must follow start date.');
+export const sessionSchema = z.object({ title: text(100).min(1), startsOn: date.default(''), endsOn: date.default(''), makeCurrent: z.boolean() }).strict().refine(ordered, 'End date must follow start date.');
 /** Legacy normalise_title: "2026/27", "2026-2027" and "2026" all become "2026/2027". */
 export function normaliseSessionTitle(raw: string): string {
   const m = /^(\d{4})\s*[/\-]\s*(\d{2,4})$/.exec(raw.trim());

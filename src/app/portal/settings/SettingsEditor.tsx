@@ -6,7 +6,7 @@ import { settingsAction } from './actions';
 type Session = { id: number; title: string; startsOn: string; endsOn: string; isCurrent: boolean };
 type Term = Session & { sessionId: number; position: number };
 type Props = { canEdit: boolean; school: { name: string; code: string; address: string | null; phone: string | null; email: string | null; website: string | null; principalName: string | null; logoUrl: string | null; settings: Record<string, unknown> };
-  roles: string[]; students: { id: number; firstName: string; lastName: string; admissionNumber: string; sessionId: number }[]; sessions: Session[]; terms: Term[]; config: ResultConfig; configured: boolean; assessmentInUse: boolean;
+  roles: string[]; sessions: Session[]; terms: Term[]; config: ResultConfig; configured: boolean; assessmentInUse: boolean;
   signatures: { role: string; name: string; type: string; data: string }[]; ranges: { role: string; ranges: { min: number; remark: string }[] }[] };
 function SaveForm({ kind, payload, children, disabled = false, label = 'Save changes', role, extra }: { kind: string; payload: unknown; children: ReactNode; disabled?: boolean; label?: string; role?: string; extra?: Record<string, string> }) {
   const [state, action, pending] = useActionState(settingsAction, { ok: false, message: '' });
@@ -49,9 +49,9 @@ export function SettingsEditor(p: Props) {
         <Field label="Academic session"><select value={sessionId} onChange={e => { const id = Number(e.target.value); setSessionId(id); setTermId(p.terms.find(t => t.sessionId === id)?.id ?? 0); }}>{p.sessions.map(s => <option key={s.id} value={s.id}>{s.title}{s.isCurrent ? ' · current' : ''}</option>)}</select></Field>
         <Field label="Term"><select value={termId} onChange={e => setTermId(Number(e.target.value))}>{p.terms.filter(t => t.sessionId === sessionId).map(t => <option key={t.id} value={t.id}>{t.title}{t.isCurrent ? ' · current' : ''}</option>)}</select></Field>
       </div></SaveForm>{!p.sessions.length && <p className="settings-empty">No academic sessions yet. Create the first session below.</p>}</section>
-      <section className="settings-card"><h2>Add a session</h2><p>Three terms are created automatically with the standard calendar dates: First Term 1 Sep – 20 Dec, Second Term 8 Jan – 5 Apr, Third Term 22 Apr – 25 Jul.</p>
+      <section className="settings-card"><h2>Add a session</h2><p>Three terms are created automatically with the standard calendar dates: First Term 1 Sep – 20 Dec, Second Term 8 Jan – 5 Apr, Third Term 22 Apr – 25 Jul. "2026/27" and "2026-2027" also work — the title normalises to 2026/2027.</p>
         <SaveForm kind="session" payload={newSession} disabled={!p.canEdit} label="Add session"><div className="settings-grid">
-          <Field label="Session"><input required placeholder="2026/2027" maxLength={100} value={newSession.title} onChange={e => setNewSession({ ...newSession, title: e.target.value })}/><small>"2026/27" and "2026-2027" also work — the title normalises to 2026/2027.</small></Field>
+          <Field label="Session"><input required placeholder="2026/2027" maxLength={100} value={newSession.title} onChange={e => setNewSession({ ...newSession, title: e.target.value })}/></Field>
         </div><label><input type="checkbox" checked={newSession.makeCurrent} onChange={e => setNewSession({ ...newSession, makeCurrent: e.target.checked })}/> Make this the current session, starting with First Term</label></SaveForm></section></>}
     {tab === 2 && <section className="settings-card"><h2>Assessments, grading and ranking</h2><p>Save these rules together. Existing compiled grades and ranking policies remain stored as originally applied.</p>
       {!p.configured && <p className="settings-notice">Suggested starting values are shown. Review and save them to configure this school.</p>}
@@ -78,25 +78,10 @@ export function SettingsEditor(p: Props) {
       </SaveForm></section>}
     {tab === 2 && <section className="settings-card"><h2>Default exam duration</h2><p>Used to prefill new examinations. Existing papers keep their own settings.</p>
       <SaveForm kind="exam" payload={{ durationMinutes: duration }} disabled={!p.canEdit}><Field label="Default exam duration (minutes)"><input type="number" min="5" max="300" value={duration} onChange={e => setDuration(Number(e.target.value))}/></Field></SaveForm></section>}
-    {tab === 3 && <><section className="settings-card"><h2>Your signatures & automatic remarks</h2><p>Signatures belong to your linked staff record. Automatic remarks are saved when results are compiled; changing ranges never rewrites a published report.</p>
+    {tab === 3 && <section className="settings-card"><h2>Your signatures & automatic remarks</h2><p>Signatures belong to your linked staff record. Automatic remarks are saved when results are compiled; changing ranges never rewrites a published report.</p>
       {!p.roles.length && <p className="settings-empty">No eligible staff role is linked to this account. A Principal or assigned Class Teacher can maintain report details.</p>}
-      {p.roles.map(role => <PersonalEditor key={role} role={role} signature={p.signatures.find(s => s.role === role)} initialRanges={p.ranges.find(r => r.role === role)?.ranges ?? []}/>)}</section>
-      <section className="settings-card"><h2>Individual remark overrides</h2><p>Only students in your permitted scope appear here. Manual remarks survive recompilation. Reviewed, published and locked results must first be reopened through the existing lifecycle.</p>
-        <ManualEditor students={p.students} sessions={p.sessions} terms={p.terms} roles={p.roles.filter(r => r !== 'exam_officer')}/></section></>}
+      {p.roles.map(role => <PersonalEditor key={role} role={role} signature={p.signatures.find(s => s.role === role)} initialRanges={p.ranges.find(r => r.role === role)?.ranges ?? []}/>)}</section>}
   </div>;
-}
-function ManualEditor({ students, sessions, terms, roles }: Pick<Props, 'students' | 'sessions' | 'terms' | 'roles'>) {
-  const initialSession = sessions.find(s => s.isCurrent)?.id ?? sessions[0]?.id ?? 0;
-  const [value, setValue] = useState({ sessionId: initialSession, termId: terms.find(t => t.sessionId === initialSession && t.isCurrent)?.id ?? terms.find(t => t.sessionId === initialSession)?.id ?? 0,
-    studentId: 0, role: roles[0] ?? '', remark: '' });
-  if (!roles.length) return <p>No assigned report remark role.</p>;
-  return <SaveForm kind="remark" payload={value} label="Save manual remark"><div className="settings-grid">
-    <Field label="Remark session"><select value={value.sessionId} onChange={e => { const id = Number(e.target.value); setValue({ ...value, sessionId: id, termId: terms.find(t => t.sessionId === id)?.id ?? 0, studentId: 0 }); }}>{sessions.map(s => <option key={s.id} value={s.id}>{s.title}</option>)}</select></Field>
-    <Field label="Remark term"><select value={value.termId} onChange={e => setValue({ ...value, termId: Number(e.target.value) })}>{terms.filter(t => t.sessionId === value.sessionId).map(t => <option key={t.id} value={t.id}>{t.title}</option>)}</select></Field>
-    <Field label="Student"><select required value={value.studentId || ''} onChange={e => setValue({ ...value, studentId: Number(e.target.value) })}><option value="">Choose student</option>{students.filter(s => s.sessionId === value.sessionId).map(s => <option key={s.id} value={s.id}>{s.firstName} {s.lastName} · {s.admissionNumber}</option>)}</select></Field>
-    <Field label="Remark role"><select value={value.role} onChange={e => setValue({ ...value, role: e.target.value })}>{roles.map(r => <option key={r}>{r}</option>)}</select></Field>
-    <Field label="Manual remark"><textarea required maxLength={500} value={value.remark} onChange={e => setValue({ ...value, remark: e.target.value })}/></Field>
-  </div></SaveForm>;
 }
 function SignatureCanvas({ onChange }: { onChange: (dataUrl: string) => void }) {
   const ref = useRef<HTMLCanvasElement>(null);
@@ -132,7 +117,7 @@ function PersonalEditor({ role, signature, initialRanges }: { role: string; sign
       {value.type === 'upload' && <Field label="Upload image"><input type="file" name="image" accept="image/png,image/jpeg" required/><small>Up to 2 MB. Choose a new image to replace the saved signature.</small></Field>}
     </div></SaveForm>
     {role !== 'exam_officer' && <SaveForm kind="ranges" role={role} payload={ranges} label="Save remark ranges"><h4>Automatic remark ranges</h4>
-      <p>Minimum thresholds cover scores up to the next higher minimum. Start at 0. Empty remarks are auto-filled at compilation; manual remarks survive.</p>
+      <p>Set up score ranges and their corresponding remarks. When results are compiled, empty remarks on report cards are auto-filled based on the student's average score. Minimum thresholds cover scores up to the next higher minimum.</p>
       <div className="settings-table"><table><thead><tr><th>Min average</th><th>Max average</th><th>Remark</th><th></th></tr></thead><tbody>
         {ranges.map((r, i) => <tr key={i}><td><input type="number" min="0" max="100" step=".01" value={r.min} onChange={e => setRanges(ranges.map((v, j) => i === j ? { ...v, min: Number(e.target.value) } : v))}/></td>
           <td className="muted">{ranges.slice(i + 1).some(v => v.min > r.min) ? ranges.slice(i + 1).map(v => v.min).filter(m => m > r.min)[0] : 100}</td>
