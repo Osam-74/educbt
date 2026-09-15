@@ -3,34 +3,23 @@
 /**
  * The school-creation form, and the one-time credential handoff.
  *
- * The temporary password exists in exactly one place after creation: the
- * successful action result held in this component's state. It is shown once,
- * with a copy button, and there is deliberately no way to get it back — no
- * "resend", no storage. Once the page is left, it is gone; a forgotten handoff
- * means resetting the principal's password, which is the correct outcome.
+ * VISUAL REVAMP ONLY: this is the same useActionState + createSchoolAction
+ * from before — same field names, same validation, same OnboardingState
+ * shape. The temporary password still exists in exactly one place after
+ * creation (this component's action-result state), shown once with a copy
+ * button, never stored or re-fetched.
  */
 
 import { useActionState } from 'react';
 import { createSchoolAction, type OnboardingState } from './actions';
-
-const FIELD_LABELS: Record<string, string> = {
-  name: 'School name',
-  code: 'School code',
-  email: 'Contact email',
-  phone: 'Contact phone',
-  address: 'Address',
-  subdomain: 'Web address',
-  status: 'Initial status',
-  principalFirstName: 'First name',
-  principalLastName: 'Last name',
-  principalLoginId: 'Sign-in ID',
-};
+import { PaIcon } from '../../icons';
+import { CopyButton } from '../../CopyButton';
 
 function FieldError({ field, state }: { field: string; state: OnboardingState }) {
   if (state.status !== 'error') return null;
   const msg = state.fieldErrors?.[field];
   if (!msg) return null;
-  return <p className="error" style={{ marginTop: 4 }}>{msg}</p>;
+  return <p className="pa-field-error">{msg}</p>;
 }
 
 export function NewSchoolForm({ loginUrlHint }: { loginUrlHint: string | null }) {
@@ -45,123 +34,157 @@ export function NewSchoolForm({ loginUrlHint }: { loginUrlHint: string | null })
       : null;
 
     return (
-      <section className="card">
-        <h2>{school.name} is ready</h2>
-        <p>
-          The school and its first principal were created together. Give the
-          principal these details — they will choose their own password at
-          first sign-in.
-        </p>
-
-        <div className="facts">
-          <div><span>School</span><b>{school.name}</b></div>
-          <div><span>School code</span><b className="mono">{school.code}</b></div>
-          <div><span>Principal</span><b>{principal.name}</b></div>
-          <div><span>Sign-in ID</span><b className="mono">{principal.loginId}</b></div>
-          {principalLoginUrl ? (
-            <div><span>Sign-in page</span><b className="mono">{principalLoginUrl}</b></div>
-          ) : null}
+      <div id="school-created-success-modal" className="pa-success-card">
+        <div className="pa-success-head">
+          <div className="pa-success-icon"><PaIcon name="checkCircle" width={26} height={26} /></div>
           <div>
-            <span>Temporary password</span>
-            <b className="mono" data-testid="temp-password">{temporaryPassword}</b>
+            <h3 style={{ margin: 0, fontSize: 19, fontWeight: 800, color: 'var(--pa-forest)' }}>
+              {school.name} is ready
+            </h3>
+            <p style={{ margin: '2px 0 0', fontSize: 12.5, color: 'var(--pa-stone-500)' }}>
+              The school and its first principal were created together.
+            </p>
           </div>
         </div>
 
-        <p className="note" role="alert">
-          <strong>Copy this temporary password now. It will not be shown again.</strong>
-          {' '}It is not stored anywhere on the platform. If it is lost before the
-          principal signs in, their password will have to be reset.
+        <div className="pa-cred-card">
+          <div className="pa-cred-head">
+            <span>Principal credentials handover</span>
+            <span className="pa-cred-onetime">One-time view</span>
+          </div>
+          <div className="pa-cred-row"><span>School name</span><strong>{school.name} ({school.code})</strong></div>
+          <div className="pa-cred-row"><span>Principal</span><strong>{principal.name}</strong></div>
+          <div className="pa-cred-row"><span>Sign-in ID</span><strong style={{ fontFamily: 'ui-monospace, monospace', color: 'var(--pa-lime-300)' }}>{principal.loginId}</strong></div>
+          {principalLoginUrl ? (
+            <div className="pa-cred-row"><span>Sign-in page</span><strong style={{ fontFamily: 'ui-monospace, monospace' }}>{principalLoginUrl}</strong></div>
+          ) : null}
+          <div className="pa-cred-row">
+            <span>Temporary password</span>
+            <div className="pa-cred-password-box">
+              <strong data-testid="temp-password">{temporaryPassword}</strong>
+              <CopyButton value={temporaryPassword} label="Copy" />
+            </div>
+          </div>
+        </div>
+
+        <p role="alert" style={{ fontSize: 12, color: 'var(--pa-amber-800)', background: 'var(--pa-amber-100)', border: '1px solid #fcd34d', borderRadius: 12, padding: '10px 12px', margin: '16px 0 0' }}>
+          <strong>Copy this temporary password now. It will not be shown again.</strong>{' '}
+          It is not stored anywhere on the platform. If it is lost before the principal signs in, their password will have to be reset.
         </p>
 
-        <p style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-          <button
-            type="button"
-            className="copy-btn"
-            onClick={() => navigator.clipboard.writeText(temporaryPassword)}
-          >
-            Copy password
-          </button>
-          <a href="/platform/schools" className="muted">Back to schools →</a>
-        </p>
-      </section>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, marginTop: 18 }}>
+          <a href="/platform/schools/new" className="pa-btn pa-btn--ghost">Create another</a>
+          <a href="/platform/schools" className="pa-btn pa-btn--primary">
+            View in directory <PaIcon name="chevronRight" width={14} height={14} />
+          </a>
+        </div>
+      </div>
     );
   }
 
-  const err = (f: string) => (state.status === 'error' ? state.fieldErrors?.[f] : undefined);
-
   return (
-    <form action={formAction} className="card" noValidate>
-      {state.status === 'error' && Object.keys(state.fieldErrors ?? {}).length === 0 ? (
-        <p className="error">{state.message}</p>
+    <form action={formAction} className="pa-glass pa-form-card" noValidate>
+      {state.status === 'error' ? (
+        <div className="pa-alert pa-alert--error" style={{ marginBottom: 20 }}>
+          <PaIcon name="alert" width={16} height={16} />
+          {state.message}
+        </div>
       ) : null}
-      {state.status === 'error' && Object.keys(state.fieldErrors ?? {}).length > 0 ? (
-        <p className="error">{state.message}</p>
-      ) : null}
 
-      <h2>The school</h2>
+      <div className="pa-form-section">
+        <div className="pa-form-section-head">
+          <PaIcon name="building" width={18} height={18} />
+          <h2>The school</h2>
+        </div>
 
-      <label htmlFor="name">School name</label>
-      <input id="name" name="name" type="text" placeholder="e.g. Government College, Ilorin" required />
-      <FieldError field="name" state={state} />
+        <div className="pa-field">
+          <label htmlFor="name">School name <span className="pa-required">*</span></label>
+          <input id="name" name="name" type="text" required placeholder="e.g. Government College, Ilorin" className="pa-input" />
+          <FieldError field="name" state={state} />
+        </div>
 
-      <label htmlFor="code">School code</label>
-      <input id="code" name="code" type="text" placeholder="e.g. GCI-ILORIN" required />
-      <p className="muted" style={{ fontSize: 12, margin: '4px 0 10px' }}>
-        A unique short name the school will be known by. Letters, numbers and hyphens.
-      </p>
-      <FieldError field="code" state={state} />
+        <div className="pa-field">
+          <label htmlFor="code">School code <span className="pa-required">*</span></label>
+          <input id="code" name="code" type="text" required placeholder="e.g. GCI-ILORIN" className="pa-input pa-num" style={{ textTransform: 'uppercase' }} />
+          <p className="pa-field-hint">A unique short name the school will be known by. Letters, numbers and hyphens.</p>
+          <FieldError field="code" state={state} />
+        </div>
 
-      <label htmlFor="subdomain">Web address (optional)</label>
-      <input id="subdomain" name="subdomain" type="text" placeholder="e.g. gci" />
-      <p className="muted" style={{ fontSize: 12, margin: '4px 0 10px' }}>
-        {loginUrlHint
-          ? `The school will sign in at <name>.${loginUrlHint}. Set up later if unsure.`
-          : 'The school’s own sign-in address. Can be set up later.'}
-      </p>
-      <FieldError field="subdomain" state={state} />
+        <div className="pa-field">
+          <label htmlFor="subdomain">Web address <span className="pa-optional">(optional)</span></label>
+          <input id="subdomain" name="subdomain" type="text" placeholder="e.g. gci" className="pa-input pa-num" />
+          <p className="pa-field-hint">
+            The school will sign in at <code>{loginUrlHint ? '<name>' : '<name>'}.{loginUrlHint ?? 'your-platform-domain'}</code>. Set up later if unsure.
+          </p>
+          <FieldError field="subdomain" state={state} />
+        </div>
 
-      <label htmlFor="email">Contact email (optional)</label>
-      <input id="email" name="email" type="text" placeholder="e.g. office@gci.edu.ng" />
-      <FieldError field="email" state={state} />
+        <div className="pa-grid-2">
+          <div className="pa-field">
+            <label htmlFor="email">Contact email <span className="pa-optional">(optional)</span></label>
+            <input id="email" name="email" type="text" placeholder="e.g. office@gci.edu.ng" className="pa-input" />
+            <FieldError field="email" state={state} />
+          </div>
+          <div className="pa-field">
+            <label htmlFor="phone">Contact phone <span className="pa-optional">(optional)</span></label>
+            <input id="phone" name="phone" type="text" placeholder="e.g. 0803 000 0000" className="pa-input" />
+            <FieldError field="phone" state={state} />
+          </div>
+        </div>
 
-      <label htmlFor="phone">Contact phone (optional)</label>
-      <input id="phone" name="phone" type="text" placeholder="e.g. 0803 000 0000" />
-      <FieldError field="phone" state={state} />
+        <div className="pa-field">
+          <label htmlFor="address">Address <span className="pa-optional">(optional)</span></label>
+          <input id="address" name="address" type="text" placeholder="Street, town, state" className="pa-input" />
+          <FieldError field="address" state={state} />
+        </div>
 
-      <label htmlFor="address">Address (optional)</label>
-      <input id="address" name="address" type="text" placeholder="Street, town, state" />
-      <FieldError field="address" state={state} />
+        <div className="pa-field">
+          <label htmlFor="status">Initial status</label>
+          <select id="status" name="status" defaultValue="active" className="pa-select" style={{ width: '100%' }}>
+            <option value="active">Active — the school can sign in immediately</option>
+            <option value="suspended">Suspended — created but locked until activated</option>
+          </select>
+          <FieldError field="status" state={state} />
+        </div>
+      </div>
 
-      <label htmlFor="status">Initial status</label>
-      <select id="status" name="status" defaultValue="active">
-        <option value="active">Active — the school can sign in immediately</option>
-        <option value="suspended">Suspended — created but locked until activated</option>
-      </select>
-      <FieldError field="status" state={state} />
+      <div className="pa-form-section">
+        <div className="pa-form-section-head">
+          <PaIcon name="userCheck" width={18} height={18} />
+          <h2>The first principal</h2>
+        </div>
+        <p className="pa-form-section-hint">The principal signs in with a temporary password, which they change at first sign-in.</p>
 
-      <h2 style={{ marginTop: 26 }}>The first principal</h2>
-      <p className="muted" style={{ fontSize: 12.5, marginBottom: 10 }}>
-        The principal signs in with a temporary password, which they change at
-        first sign-in.
-      </p>
+        <div className="pa-grid-2">
+          <div className="pa-field">
+            <label htmlFor="principalFirstName">First name <span className="pa-required">*</span></label>
+            <input id="principalFirstName" name="principalFirstName" type="text" required placeholder="e.g. Sarah" className="pa-input" />
+            <FieldError field="principalFirstName" state={state} />
+          </div>
+          <div className="pa-field">
+            <label htmlFor="principalLastName">Last name <span className="pa-required">*</span></label>
+            <input id="principalLastName" name="principalLastName" type="text" required placeholder="e.g. Adeyemi" className="pa-input" />
+            <FieldError field="principalLastName" state={state} />
+          </div>
+        </div>
 
-      <label htmlFor="principalFirstName">First name</label>
-      <input id="principalFirstName" name="principalFirstName" type="text" placeholder="e.g. Sarah" required />
-      <FieldError field="principalFirstName" state={state} />
+        <div className="pa-field">
+          <label htmlFor="principalLoginId">Sign-in ID <span className="pa-required">*</span></label>
+          <input id="principalLoginId" name="principalLoginId" type="text" required placeholder="e.g. s.adeyemi@gci.edu.ng" className="pa-input pa-num" />
+          <p className="pa-field-hint">What the principal types at sign-in — usually their email address or staff number.</p>
+          <FieldError field="principalLoginId" state={state} />
+        </div>
+      </div>
 
-      <label htmlFor="principalLastName">Last name</label>
-      <input id="principalLastName" name="principalLastName" type="text" placeholder="e.g. Adeyemi" required />
-      <FieldError field="principalLastName" state={state} />
-
-      <label htmlFor="principalLoginId">Sign-in ID</label>
-      <input id="principalLoginId" name="principalLoginId" type="text" placeholder="e.g. s.adeyemi@gci.edu.ng" required />
-      <p className="muted" style={{ fontSize: 12, margin: '4px 0 10px' }}>
-        What the principal types at sign-in — usually their email address or staff number.
-      </p>
-      <FieldError field="principalLoginId" state={state} />
-
-      <button type="submit" disabled={pending}>
-        {pending ? 'Creating school…' : 'Create school'}
+      <button type="submit" id="submit-create-school-btn" disabled={pending} className="pa-btn pa-btn--primary">
+        {pending ? (
+          <>
+            <span className="pa-spinner" />
+            <span>Creating school…</span>
+          </>
+        ) : (
+          <span>Create school</span>
+        )}
       </button>
     </form>
   );
