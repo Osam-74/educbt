@@ -1,6 +1,8 @@
 import { requirePlatformSession } from '@/lib/platform/session';
-import Link from 'next/link';
+import { schoolsCount } from '@/lib/platform/schools';
 import { signOut } from '@/lib/auth';
+import PlatformShell from './PlatformShell';
+import './platform-shell.css';
 
 /**
  * The platform administration shell.
@@ -13,11 +15,18 @@ import { signOut } from '@/lib/auth';
  *
  * Like the portal layout: dynamic at the LAYOUT level so no page beneath can
  * ever be cached — platform pages show tenant data.
+ *
+ * VISUAL REVAMP NOTE: this renders the new PlatformShell (sidebar/header/
+ * mobile drawer — see ./PlatformShell.tsx and ./platform-shell.css). Nothing
+ * about the session guard, the sign-out mechanism, or the pages it wraps
+ * changed — `endSession` is the exact same server action the old inline
+ * layout used.
  */
 export const dynamic = 'force-dynamic';
 
 export default async function PlatformLayout({ children }: { children: React.ReactNode }) {
   const actor = await requirePlatformSession();
+  const count = await schoolsCount(actor);
 
   async function endSession() {
     'use server';
@@ -25,23 +34,8 @@ export default async function PlatformLayout({ children }: { children: React.Rea
   }
 
   return (
-    <div className="portal">
-      <header className="portal__bar">
-        <div>
-          <strong>EduCBT Platform</strong>
-          <span className="portal__who">{actor.loginId} · Platform Administrator</span>
-        </div>
-        <nav>
-          <Link href="/platform">Dashboard</Link>
-          <Link href="/platform/schools">Schools</Link>
-          <Link href="/platform/schools/new">New school</Link>
-          <Link href="/platform/account/password">Password</Link>
-          <form action={endSession} style={{ display: 'inline' }}>
-            <button type="submit" className="linkish">Sign out</button>
-          </form>
-        </nav>
-      </header>
-      <main className="portal__body">{children}</main>
-    </div>
+    <PlatformShell loginId={actor.loginId} schoolsCount={count} endSession={endSession}>
+      {children}
+    </PlatformShell>
   );
 }

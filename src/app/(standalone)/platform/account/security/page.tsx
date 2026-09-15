@@ -11,6 +11,8 @@ import {
   startTotpEnrollment,
   totpStatus,
 } from '@/lib/auth/totp-account';
+import '@/app/platform/platform-shell.css';
+import { PaIcon } from '@/app/platform/icons';
 
 export const dynamic = 'force-dynamic';
 
@@ -22,6 +24,11 @@ export const dynamic = 'force-dynamic';
  * PLACEMENT: this page deliberately lives in src/app/(standalone)/… so the
  * guarded platform layout does not wrap it (see the password page note).
  * The URL is unchanged.
+ *
+ * VISUAL REVAMP ONLY: every `action` function below (start/confirm/disable/
+ * regenerate), its cookie handling, and its redirects are byte-for-byte the
+ * same as before this pass — Agent 1 owns this behavior. Only the JSX
+ * wrapper/classNames changed, matching the platform-admin visual language.
  */
 export default async function PlatformSecurityPage({
   searchParams,
@@ -139,84 +146,93 @@ export default async function PlatformSecurityPage({
   }
 
   return (
-    <main className="auth-shell">
-      <div className="auth-card">
-        <h1>Platform account security</h1>
-        <p className="sub">
-          {enabled
-            ? 'Your sign-in asks for a code from your authenticator app.'
-            : 'A platform-admin account can reach every school. A password alone is not enough.'}
-        </p>
+    <div className="pa-shell" style={{ display: 'block', minHeight: '100dvh' }}>
+      <main style={{ display: 'grid', placeItems: 'center', minHeight: '100dvh', padding: 24 }}>
+        <div className="pa-glass pa-form-card" style={{ width: '100%', maxWidth: 460 }}>
+          <div className="pa-form-section-head" style={{ marginBottom: 4 }}>
+            <span style={{ width: 40, height: 40, borderRadius: 12, background: 'var(--pa-emerald-100)', color: 'var(--pa-emerald-900)', display: 'grid', placeItems: 'center' }}>
+              <PaIcon name="shield" width={19} height={19} />
+            </span>
+            <h2>Platform account security</h2>
+          </div>
+          <p className="pa-form-section-hint" style={{ marginBottom: 18 }}>
+            {enabled
+              ? 'Your sign-in asks for a code from your authenticator app.'
+              : 'A platform-admin account can reach every school. A password alone is not enough.'}
+          </p>
 
-        {params.error ? <p className="error">{params.error}</p> : null}
+          {params.error ? <div className="pa-alert pa-alert--error"><PaIcon name="alert" width={15} height={15} />{params.error}</div> : null}
 
-        {newCodes ? (
-          <>
-            <p className="ok">Two-factor is on. Save these one-time recovery codes now — this is the only time they are shown.</p>
-            <p className="hint">
-              Each code works once at sign-in instead of an authenticator code (it also asks you to set a
-              new password).
-            </p>
-            <ul className="recovery-codes">
-              {newCodes.map((c) => (
-                <li key={c}><code>{c}</code></li>
-              ))}
-            </ul>
-          </>
-        ) : params.done === 'enabled' ? (
-          <p className="ok">Two-factor is on. Keep your authenticator safe — turning this off later needs a valid code.</p>
-        ) : null}
-        {params.done === 'disabled' ? (
-          <p className="ok">Two-factor is off. Your password is the only gate again.</p>
-        ) : null}
+          {newCodes ? (
+            <>
+              <div className="pa-alert pa-alert--ok"><PaIcon name="checkCircle" width={15} height={15} />Two-factor is on. Save these one-time recovery codes now — this is the only time they are shown.</div>
+              <p className="pa-field-hint">
+                Each code works once at sign-in instead of an authenticator code (it also asks you to set a new password).
+              </p>
+              <ul style={{ listStyle: 'none', padding: 0, margin: '10px 0', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                {newCodes.map((c) => (
+                  <li key={c} style={{ fontFamily: 'ui-monospace, monospace', fontSize: 13, background: 'var(--pa-stone-100)', border: '1px solid var(--pa-stone-200)', borderRadius: 8, padding: '8px 10px' }}>
+                    <code>{c}</code>
+                  </li>
+                ))}
+              </ul>
+            </>
+          ) : params.done === 'enabled' ? (
+            <div className="pa-alert pa-alert--ok"><PaIcon name="checkCircle" width={15} height={15} />Two-factor is on. Keep your authenticator safe — turning this off later needs a valid code.</div>
+          ) : null}
+          {params.done === 'disabled' ? (
+            <div className="pa-alert pa-alert--ok"><PaIcon name="checkCircle" width={15} height={15} />Two-factor is off. Your password is the only gate again.</div>
+          ) : null}
 
-        {enabled ? (
-          <>
-            <p className="hint">
-              {remaining > 0
-                ? `${remaining} unused recovery code${remaining === 1 ? '' : 's'} remain.`
-                : 'No unused recovery codes remain — losing your authenticator means an owner-level recovery procedure.'}
-            </p>
-            <form action={disable}>
-              <label htmlFor="code">Code from your authenticator</label>
-              <input id="code" name="code" type="text" inputMode="numeric" pattern="[0-9]*" maxLength={6} autoComplete="one-time-code" required />
-
-              <button type="submit">Turn off two-factor</button>
-            </form>
-
-            <details className="recovery-details">
-              <summary>Regenerate recovery codes (invalidates the old ones)</summary>
-              <form action={regenerate}>
-                <label htmlFor="rcode">Code from your authenticator</label>
-                <input id="rcode" name="code" type="text" inputMode="numeric" pattern="[0-9]*" maxLength={6} autoComplete="one-time-code" required />
-                <button type="submit">Generate new codes</button>
+          {enabled ? (
+            <>
+              <p className="pa-field-hint">
+                {remaining > 0
+                  ? `${remaining} unused recovery code${remaining === 1 ? '' : 's'} remain.`
+                  : 'No unused recovery codes remain — losing your authenticator means an owner-level recovery procedure.'}
+              </p>
+              <form action={disable} className="pa-field">
+                <label htmlFor="code">Code from your authenticator</label>
+                <input id="code" name="code" type="text" inputMode="numeric" pattern="[0-9]*" maxLength={6} autoComplete="one-time-code" required className="pa-input" style={{ marginBottom: 12 }} />
+                <button type="submit" className="pa-btn pa-btn--danger pa-btn--block">Turn off two-factor</button>
               </form>
-            </details>
-          </>
-        ) : pending ? (
-          <>
-            <p><strong>1.</strong> In your authenticator app, choose “Add account”, then enter this key (or choose “enter a setup key” / “manual entry”):</p>
-            <p className="totp-secret">{pending.secret}</p>
 
-            <p className="hint">If your app asks for it: type <em>Time-based</em>, <em>6 digits</em>, <em>30 seconds</em>.</p>
-
-            <p><strong>2.</strong> Enter the six-digit code the app is showing now:</p>
-
-            <form action={confirm}>
-              <label htmlFor="code">Current code</label>
-              <input id="code" name="code" type="text" inputMode="numeric" pattern="[0-9]*" maxLength={6} autoComplete="one-time-code" required />
-
-              <button type="submit">Confirm and turn on</button>
+              <details style={{ marginTop: 16 }}>
+                <summary style={{ cursor: 'pointer', fontSize: 12.5, fontWeight: 650, color: 'var(--pa-emerald-800)' }}>
+                  Regenerate recovery codes (invalidates the old ones)
+                </summary>
+                <form action={regenerate} className="pa-field" style={{ marginTop: 10 }}>
+                  <label htmlFor="rcode">Code from your authenticator</label>
+                  <input id="rcode" name="code" type="text" inputMode="numeric" pattern="[0-9]*" maxLength={6} autoComplete="one-time-code" required className="pa-input" style={{ marginBottom: 12 }} />
+                  <button type="submit" className="pa-btn pa-btn--outline pa-btn--block">Generate new codes</button>
+                </form>
+              </details>
+            </>
+          ) : pending ? (
+            <>
+              <p style={{ fontSize: 13 }}><strong>1.</strong> In your authenticator app, choose &ldquo;Add account&rdquo;, then enter this key (or choose &ldquo;enter a setup key&rdquo; / &ldquo;manual entry&rdquo;):</p>
+              <p className="pa-num" style={{ fontSize: 14, background: 'var(--pa-stone-100)', border: '1px solid var(--pa-stone-200)', borderRadius: 10, padding: '10px 12px', wordBreak: 'break-all' }}>{pending.secret}</p>
+              <p className="pa-field-hint">If your app asks for it: type <em>Time-based</em>, <em>6 digits</em>, <em>30 seconds</em>.</p>
+              <p style={{ fontSize: 13 }}><strong>2.</strong> Enter the six-digit code the app is showing now:</p>
+              <form action={confirm} className="pa-field">
+                <label htmlFor="code">Current code</label>
+                <input id="code" name="code" type="text" inputMode="numeric" pattern="[0-9]*" maxLength={6} autoComplete="one-time-code" required className="pa-input" style={{ marginBottom: 12 }} />
+                <button type="submit" className="pa-btn pa-btn--primary pa-btn--block">Confirm and turn on</button>
+              </form>
+            </>
+          ) : (
+            <form action={start}>
+              <button type="submit" className="pa-btn pa-btn--primary pa-btn--block">Start setup</button>
             </form>
-          </>
-        ) : (
-          <form action={start}>
-            <button type="submit">Start setup</button>
-          </form>
-        )}
+          )}
 
-        <p><a href="/platform/account/password">Back to password</a></p>
-      </div>
-    </main>
+          <p style={{ marginTop: 16 }}>
+            <a href="/platform/account/password" style={{ fontSize: 12.5, color: 'var(--pa-emerald-700)', fontWeight: 600, textDecoration: 'none' }}>
+              &larr; Back to password
+            </a>
+          </p>
+        </div>
+      </main>
+    </div>
   );
 }

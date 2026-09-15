@@ -457,6 +457,7 @@ export type SchoolSummary = {
   code: string;
   status: string;
   subdomain: string | null;
+  customDomain: string | null;
   email: string | null;
   phone: string | null;
   createdAt: Date;
@@ -498,6 +499,7 @@ export async function listSchools(
         code: schema.schools.code,
         status: schema.schools.status,
         subdomain: schema.schools.subdomain,
+        customDomain: schema.schools.customDomain,
         email: schema.schools.email,
         phone: schema.schools.phone,
         createdAt: schema.schools.createdAt,
@@ -545,6 +547,16 @@ export async function listSchools(
         principalStatus: p?.status ?? null,
       };
     });
+  });
+}
+
+/** One count, one query — cheap enough to run on every /platform page for
+ * the sidebar's "Schools" badge, unlike the fuller platformOverview(). */
+export async function schoolsCount(actor: PlatformActor, readReason = 'Platform sidebar school count'): Promise<number> {
+  assertPlatformAdmin(actor);
+  return asPlatformAdmin(actor.userId, readReason, async (tx) => {
+    const [row] = await tx.select({ n: sql<number>`count(*)::int` }).from(schema.schools);
+    return Number(row?.n ?? 0);
   });
 }
 
@@ -658,6 +670,7 @@ export async function schoolDetail(
       code: school.code,
       status: school.status,
       subdomain: school.subdomain,
+      customDomain: school.customDomain,
       email: school.email,
       phone: school.phone,
       address: school.address,

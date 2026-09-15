@@ -16,14 +16,18 @@ export default async function NewSchoolPage() {
   const hint = platformDomain || (host?.split(':')[0] ?? null);
 
   return (
-    <>
-      <h1 className="page-title">Create a school</h1>
-      <p className="muted" style={{ marginTop: -6, marginBottom: 14, fontSize: 13 }}>
-        Creating a school also creates its first principal — one operation, no
-        half-created schools. The principal&apos;s temporary password is shown
-        once, at the end.
-      </p>
+    <div id="create-school-view" style={{ maxWidth: 760, margin: '0 auto' }}>
+      <div className="pa-page-head" style={{ marginBottom: 20 }}>
+        <div>
+          <h1>Create a school</h1>
+          <p>
+            Creating a school also creates its first principal — one operation, no
+            half-created schools. The principal&apos;s temporary password is shown
+            once, at the end.
+          </p>
+        </div>
+      </div>
       <NewSchoolForm loginUrlHint={hint} />
-    </>
+    </div>
   );
 }

@@ -6,6 +6,7 @@ import {
   setRecoveryEmail,
   RecoveryEmailError,
 } from '@/lib/auth/recovery-email';
+import { PaIcon } from '../../icons';
 
 export const dynamic = 'force-dynamic';
 
@@ -15,6 +16,11 @@ export const dynamic = 'force-dynamic';
  * particular usually have none — and setting or changing it requires the
  * current password, because whoever controls the address can reset the
  * password (recovery.ts).
+ *
+ * VISUAL REVAMP ONLY: this page is now wrapped by the new PlatformShell (it
+ * lives under src/app/platform/, not the (standalone) group), so it no
+ * longer renders its own <main>/auth-shell — that was a nested <main>
+ * before. All the recovery-email logic below is unchanged.
  */
 export default async function ProfilePage({
   searchParams,
@@ -58,60 +64,79 @@ export default async function ProfilePage({
   }
 
   return (
-    <main className="auth-shell">
-      <div className="auth-card">
-        <h1>Platform account</h1>
-        <p className="sub">{displayName}</p>
+    <div id="platform-account-profile-view" style={{ maxWidth: 520, margin: '0 auto' }}>
+      <div className="pa-page-head" style={{ marginBottom: 20 }}>
+        <div>
+          <h1>Platform account</h1>
+          <p>{displayName}</p>
+        </div>
+      </div>
 
-        <table className="kv">
-          <tbody>
-            <tr><th>Sign-in ID</th><td>{session.loginId}</td></tr>
-            <tr><th>Role</th><td>{session.role}</td></tr>
-            <tr>
-              <th>Two-factor</th>
-              <td>{twoFactor ? 'On' : 'Off'} — <a href="/platform/account/security">manage</a></td>
-            </tr>
-          </tbody>
-        </table>
+      <div className="pa-card pa-card-pad" style={{ marginBottom: 20 }}>
+        <div className="pa-detail-facts" style={{ background: 'none', border: 0, padding: 0 }}>
+          <div><span>Sign-in ID</span><b>{session.loginId}</b></div>
+          <div><span>Role</span><b>{session.role}</b></div>
+          <div className="pa-span-2">
+            <span>Two-factor</span>
+            <b>
+              {twoFactor ? 'On' : 'Off'} —{' '}
+              <a href="/platform/account/security" style={{ color: 'var(--pa-emerald-700)', fontWeight: 650 }}>manage</a>
+            </b>
+          </div>
+        </div>
+      </div>
 
-        <h2>Recovery email</h2>
-        {params.error ? <p className="error">{params.error}</p> : null}
-        {params.done ? <p className="ok">Saved.</p> : null}
+      <div className="pa-glass pa-form-card">
+        <div className="pa-form-section-head">
+          <PaIcon name="mail" width={18} height={18} />
+          <h2>Recovery email</h2>
+        </div>
+
+        {params.error ? <div className="pa-alert pa-alert--error"><PaIcon name="alert" width={15} height={15} />{params.error}</div> : null}
+        {params.done ? <div className="pa-alert pa-alert--ok"><PaIcon name="checkCircle" width={15} height={15} />Saved.</div> : null}
 
         <form action={save}>
-          <label htmlFor="email">
-            Email address {email && !emailVerified ? <span className="muted">(unverified)</span> : null}
-          </label>
-          <input
-            id="email"
-            name="email"
-            type="email"
-            defaultValue={email ?? ''}
-            placeholder="you@example.com — optional"
-            maxLength={320}
-          />
+          <div className="pa-field">
+            <label htmlFor="email">
+              Email address {email && !emailVerified ? <span className="pa-optional">(unverified)</span> : null}
+            </label>
+            <input
+              id="email"
+              name="email"
+              type="email"
+              defaultValue={email ?? ''}
+              placeholder="you@example.com — optional"
+              maxLength={320}
+              className="pa-input"
+            />
+          </div>
 
-          <label htmlFor="currentPassword">Current password</label>
-          <input
-            id="currentPassword"
-            name="currentPassword"
-            type="password"
-            autoComplete="current-password"
-            required
-          />
+          <div className="pa-field">
+            <label htmlFor="currentPassword">Current password</label>
+            <input
+              id="currentPassword"
+              name="currentPassword"
+              type="password"
+              autoComplete="current-password"
+              required
+              className="pa-input"
+            />
+          </div>
 
-          <button type="submit">{email ? 'Change email' : 'Save email'}</button>
+          <button type="submit" className="pa-btn pa-btn--primary">{email ? 'Change email' : 'Save email'}</button>
         </form>
 
-        <p className="hint">
-          Password-reset links go here. Clear the field to remove it — then only
-          an owner-level recovery procedure applies.
+        <p className="pa-field-hint" style={{ marginTop: 14 }}>
+          Password-reset links go here. Clear the field to remove it — then only an
+          owner-level recovery procedure applies.
         </p>
 
-        <p className="auth-links">
-          <a href="/platform/account/security">Security</a> · <a href="/platform/account/password">Password</a>
+        <p style={{ fontSize: 12, marginTop: 10 }}>
+          <a href="/platform/account/security" style={{ color: 'var(--pa-emerald-700)', fontWeight: 600, textDecoration: 'none' }}>Security</a>
+          {' · '}
+          <a href="/platform/account/password" style={{ color: 'var(--pa-emerald-700)', fontWeight: 600, textDecoration: 'none' }}>Password</a>
         </p>
       </div>
-    </main>
+    </div>
   );
 }
