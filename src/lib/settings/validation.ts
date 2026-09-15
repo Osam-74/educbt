@@ -11,6 +11,17 @@ export const profileSchema = z.object({ name: text(191).min(1), address: text(10
   email: z.union([z.literal(''), z.string().email().max(191)]), principalName: text(191),
   website: z.union([z.literal(''), z.string().url().max(191).refine(s => /^https?:\/\//i.test(s))]) }).strict();
 export const sessionSchema = z.object({ title: text(100).min(1), ...dates, makeCurrent: z.boolean() }).strict().refine(ordered, 'End date must follow start date.');
+/** Legacy normalise_title: "2026/27", "2026-2027" and "2026" all become "2026/2027". */
+export function normaliseSessionTitle(raw: string): string {
+  const m = /^(\d{4})\s*[/\-]\s*(\d{2,4})$/.exec(raw.trim());
+  if (m) {
+    const start = Number(m[1]);
+    const end = m[2]!.length === 2 ? Number(m[1]!.slice(0, 2) + m[2]) : Number(m[2]);
+    return end === start + 1 ? `${start}/${end}` : '';
+  }
+  if (/^\d{4}$/.test(raw.trim())) return `${raw.trim()}/${Number(raw.trim()) + 1}`;
+  return '';
+}
 export const termSchema = z.object({ sessionId: id, termId: id.optional(), title: text(100).min(1), position: z.number().int().min(1).max(12), ...dates }).strict().refine(ordered, 'End date must follow start date.');
 export const periodSchema = z.object({ sessionId: id, termId: id }).strict();
 export const defaultConfig = { assessmentComponents: [{ key: 'ca1', label: 'Continuous assessment', maxScore: 40, isExam: false },
@@ -27,7 +38,23 @@ export function componentStructure(rows: typeof defaultConfig.assessmentComponen
   return JSON.stringify(rows.map(({ key, maxScore, isExam }) => ({ key, maxScore, isExam })).sort((a, b) => a.key.localeCompare(b.key)));
 }
 export const signatureSchema = z.object({ role: z.enum(['principal', 'class_teacher', 'exam_officer']), name: text(191).min(1),
-  type: z.enum(['text', 'upload']), text: text(191) }).strict().refine(v => v.type !== 'text' || v.text.length > 0, 'Enter your typed signature.');
+  type: z.enum(['digital', 'text', 'upload']), text: text(191) }).strict().refine(v => v.type !== 'text' || v.text.length > 0, 'Enter your typed signature.');
+/** Legacy RemarkService::default_bands — the five seeded bands per role. */
+export function defaultRemarkBands(role: string): Array<{ min: number; remark: string }> {
+  return role === 'principal' ? [
+    { min: 0, remark: 'Poor performance. Must show significant improvement next term.' },
+    { min: 40, remark: 'Fair performance. Expected to work harder to improve.' },
+    { min: 50, remark: 'Good performance. Encouraged to strive for excellence.' },
+    { min: 60, remark: 'Very good performance. A commendable effort.' },
+    { min: 75, remark: 'Excellent performance. Highly commendable.' },
+  ] : [
+    { min: 0, remark: 'A poor result. You need to put in a lot more effort next term.' },
+    { min: 40, remark: 'A fair result. You can do much better with more focus and consistent study.' },
+    { min: 50, remark: 'A good result. Keep working hard, you are improving steadily.' },
+    { min: 60, remark: 'A very good result. Well done.' },
+    { min: 75, remark: 'An excellent result! Outstanding performance.' },
+  ];
+}
 export const rangeSchema = z.array(z.object({ min: z.number().finite().min(0).max(100), remark: text(500).min(1) }).strict()).max(30)
   .refine(rows => !rows.length || rows.some(r => r.min === 0) && new Set(rows.map(r => r.min)).size === rows.length, 'Ranges must start at 0 with unique minimum scores.');
 export function suggestedRemark(ranges: z.infer<typeof rangeSchema>, average: number) {

@@ -1,5 +1,5 @@
 'use client';
-import { useActionState, useState, type ReactNode } from 'react';
+import { useActionState, useRef, useState, type ReactNode } from 'react';
 import type { ResultConfig } from '@/lib/results/config';
 import { settingsAction } from './actions';
 
@@ -8,22 +8,24 @@ type Term = Session & { sessionId: number; position: number };
 type Props = { canEdit: boolean; school: { name: string; code: string; address: string | null; phone: string | null; email: string | null; website: string | null; principalName: string | null; logoUrl: string | null; settings: Record<string, unknown> };
   roles: string[]; students: { id: number; firstName: string; lastName: string; admissionNumber: string; sessionId: number }[]; sessions: Session[]; terms: Term[]; config: ResultConfig; configured: boolean; assessmentInUse: boolean;
   signatures: { role: string; name: string; type: string; data: string }[]; ranges: { role: string; ranges: { min: number; remark: string }[] }[] };
-function SaveForm({ kind, payload, children, disabled = false, label = 'Save changes', role }: { kind: string; payload: unknown; children: ReactNode; disabled?: boolean; label?: string; role?: string }) {
+function SaveForm({ kind, payload, children, disabled = false, label = 'Save changes', role, extra }: { kind: string; payload: unknown; children: ReactNode; disabled?: boolean; label?: string; role?: string; extra?: Record<string, string> }) {
   const [state, action, pending] = useActionState(settingsAction, { ok: false, message: '' });
   return <form action={action}><input type="hidden" name="kind" value={kind}/><input type="hidden" name="payload" value={JSON.stringify(payload)}/>
-    {role && <input type="hidden" name="role" value={role}/>}<fieldset disabled={disabled || pending}>{children}
+    {role && <input type="hidden" name="role" value={role}/>}
+    {extra && Object.entries(extra).map(([name, value]) => <input key={name} type="hidden" name={name} value={value}/>)}
+    <fieldset disabled={disabled || pending}>{children}
     {!disabled && <button className="settings-save" type="submit">{pending ? 'Saving…' : label}</button>}</fieldset>
     {state.message && <p className={state.ok ? 'settings-success' : 'settings-error'} role={state.ok ? 'status' : 'alert'}>{state.message}</p>}</form>;
 }
 function Field({ label, children }: { label: string; children: ReactNode }) { return <label className="settings-field"><span>{label}</span>{children}</label>; }
 const roleLabel = (role: string) => ({ principal: 'Principal', class_teacher: 'Class Teacher', exam_officer: 'Exam Officer' }[role] ?? role);
-const sections = ['School profile', 'Session & term', 'Assessments & grading', 'Signatures & remarks', 'Exam defaults'];
+const sections = ['School profile', 'Session & term', 'Assessments & grading', 'Signatures & remarks'];
 export function SettingsEditor(p: Props) {
   const [tab, setTab] = useState(0);
   const [profile, setProfile] = useState({ name: p.school.name, address: p.school.address ?? '', phone: p.school.phone ?? '', email: p.school.email ?? '', website: p.school.website ?? '', principalName: p.school.principalName ?? '' });
   const [sessionId, setSessionId] = useState(p.sessions.find(s => s.isCurrent)?.id ?? p.sessions[0]?.id ?? 0);
   const [termId, setTermId] = useState(p.terms.find(t => t.sessionId === sessionId && t.isCurrent)?.id ?? p.terms.find(t => t.sessionId === sessionId)?.id ?? 0);
-  const [newSession, setNewSession] = useState({ title: '', startsOn: '', endsOn: '', makeCurrent: false });
+  const [newSession, setNewSession] = useState({ title: '', makeCurrent: false });
   const [config, setConfig] = useState(p.config);
   const [duration, setDuration] = useState(Number((p.school.settings.examDefaults as { durationMinutes?: number } | undefined)?.durationMinutes ?? 60));
   const total = config.assessmentComponents.reduce((sum, c) => sum + c.maxScore, 0);
@@ -47,13 +49,10 @@ export function SettingsEditor(p: Props) {
         <Field label="Academic session"><select value={sessionId} onChange={e => { const id = Number(e.target.value); setSessionId(id); setTermId(p.terms.find(t => t.sessionId === id)?.id ?? 0); }}>{p.sessions.map(s => <option key={s.id} value={s.id}>{s.title}{s.isCurrent ? ' · current' : ''}</option>)}</select></Field>
         <Field label="Term"><select value={termId} onChange={e => setTermId(Number(e.target.value))}>{p.terms.filter(t => t.sessionId === sessionId).map(t => <option key={t.id} value={t.id}>{t.title}{t.isCurrent ? ' · current' : ''}</option>)}</select></Field>
       </div></SaveForm>{!p.sessions.length && <p className="settings-empty">No academic sessions yet. Create the first session below.</p>}</section>
-      <section className="settings-card"><h2>Add a session</h2><p>Creates First, Second and Third Term. Set term dates separately; no calendar dates are assumed.</p>
-        <SaveForm kind="session" payload={newSession} disabled={!p.canEdit} label="Create session"><div className="settings-grid">
-          <Field label="Session title"><input required placeholder="2026/2027" maxLength={100} value={newSession.title} onChange={e => setNewSession({ ...newSession, title: e.target.value })}/></Field>
-          <Field label="Session starts"><input type="date" value={newSession.startsOn} onChange={e => setNewSession({ ...newSession, startsOn: e.target.value })}/></Field>
-          <Field label="Session ends"><input type="date" value={newSession.endsOn} onChange={e => setNewSession({ ...newSession, endsOn: e.target.value })}/></Field>
-        </div><label><input type="checkbox" checked={newSession.makeCurrent} onChange={e => setNewSession({ ...newSession, makeCurrent: e.target.checked })}/> Make this the current session, starting with First Term</label></SaveForm></section>
-      <section className="settings-card"><h2>Term names and dates</h2><p>Terms already used by results cannot be renamed or reordered.</p>{p.terms.filter(t => t.sessionId === sessionId).map(t => <TermEditor key={t.id} term={t} sessionId={sessionId} canEdit={p.canEdit}/>)}{sessionId > 0 && <details><summary>Add another term</summary><TermEditor key={'new-' + sessionId} sessionId={sessionId} canEdit={p.canEdit}/></details>}</section></>}
+      <section className="settings-card"><h2>Add a session</h2><p>Three terms are created automatically with the standard calendar dates: First Term 1 Sep – 20 Dec, Second Term 8 Jan – 5 Apr, Third Term 22 Apr – 25 Jul.</p>
+        <SaveForm kind="session" payload={newSession} disabled={!p.canEdit} label="Add session"><div className="settings-grid">
+          <Field label="Session"><input required placeholder="2026/2027" maxLength={100} value={newSession.title} onChange={e => setNewSession({ ...newSession, title: e.target.value })}/><small>"2026/27" and "2026-2027" also work — the title normalises to 2026/2027.</small></Field>
+        </div><label><input type="checkbox" checked={newSession.makeCurrent} onChange={e => setNewSession({ ...newSession, makeCurrent: e.target.checked })}/> Make this the current session, starting with First Term</label></SaveForm></section></>}
     {tab === 2 && <section className="settings-card"><h2>Assessments, grading and ranking</h2><p>Save these rules together. Existing compiled grades and ranking policies remain stored as originally applied.</p>
       {!p.configured && <p className="settings-notice">Suggested starting values are shown. Review and save them to configure this school.</p>}
       {p.assessmentInUse && <p className="settings-notice">Assessment structure is in use. Labels remain editable; changing keys, maxima or the exam component requires a migration.</p>}
@@ -77,23 +76,14 @@ export function SettingsEditor(p: Props) {
         <Field label="Tiebreakers in order"><select value={config.rankingPolicy.tiebreakers.join(',') || 'none'} onChange={e => setConfig({ ...config, rankingPolicy: { ...config.rankingPolicy, tiebreakers: e.target.value.split(',') as ('exam' | 'ca' | 'none')[] } })}><option value="none">None</option><option value="exam">Exam score</option><option value="ca">CA score</option><option value="exam,ca">Exam, then CA</option><option value="ca,exam">CA, then exam</option></select></Field></div>
         <label><input type="checkbox" checked={config.rankingPolicy.rankIncomplete} onChange={e => setConfig({ ...config, rankingPolicy: { ...config.rankingPolicy, rankIncomplete: e.target.checked } })}/> Include incomplete results in ranking</label><p>Incomplete results still cannot be published. Ordinal ties ultimately use admission number for a stable order.</p>
       </SaveForm></section>}
+    {tab === 2 && <section className="settings-card"><h2>Default exam duration</h2><p>Used to prefill new examinations. Existing papers keep their own settings.</p>
+      <SaveForm kind="exam" payload={{ durationMinutes: duration }} disabled={!p.canEdit}><Field label="Default exam duration (minutes)"><input type="number" min="5" max="300" value={duration} onChange={e => setDuration(Number(e.target.value))}/></Field></SaveForm></section>}
     {tab === 3 && <><section className="settings-card"><h2>Your signatures & automatic remarks</h2><p>Signatures belong to your linked staff record. Automatic remarks are saved when results are compiled; changing ranges never rewrites a published report.</p>
       {!p.roles.length && <p className="settings-empty">No eligible staff role is linked to this account. A Principal or assigned Class Teacher can maintain report details.</p>}
       {p.roles.map(role => <PersonalEditor key={role} role={role} signature={p.signatures.find(s => s.role === role)} initialRanges={p.ranges.find(r => r.role === role)?.ranges ?? []}/>)}</section>
       <section className="settings-card"><h2>Individual remark overrides</h2><p>Only students in your permitted scope appear here. Manual remarks survive recompilation. Reviewed, published and locked results must first be reopened through the existing lifecycle.</p>
         <ManualEditor students={p.students} sessions={p.sessions} terms={p.terms} roles={p.roles.filter(r => r !== 'exam_officer')}/></section></>}
-    {tab === 4 && <section className="settings-card"><h2>Exam defaults & integrity</h2><p>Defaults prefill new exams only. Existing papers and attempts keep their original settings.</p><SaveForm kind="exam" payload={{ durationMinutes: duration }} disabled={!p.canEdit}><Field label="Default exam duration (minutes)"><input type="number" min="5" max="300" value={duration} onChange={e => setDuration(Number(e.target.value))}/></Field></SaveForm>
-      <h3>Integrity monitoring</h3><p>The engine records advisory events such as tab changes and fullscreen exits. Legacy automatic thresholds are not supported yet; no automatic penalty or termination threshold is configured here.</p></section>}
   </div>;
-}
-function TermEditor({ term, sessionId, canEdit }: { term?: Term; sessionId: number; canEdit: boolean }) {
-  const [value, setValue] = useState({ sessionId, ...(term ? { termId: term.id } : {}), title: term?.title ?? '', position: term?.position ?? 4, startsOn: term?.startsOn ?? '', endsOn: term?.endsOn ?? '' });
-  return <div className="settings-subcard"><SaveForm kind="term" payload={value} disabled={!canEdit} label={term ? 'Save term' : 'Add term'}><div className="settings-grid">
-    <Field label="Term name"><input value={value.title} required onChange={e => setValue({ ...value, title: e.target.value })}/></Field>
-    <Field label="Order"><input type="number" min="1" max="12" value={value.position} onChange={e => setValue({ ...value, position: Number(e.target.value) })}/></Field>
-    <Field label="Term starts"><input type="date" value={value.startsOn} onChange={e => setValue({ ...value, startsOn: e.target.value })}/></Field>
-    <Field label="Term ends"><input type="date" value={value.endsOn} onChange={e => setValue({ ...value, endsOn: e.target.value })}/></Field>
-  </div></SaveForm></div>;
 }
 function ManualEditor({ students, sessions, terms, roles }: Pick<Props, 'students' | 'sessions' | 'terms' | 'roles'>) {
   const initialSession = sessions.find(s => s.isCurrent)?.id ?? sessions[0]?.id ?? 0;
@@ -108,16 +98,47 @@ function ManualEditor({ students, sessions, terms, roles }: Pick<Props, 'student
     <Field label="Manual remark"><textarea required maxLength={500} value={value.remark} onChange={e => setValue({ ...value, remark: e.target.value })}/></Field>
   </div></SaveForm>;
 }
+function SignatureCanvas({ onChange }: { onChange: (dataUrl: string) => void }) {
+  const ref = useRef<HTMLCanvasElement>(null);
+  const drawing = useRef(false);
+  const ctx = () => { const c = ref.current!.getContext('2d')!; c.strokeStyle = '#1e293b'; c.lineWidth = 2; c.lineCap = 'round'; return c; };
+  const point = (e: React.PointerEvent) => { const c = ref.current!; const r = c.getBoundingClientRect();
+    return { x: (e.clientX - r.left) * (c.width / r.width), y: (e.clientY - r.top) * (c.height / r.height) }; };
+  return <div className="settings-canvas-wrap">
+    <canvas ref={ref} width={400} height={150} aria-label="Signature drawing area"
+      onPointerDown={e => { drawing.current = true; const c = ctx(); const q = point(e); c.beginPath(); c.moveTo(q.x, q.y); }}
+      onPointerMove={e => { if (!drawing.current) return; const c = ctx(); const q = point(e); c.lineTo(q.x, q.y); c.stroke(); }}
+      onPointerUp={() => { if (drawing.current) { drawing.current = false; onChange(ref.current!.toDataURL()); } }}
+      onPointerLeave={() => { if (drawing.current) { drawing.current = false; onChange(ref.current!.toDataURL()); } }}/>
+    <button type="button" className="settings-clear" onClick={() => { const c = ref.current!; c.getContext('2d')!.clearRect(0, 0, c.width, c.height); onChange(''); }}>Clear</button>
+  </div>;
+}
 function PersonalEditor({ role, signature, initialRanges }: { role: string; signature?: Props['signatures'][number]; initialRanges: { min: number; remark: string }[] }) {
-  const [value, setValue] = useState({ role, name: signature?.name ?? '', type: signature?.type ?? 'text', text: signature?.type === 'text' ? signature.data : '' });
+  // Legacy signatures.php: draw on canvas, type a text signature, or upload an image.
+  const [value, setValue] = useState({ role, name: signature?.name ?? '', type: signature?.type ?? 'digital', text: signature?.type === 'text' ? signature.data : '' });
+  const [drawn, setDrawn] = useState('');
   const [ranges, setRanges] = useState(initialRanges);
-  return <div className="settings-subcard"><h3>{roleLabel(role)}</h3><SaveForm kind="signature" payload={value} label="Save my signature"><div className="settings-grid">
-    <Field label="Signature display name"><input value={value.name} required maxLength={191} onChange={e => setValue({ ...value, name: e.target.value })}/></Field>
-    <Field label="Signature style"><select value={value.type} onChange={e => setValue({ ...value, type: e.target.value })}><option value="text">Typed signature</option><option value="upload">Upload image</option></select></Field>
-    {value.type === 'text' ? <Field label="Typed signature"><input required maxLength={191} value={value.text} onChange={e => setValue({ ...value, text: e.target.value })}/><span className="settings-signature">{value.text}</span></Field> : <Field label="Signature PNG or JPEG"><input type="file" name="image" accept="image/png,image/jpeg" required/><small>Up to 2 MB. Choose a new image to replace the saved signature.</small></Field>}
-    {signature?.type === 'upload' && <img className="settings-signature-image" src={signature.data} alt="Your saved signature"/>}
-  </div></SaveForm>{role !== 'exam_officer' && <SaveForm kind="ranges" role={role} payload={ranges} label="Save remark ranges"><h4>Automatic remark ranges</h4><p>Minimum thresholds cover scores up to the next higher minimum. Start at 0. Empty ranges disable your automatic suggestions.</p>
-    {ranges.map((r, i) => <div className="settings-range" key={i}><Field label="Minimum average"><input type="number" min="0" max="100" step=".01" value={r.min} onChange={e => setRanges(ranges.map((v, j) => i === j ? { ...v, min: Number(e.target.value) } : v))}/></Field><Field label="Remark"><textarea required maxLength={500} value={r.remark} onChange={e => setRanges(ranges.map((v, j) => i === j ? { ...v, remark: e.target.value } : v))}/></Field><button type="button" onClick={() => setRanges(ranges.filter((_, j) => i !== j))}>Remove</button></div>)}
-    <button type="button" disabled={ranges.length >= 30} onClick={() => setRanges([...ranges, { min: 0, remark: '' }])}>Add remark range</button>
-  </SaveForm>}</div>;
+  return <div className="settings-subcard"><h3>{roleLabel(role)}</h3>
+    {signature && <div className="settings-current-signature"><strong>Current signature:</strong><br/>
+      {signature.type === 'text'
+        ? <span className="settings-signature">{signature.data}</span>
+        : <img className="settings-signature-image" src={signature.data} alt="Current signature"/>}
+      <small>{signature.name}</small></div>}
+    <SaveForm kind="signature" payload={value} label="Save signature" extra={value.type === 'digital' ? { signatureData: drawn } : undefined}><div className="settings-grid">
+      <Field label="Display name"><input value={value.name} required maxLength={191} placeholder="e.g. Mr. A. Johnson" onChange={e => setValue({ ...value, name: e.target.value })}/></Field>
+      <Field label="Method"><select value={value.type} onChange={e => setValue({ ...value, type: e.target.value })}><option value="digital">Draw on canvas</option><option value="text">Type a text signature</option><option value="upload">Upload image</option></select></Field>
+      {value.type === 'digital' && <Field label="Draw signature"><SignatureCanvas onChange={setDrawn}/><small>Draw with your mouse, finger or stylus.</small></Field>}
+      {value.type === 'text' && <Field label="Type your signature"><input required maxLength={191} value={value.text} placeholder="Sign here..." className="settings-signature-input" onChange={e => setValue({ ...value, text: e.target.value })}/><span className="settings-signature">{value.text}</span><small>Rendered in a script font on the report sheet.</small></Field>}
+      {value.type === 'upload' && <Field label="Upload image"><input type="file" name="image" accept="image/png,image/jpeg" required/><small>Up to 2 MB. Choose a new image to replace the saved signature.</small></Field>}
+    </div></SaveForm>
+    {role !== 'exam_officer' && <SaveForm kind="ranges" role={role} payload={ranges} label="Save remark ranges"><h4>Automatic remark ranges</h4>
+      <p>Minimum thresholds cover scores up to the next higher minimum. Start at 0. Empty remarks are auto-filled at compilation; manual remarks survive.</p>
+      <div className="settings-table"><table><thead><tr><th>Min average</th><th>Max average</th><th>Remark</th><th></th></tr></thead><tbody>
+        {ranges.map((r, i) => <tr key={i}><td><input type="number" min="0" max="100" step=".01" value={r.min} onChange={e => setRanges(ranges.map((v, j) => i === j ? { ...v, min: Number(e.target.value) } : v))}/></td>
+          <td className="muted">{ranges.slice(i + 1).some(v => v.min > r.min) ? ranges.slice(i + 1).map(v => v.min).filter(m => m > r.min)[0] : 100}</td>
+          <td><textarea required maxLength={500} value={r.remark} onChange={e => setRanges(ranges.map((v, j) => i === j ? { ...v, remark: e.target.value } : v))}/></td>
+          <td><button type="button" onClick={() => setRanges(ranges.filter((_, j) => i !== j))}>Delete</button></td></tr>)}
+      </tbody></table></div>
+      <button type="button" disabled={ranges.length >= 30} onClick={() => setRanges([...ranges, { min: 0, remark: '' }])}>Add remark range</button>
+    </SaveForm>}</div>;
 }

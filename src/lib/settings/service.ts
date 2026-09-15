@@ -2,7 +2,7 @@ import { and, asc, eq, sql, inArray } from 'drizzle-orm';
 import { forSchool, schema, type Tx } from '@/db';
 import type { Actor } from '@/lib/session';
 import { resultConfig } from '@/lib/results/config';
-import { profileSchema, sessionSchema, termSchema, periodSchema, parseAcademic, componentStructure, signatureSchema, rangeSchema, examDefaultsSchema } from './validation';
+import { profileSchema, sessionSchema, termSchema, periodSchema, parseAcademic, componentStructure, signatureSchema, rangeSchema, examDefaultsSchema, normaliseSessionTitle, defaultRemarkBands } from './validation';
 
 export class SettingsError extends Error {}
 export const fail = (message: string): never => { throw new SettingsError(message); };
@@ -52,7 +52,22 @@ export async function settingsView(actor: Actor) {
     return { school, roles, students, sessions: await tx.select().from(schema.academicSessions).orderBy(asc(schema.academicSessions.title)),
       terms: await tx.select().from(schema.terms).orderBy(asc(schema.terms.position)),
       signatures: actor.staffId ? await tx.select().from(schema.staffSignatures).where(eq(schema.staffSignatures.staffId, actor.staffId)) : [],
-      ranges: actor.staffId ? await tx.select().from(schema.staffRemarkRanges).where(eq(schema.staffRemarkRanges.staffId, actor.staffId)) : [],
+      ranges: actor.staffId ? await (async () => {
+        const staffId = actor.staffId;
+        if (!staffId) return [];
+        const rows = await tx.select().from(schema.staffRemarkRanges).where(eq(schema.staffRemarkRanges.staffId, staffId));
+        // Legacy seed_defaults: a role with no ranges gets the plugin's five
+        // default bands, written to the DB so compiled reports auto-remark.
+        for (const role of ['principal', 'class_teacher'] as const) {
+          if (roles.includes(role) && !rows.some(r => r.role === role && r.ranges.length)) {
+            const change = { schoolId: actor.schoolId, staffId, role, ranges: defaultRemarkBands(role), updatedAt: new Date() };
+            const [row] = await tx.insert(schema.staffRemarkRanges).values(change)
+              .onConflictDoUpdate({ target: [schema.staffRemarkRanges.schoolId, schema.staffRemarkRanges.staffId, schema.staffRemarkRanges.role], set: change }).returning();
+            rows.push(row!);
+          }
+        }
+        return rows;
+      })() : [],
       assessmentInUse: Boolean((await tx.select({ id: schema.assessmentScores.id }).from(schema.assessmentScores).limit(1)).length ||
         (await tx.select({ id: schema.subjectResults.id }).from(schema.subjectResults).limit(1)).length) };
   });
@@ -111,16 +126,29 @@ export async function selectPeriod(actor: Actor, input: unknown) {
   return forSchool(actor.schoolId, async tx => { await configLock(tx, actor.schoolId); await settingsAccess(tx, actor, true); await setPeriod(tx, actor, value.sessionId, value.termId); });
 }
 export async function createSession(actor: Actor, input: unknown) {
-  const value = sessionSchema.parse(input);
+  const parsed = sessionSchema.parse(input);
+  // Legacy normalise_title: "2026/27", "2026-2027", "2026" all become "2026/2027".
+  const title = normaliseSessionTitle(parsed.title);
+  if (!title) fail('Enter a session like 2026/2027.');
+  const startYear = Number(title.slice(0, 4));
   return forSchool(actor.schoolId, async tx => {
     await configLock(tx, actor.schoolId); await settingsAccess(tx, actor, true);
-    if ((await tx.select({ id: schema.academicSessions.id }).from(schema.academicSessions).where(eq(schema.academicSessions.title, value.title))).length) fail('That session already exists.');
-    const [session] = await tx.insert(schema.academicSessions).values({ schoolId: actor.schoolId, title: value.title,
-      startsOn: value.startsOn ? new Date(value.startsOn) : null, endsOn: value.endsOn ? new Date(value.endsOn) : null }).returning();
-    const terms = await tx.insert(schema.terms).values(['First Term', 'Second Term', 'Third Term'].map((title, i) => ({
-      schoolId: actor.schoolId, sessionId: session!.id, title, position: i + 1 }))).returning();
+    if ((await tx.select({ id: schema.academicSessions.id }).from(schema.academicSessions).where(eq(schema.academicSessions.title, title))).length) fail('That session already exists.');
+    // Legacy AcademicYearService: the session runs 1 Sept – 31 Jul and the three
+    // terms carry the standard Nigerian calendar dates.
+    const [session] = await tx.insert(schema.academicSessions).values({ schoolId: actor.schoolId, title,
+      startsOn: parsed.startsOn ? new Date(parsed.startsOn) : new Date(`${startYear}-09-01`),
+      endsOn: parsed.endsOn ? new Date(parsed.endsOn) : new Date(`${startYear + 1}-07-31`) }).returning();
+    const termDates = [
+      [`${startYear}-09-01`, `${startYear}-12-20`],
+      [`${startYear + 1}-01-08`, `${startYear + 1}-04-05`],
+      [`${startYear + 1}-04-22`, `${startYear + 1}-07-25`],
+    ];
+    const terms = await tx.insert(schema.terms).values(['First Term', 'Second Term', 'Third Term'].map((termTitle, i) => ({
+      schoolId: actor.schoolId, sessionId: session!.id, title: termTitle, position: i + 1,
+      startsOn: new Date(termDates[i]![0]!), endsOn: new Date(termDates[i]![1]!) }))).returning();
     await audit(tx, actor, 'session_created', null, { session, terms });
-    if (value.makeCurrent) await setPeriod(tx, actor, session!.id, terms[0]!.id);
+    if (parsed.makeCurrent) await setPeriod(tx, actor, session!.id, terms[0]!.id);
     return session!;
   });
 }
@@ -146,7 +174,7 @@ export async function saveTerm(actor: Actor, input: unknown) {
 }
 export async function saveSignature(actor: Actor, input: unknown, image?: string) {
   const value = signatureSchema.parse(input);
-  if (value.type === 'upload' && (!image?.startsWith('data:image/png;base64,') || image.length > 400000)) fail('Choose a PNG or JPEG signature image.');
+  if (value.type !== 'text' && (!image?.startsWith('data:image/png;base64,') || image.length > 400000)) fail('Choose a PNG or JPEG signature image.');
   return forSchool(actor.schoolId, async tx => {
     await configLock(tx, actor.schoolId); await settingsAccess(tx, actor);
     const staff = await ownStaff(tx, actor, value.role);

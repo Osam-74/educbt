@@ -131,6 +131,13 @@ button[type='submit']:disabled { opacity: .6; cursor: default; }
 .tbl tr:last-child td { border-bottom: 0; }
 .tbl a { color: var(--forest); }
 .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; }
+.table-wrap { overflow-x: auto; }
+/* Newer/Older pager (legacy activity.php) */
+.pager { display: flex; gap: 14px; align-items: center; margin-top: 14px; }
+.pager__link { padding: 8px 16px; border: 1.5px solid var(--line); border-radius: 9px;
+               background: var(--white); color: var(--ink); font-size: 13px; font-weight: 600;
+               text-decoration: none; cursor: pointer; }
+.pager__link:disabled { opacity: .45; cursor: default; }
 
 .filters { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; align-items: center; }
 .filters input[type='search'] { flex: 1 1 240px; margin: 0; padding: 9px 11px;

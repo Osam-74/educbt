@@ -26,5 +26,10 @@
 .settings-empty{padding:18px;background:#f4f7f4;border-radius:7px;color:#6e7e73}
 .settings-table{overflow:auto;margin:18px 0}.settings-table table{width:100%;border-collapse:collapse;min-width:690px}.settings-table th{text-align:left;font-size:12px;color:#56725f;padding:10px;background:#f1f6f2}.settings-table td{padding:9px 7px;border-bottom:1px solid #e5ece7;min-width:90px}.settings-table td:first-child{min-width:140px}
 .settings-subcard{border-top:1px solid #e2eae4;margin-top:22px;padding-top:12px}.settings-range{display:grid;grid-template-columns:140px 1fr auto;gap:15px;align-items:center;margin:18px 0}
-.settings-signature{font-family:'Segoe Script',cursive;font-size:28px}.settings-signature-image{max-width:220px;max-height:80px;object-fit:contain}
+.settings-signature{font-family:'Brush Script MT','Segoe Script',cursive;font-size:28px}
+.settings-signature-input{font-family:'Brush Script MT','Segoe Script',cursive;font-size:24px;height:48px}
+.settings-current-signature{margin:0 0 14px;padding:16px;border:1px solid var(--line,#e2e8f0);border-radius:8px}
+.settings-current-signature small{display:block;margin-top:6px;font-size:14px;opacity:.7}
+.settings-canvas-wrap canvas{border:1px solid #cbd5e1;border-radius:8px;background:#fff;cursor:crosshair;touch-action:none;max-width:100%}
+.settings-clear{margin-top:8px}.settings-signature-image{max-width:220px;max-height:80px;object-fit:contain}
 @media(max-width:700px){.settings-heading{display:block}.settings-heading h1{font-size:27px}.settings-badge{display:inline-block;margin-top:16px}.settings-card{padding:18px}.settings-grid{grid-template-columns:1fr;gap:17px}.settings-range{grid-template-columns:1fr}.settings-tabs button{padding:10px;font-size:13px}.settings-card .settings-save{width:100%}}

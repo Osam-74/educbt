@@ -350,27 +350,38 @@ export type OnboardedSchool = {
 
 
 /**
- * Nigerian school-year convention: the academic year runs September to
+ * Legacy AcademicYearService parity: the academic year runs September to
  * August, so from September the session is "YYYY/(YYYY+1)" and before it
  * "(YYYY-1)/YYYY". A brand-new school gets this session plus the three
- * standard terms (First/Second/Third) with First Term current, so the
- * principal's dashboard and every term selector work on first sign-in.
- * Principals rename, re-date, or extend terms in /portal/settings.
+ * standard terms (First/Second/Third) with the legacy calendar dates and
+ * First Term current, so the principal's dashboard and every term selector
+ * work on first sign-in. Terms follow the plugin's fixed dates; schools add
+ * later sessions in /portal/settings.
  */
 async function seedDefaultAcademicPeriod(tx: Tx, schoolId: number): Promise<void> {
   const now = new Date();
   const year = now.getFullYear();
-  const title = now.getMonth() >= 8 ? `${year}/${year + 1}` : `${year - 1}/${year}`;
+  const startYear = now.getMonth() >= 8 ? year : year - 1;
+  const title = `${startYear}/${startYear + 1}`;
   const [session] = await tx.insert(schema.academicSessions).values({
     schoolId,
     title,
+    startsOn: new Date(`${startYear}-09-01`),
+    endsOn: new Date(`${startYear + 1}-07-31`),
     isCurrent: true,
   }).returning({ id: schema.academicSessions.id });
+  const termDates = [
+    [`${startYear}-09-01`, `${startYear}-12-20`],
+    [`${startYear + 1}-01-08`, `${startYear + 1}-04-05`],
+    [`${startYear + 1}-04-22`, `${startYear + 1}-07-25`],
+  ] as const;
   await tx.insert(schema.terms).values(['First Term', 'Second Term', 'Third Term'].map((t, i) => ({
     schoolId,
     sessionId: Number(session!.id),
     title: t,
     position: i + 1,
+    startsOn: new Date(termDates[i]![0]),
+    endsOn: new Date(termDates[i]![1]),
     isCurrent: i === 0,
   })));
 }

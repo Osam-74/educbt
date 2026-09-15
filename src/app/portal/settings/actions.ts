@@ -15,7 +15,10 @@ export async function settingsAction(_previous: SettingsState, form: FormData): 
     if (raw.length > 50000) throw new SettingsError('The settings submission is too large.');
     const value = JSON.parse(raw);
     const file = form.get('image');
-    const image = file instanceof File && file.size ? await normalizeImage(file) : undefined;
+    // "Draw on canvas" signatures arrive as a data URL, uploads as a File.
+    const canvasData = String(form.get('signatureData') ?? '');
+    const image = file instanceof File && file.size ? await normalizeImage(file)
+      : canvasData.startsWith('data:image/png;base64,') && canvasData.length <= 400000 ? canvasData : undefined;
     switch (kind) {
       case 'profile': await saveProfile(actor, value, form.get('removeImage') === 'true' ? null : image); break;
       case 'academic': await saveAcademic(actor, value); break;

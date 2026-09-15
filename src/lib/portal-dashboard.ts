@@ -1,4 +1,4 @@
-import { and, asc, count, desc, eq, sql } from 'drizzle-orm';
+import { and, asc, count, desc, eq, like, ne, sql } from 'drizzle-orm';
 import { forSchool, schema } from '@/db';
 import type { Actor } from '@/lib/session';
 import { resultAccess } from '@/lib/results/workflow';
@@ -44,7 +44,7 @@ export async function schoolDashboard(actor: Actor) {
       .where(and(eq(r.schoolId, actor.schoolId), eq(r.sessionId, calendar.session.id), eq(r.termId, calendar.term.id)))
       .groupBy(c.id, c.displayName, r.state).orderBy(asc(c.displayName), asc(r.state)) : [];
     const activity = canViewActivity(actor) ? await tx.select({ id: schema.auditLog.id, action: schema.auditLog.action, createdAt: schema.auditLog.createdAt }).from(schema.auditLog)
-      .where(eq(schema.auditLog.schoolId, actor.schoolId)).orderBy(desc(schema.auditLog.createdAt), desc(schema.auditLog.id)).limit(5) : null;
+      .where(schoolActivity(actor.schoolId)).orderBy(desc(schema.auditLog.createdAt), desc(schema.auditLog.id)).limit(5) : null;
     return { ...calendar, students: students!.n, staff: staff!.n, classes: classes!.n, pendingApprovals: pending!.n, pipeline, activity };
   });
 }
@@ -57,22 +57,63 @@ export async function schoolDashboard(actor: Actor) {
  */
 export const ACTIVITY_PER_PAGE = 20;
 
-export async function activityPage(actor: Actor, page: number) {
+/**
+ * The school activity log records what happened INSIDE the school portal.
+ * Platform-side events (school onboarding by a platform admin, manager
+ * suspensions...) are written against the school row but belong to the
+ * platform trail — a principal must not see the platform admin's trail.
+ */
+export function schoolActivity(schoolId: number) {
+  return and(eq(schema.auditLog.schoolId, schoolId), ne(schema.auditLog.actorRole, 'platform_admin'));
+}
+
+/** Legacy templates/portal/school/activity.php: filter dropdowns are fed by
+ *  the school's own trail — distinct actions, distinct actors. */
+export async function activityFilters(actor: Actor) {
   if (!canViewActivity(actor)) return null;
   return forSchool(actor.schoolId, async tx => {
-    const [totalRow] = await tx.select({ n: count() }).from(schema.auditLog).where(eq(schema.auditLog.schoolId, actor.schoolId));
+    const actions = await tx.selectDistinct({ action: schema.auditLog.action })
+      .from(schema.auditLog)
+      .where(schoolActivity(actor.schoolId))
+      .orderBy(asc(schema.auditLog.action));
+    const actors = await tx.selectDistinct({ id: schema.auditLog.actorUserId, loginId: schema.users.loginId })
+      .from(schema.auditLog)
+      .innerJoin(schema.users, eq(schema.users.id, schema.auditLog.actorUserId))
+      .where(schoolActivity(actor.schoolId))
+      .orderBy(asc(schema.users.loginId));
+    return {
+      actions: actions.map(a => a.action),
+      actors: actors.map(a => ({ id: a.id, label: a.loginId })),
+    };
+  });
+}
+
+export async function activityPage(actor: Actor, page: number, filter?: { action?: string; userId?: number }) {
+  if (!canViewActivity(actor)) return null;
+  return forSchool(actor.schoolId, async tx => {
+    const where = filter?.action
+      ? and(schoolActivity(actor.schoolId), like(schema.auditLog.action, `%${filter.action}%`))
+      : schoolActivity(actor.schoolId);
+    const scoped = filter?.userId && filter.userId > 0
+      ? and(where, eq(schema.auditLog.actorUserId, filter.userId))
+      : where;
+    const [totalRow] = await tx.select({ n: count() }).from(schema.auditLog).where(scoped);
     const total = totalRow!.n;
     const pages = Math.max(1, Math.ceil(total / ACTIVITY_PER_PAGE));
     const safePage = Math.min(Math.max(1, page), pages);
     const rows = await tx.select({
       id: schema.auditLog.id,
       action: schema.auditLog.action,
+      actorLoginId: schema.users.loginId,
       actorRole: schema.auditLog.actorRole,
       entityType: schema.auditLog.entityType,
+      entityId: schema.auditLog.entityId,
+      reason: schema.auditLog.reason,
       createdAt: schema.auditLog.createdAt,
     })
       .from(schema.auditLog)
-      .where(eq(schema.auditLog.schoolId, actor.schoolId))
+      .leftJoin(schema.users, eq(schema.users.id, schema.auditLog.actorUserId))
+      .where(scoped)
       .orderBy(desc(schema.auditLog.createdAt), desc(schema.auditLog.id))
       .limit(ACTIVITY_PER_PAGE)
       .offset((safePage - 1) * ACTIVITY_PER_PAGE);
