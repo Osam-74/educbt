@@ -386,3 +386,68 @@ fieldset > legend { font-size: 13px; font-weight: 600; color: var(--muted); marg
 .message.mine { background: var(--white); border-color: var(--green, #1a7f37); }
 .message p { margin: 4px 0; }
 .message strong { display: block; }
+
+/* ── Auth pages: sign-in, two-step, forgot/reset password ─────────────────── */
+
+.password-row { position: relative; }
+.password-row input { padding-right: 58px; }
+.password-toggle {
+  position: absolute;
+  right: 4px;
+  top: 50%;
+  transform: translateY(-50%);
+  border: 0;
+  background: none;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+  padding: 6px 10px;
+  cursor: pointer;
+}
+.password-toggle:hover { color: var(--ink); }
+
+.auth-card .notice {
+  margin: 0 0 18px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #f4faf4;
+  color: #1f5f20;
+  font-size: 14px;
+}
+
+.auth-logo {
+  display: block;
+  max-height: 56px;
+  max-width: 100%;
+  margin: 0 auto 12px;
+}
+
+.auth-links { margin: 16px 0 0; font-size: 14px; }
+.auth-links a { color: var(--ink); }
+
+.recovery-details { margin-top: 16px; }
+.recovery-details summary {
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 13px;
+  margin-bottom: 10px;
+}
+.recovery-details input { margin-bottom: 10px; }
+
+button.linklike {
+  border: 0;
+  background: none;
+  color: var(--ink);
+  font-size: 14px;
+  text-decoration: underline;
+  padding: 0;
+  cursor: pointer;
+}
+ul.recovery-codes { list-style: none; padding: 0; margin: 12px 0; }
+ul.recovery-codes li { font-family: ui-monospace, monospace; font-size: 15px; letter-spacing: 1px; padding: 4px 0; }
+.auth-card .ok { margin: 0 0 16px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 6px; background: #f4faf4; color: #1f5f20; font-size: 14px; }
+
+table.kv { width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 14px; }
+table.kv th { text-align: left; color: var(--muted); font-weight: 600; padding: 4px 12px 4px 0; white-space: nowrap; }
+table.kv td { padding: 4px 0; }

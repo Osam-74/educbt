@@ -26,7 +26,8 @@ import postgres from 'postgres';
 import { eq } from 'drizzle-orm';
 import * as core from './schema/core';
 import * as people from './schema/people';
-import { authenticateCredentials } from '@/lib/auth/credentials';
+import { authenticateCredentials, verifySecondFactor } from '@/lib/auth/credentials';
+import { remainingRecoveryCodes } from '@/lib/auth/recovery-codes';
 import { hashPassword } from '@/lib/auth/password';
 import { verifyTotp, currentTotpCode, generateTotpSecret } from '@/lib/auth/totp';
 import {
@@ -152,16 +153,19 @@ async function main() {
     const mid = await authenticateCredentials({
       loginId: 'TOTP-PRIN', password: PASSWORD, schoolId,
     });
-    check('unconfirmed secret does not gate sign-in', mid.id === principalId);
+    check('unconfirmed secret does not gate sign-in', mid.user.id === principalId);
 
     await rejectsTotp('confirm rejects a wrong code', 'not recognised',
       () => confirmTotpEnrollment(session, '000000'));
     check('a wrong confirm leaves two-factor off',
       (await totpStatus(session)).enabled === false);
 
-    await confirmTotpEnrollment(session, currentTotpCode(started.secret));
+    const { recoveryCodes } = await confirmTotpEnrollment(session, currentTotpCode(started.secret));
     check('a correct confirm turns two-factor on',
       (await totpStatus(session)).enabled === true);
+    check('confirm issues 8 one-time recovery codes',
+      recoveryCodes.length === 8 && recoveryCodes.every((c) => /^[A-Z2-9]{5}-[A-Z2-9]{5}$/.test(c)),
+      JSON.stringify(recoveryCodes.slice(0, 1)));
     check('no pending enrollment remains once enabled',
       (await pendingEnrollment(session)) === null);
 
@@ -173,41 +177,38 @@ async function main() {
     await rejectsTotp('another tenant cannot touch this account', 'not found',
       () => startTotpEnrollment({ id: principalId, schoolId: schoolId + 999_999 }));
 
-    // ── 3. The sign-in gate ──────────────────────────────────────────────────
-    let asked = '';
-    try {
-      await authenticateCredentials({ loginId: 'TOTP-PRIN', password: PASSWORD, schoolId });
-    } catch (e) {
-      asked = (e as Error).message;
-    }
-    check('password-only sign-in is refused for an enabled account',
-      asked.includes('Enter the code from your authenticator app'), asked);
+    // ── 3. The staged sign-in gate ───────────────────────────────────────────
+    // Stage 1: password only. The account has two-factor on, so NO session
+    // yet — just the instruction to go to /sign-in/two-step.
+    const staged = await authenticateCredentials({
+      loginId: 'TOTP-PRIN', password: PASSWORD, schoolId,
+    });
+    check('stage 1 passes and asks for the second factor',
+      staged.secondFactorRequired === true && staged.user.id === principalId);
 
     const [noBurn] = await odb
       .select({ attempts: people.users.failedAttempts })
       .from(people.users).where(eq(people.users.id, principalId)).limit(1);
-    check('a missing code does not burn the lockout budget', noBurn!.attempts === 0);
+    check('stage 1 does not reset or burn the lockout budget', noBurn!.attempts === 0);
+
+    const stage2 = { userId: principalId, schoolId, loginId: 'TOTP-PRIN' };
 
     let wrongCode = '';
     try {
-      await authenticateCredentials({
-        loginId: 'TOTP-PRIN', password: PASSWORD, schoolId, totpCode: '000000',
-      });
+      await verifySecondFactor(stage2, '000000');
     } catch (e) {
       wrongCode = (e as Error).message;
     }
-    check('a wrong code is refused', wrongCode.includes('not recognised'), wrongCode);
+    check('a wrong code is refused at stage 2', wrongCode.includes('not recognised'), wrongCode);
 
     const [afterWrong] = await odb
       .select({ attempts: people.users.failedAttempts })
       .from(people.users).where(eq(people.users.id, principalId)).limit(1);
     check('a wrong code burns the same budget as a wrong password', afterWrong!.attempts === 1);
 
-    const signedIn = await authenticateCredentials({
-      loginId: 'TOTP-PRIN', password: PASSWORD, schoolId,
-      totpCode: currentTotpCode(started.secret),
-    });
-    check('a correct code signs in', signedIn.id === principalId);
+    const signedIn = await verifySecondFactor(stage2, currentTotpCode(started.secret));
+    check('a correct code completes the staged sign-in',
+      signedIn.user.id === principalId && signedIn.recoveryCodeUsed === false);
 
     const [afterOk] = await odb
       .select({ attempts: people.users.failedAttempts })
@@ -215,11 +216,36 @@ async function main() {
     check('success resets the counters', afterOk!.attempts === 0);
 
     // A code from the previous step signs in too (drift tolerance at the gate).
-    const drifted = await authenticateCredentials({
-      loginId: 'TOTP-PRIN', password: PASSWORD, schoolId,
-      totpCode: currentTotpCode(started.secret, new Date(Date.now() - 30_000)),
-    });
-    check('a previous-step code signs in (clock drift)', drifted.id === principalId);
+    const drifted = await verifySecondFactor(
+      stage2, currentTotpCode(started.secret, new Date(Date.now() - 30_000)));
+    check('a previous-step code signs in (clock drift)', drifted.user.id === principalId);
+
+    // ── 3b. Recovery codes ─────────────────────────────────────────────────
+    check('eight recovery codes remain', (await remainingRecoveryCodes(session)) === 8);
+
+    let wrongRecovery = '';
+    try {
+      await verifySecondFactor(stage2, 'ZZZZZ-ZZZZZ');
+    } catch (e) {
+      wrongRecovery = (e as Error).message;
+    }
+    check('a wrong recovery code is refused like a wrong code',
+      wrongRecovery.includes('not recognised'), wrongRecovery);
+
+    const usedRecovery = await verifySecondFactor(stage2, recoveryCodes[0]!);
+    check('a recovery code completes the staged sign-in',
+      usedRecovery.recoveryCodeUsed === true && usedRecovery.user.id === principalId);
+    check('a recovery code forces a password change', usedRecovery.user.mustChangePassword === true);
+    check('the code is spent', (await remainingRecoveryCodes(session)) === 7);
+
+    let replayed = '';
+    try {
+      await verifySecondFactor(stage2, recoveryCodes[0]!);
+    } catch (e) {
+      replayed = (e as Error).message;
+    }
+    check('a used recovery code cannot be replayed',
+      replayed.includes('not recognised') || replayed.includes('locked'), replayed);
 
     // ── 4. Disable ───────────────────────────────────────────────────────────
     await rejectsTotp('disable rejects a wrong code', 'not recognised',
@@ -236,10 +262,14 @@ async function main() {
       .from(people.users).where(eq(people.users.id, principalId)).limit(1);
     check('the secret is cleared on disable', cleared!.secret === null);
 
+    check('disabling two-factor clears the recovery codes',
+      (await remainingRecoveryCodes(session)) === 0);
+
     const afterDisable = await authenticateCredentials({
       loginId: 'TOTP-PRIN', password: PASSWORD, schoolId,
     });
-    check('password-only sign-in works again', afterDisable.id === principalId);
+    check('password-only sign-in works again',
+      afterDisable.user.id === principalId && afterDisable.secondFactorRequired === false);
 
     await rejectsTotp('disable on an account without two-factor fails cleanly',
       'not on', () => disableTotp(session, '000000'));

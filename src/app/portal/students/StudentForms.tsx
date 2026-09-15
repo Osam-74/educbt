@@ -203,6 +203,27 @@ export function StandingForm({ studentId, status }: { studentId: number; status:
 }
 
 /** Link a guardian by invite: created on first sight, deduplicated by contact. */
+/** Office-only: hand a locked-out guardian a one-time temporary password. */
+export function GuardianResetForm({ guardianId, guardianName }: { guardianId: number; guardianName: string }) {
+  const [state, action, pending] = useActionState(studentAction, EMPTY);
+
+  return (
+    <form action={action} className="inline-form">
+      <input type="hidden" name="operation" value="reset-guardian" />
+      <input type="hidden" name="guardianId" value={guardianId} />
+      <button type="submit" disabled={pending} className="btn-small" title={`Issue a temporary password to ${guardianName}`}>
+        {pending ? 'Resetting…' : 'Reset login'}
+      </button>
+      {state.message && !state.ok && (
+        <p role="alert" className="error">{state.message}</p>
+      )}
+      {state.ok && state.credentials && (
+        <p role="status" className="credentials">{state.credentials}</p>
+      )}
+    </form>
+  );
+}
+
 export function GuardianForm({ studentId }: { studentId: number }) {
   const [state, action, pending] = useActionState(studentAction, EMPTY);
 

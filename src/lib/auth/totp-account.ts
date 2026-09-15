@@ -17,6 +17,7 @@
 import { eq } from 'drizzle-orm';
 import { db, schema, forSchool } from '@/db';
 import { generateTotpSecret, otpauthUri, verifyTotp } from '@/lib/auth/totp';
+import { clearRecoveryCodes, issueRecoveryCodes, remainingRecoveryCodes } from '@/lib/auth/recovery-codes';
 
 export class TotpError extends Error {}
 
@@ -83,11 +84,13 @@ export async function pendingEnrollment(
   return { secret: user.totpSecret, uri: otpauthUri(user.totpSecret, user.loginId, issuer) };
 }
 
-/** Confirm the authenticator was provisioned: flip two-factor on. */
+/** Confirm the authenticator was provisioned: flip two-factor on and issue
+ *  the one-time recovery codes. The codes come back exactly once — the page
+ *  that calls this is the only thing that ever sees them in plaintext. */
 export async function confirmTotpEnrollment(
   session: { id: number; schoolId: number | null },
   code: string,
-): Promise<void> {
+): Promise<{ recoveryCodes: string[] }> {
   const user = await readUser(session);
   if (!user) throw new TotpError('Account not found.');
   if (user.totpEnabled) throw new TotpError('Two-factor is already on for this account.');
@@ -104,6 +107,9 @@ export async function confirmTotpEnrollment(
   } else {
     await db.update(schema.users).set(patch).where(eq(schema.users.id, session.id));
   }
+
+  const recoveryCodes = await issueRecoveryCodes(session);
+  return { recoveryCodes };
 }
 
 /** Turn two-factor off. Requires a valid current code — see the header. */
@@ -128,4 +134,30 @@ export async function disableTotp(
   } else {
     await db.update(schema.users).set(patch).where(eq(schema.users.id, session.id));
   }
+
+  // Two-factor off means the codes that exist to back it up are dead weight.
+  await clearRecoveryCodes(session);
+}
+
+/** How many one-time recovery codes remain unused. For the security screen. */
+export async function recoveryCodesRemaining(
+  session: { id: number; schoolId: number | null },
+): Promise<number> {
+  return remainingRecoveryCodes(session);
+}
+
+/** Regenerate the recovery codes after re-authentication. Plaintext once. */
+export async function regenerateRecoveryCodes(
+  session: { id: number; schoolId: number | null },
+  code: string,
+): Promise<string[]> {
+  const user = await readUser(session);
+  if (!user) throw new TotpError('Account not found.');
+  if (!user.totpEnabled || !user.totpSecret) {
+    throw new TotpError('Two-factor is not on for this account.');
+  }
+  if (!verifyTotp(user.totpSecret, code)) {
+    throw new TotpError('That code was not recognised.');
+  }
+  return issueRecoveryCodes(session);
 }

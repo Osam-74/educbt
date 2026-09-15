@@ -2,6 +2,7 @@ import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { tenantFromHost } from '@/lib/tenant';
 import { auth, signIn } from '@/lib/auth';
+import PasswordInput from './PasswordInput';
 
 // Never cached: the page is per-hostname and reflects session state.
 export const dynamic = 'force-dynamic';
@@ -17,6 +18,16 @@ function homeFor(role: string): string {
   return role === 'platform_admin' ? '/platform' : '/portal';
 }
 
+/** Is this host a tenant-shaped address (subdomain/custom domain) rather than
+ *  the platform site itself? Used to give unknown tenant hosts the "no school
+ *  at this address" page instead of the platform sign-in form. */
+function isTenantShapedHost(host: string, platform: string): boolean {
+  const clean = host.toLowerCase().split(':')[0] ?? '';
+  if (!clean || !platform) return false;
+  if (clean === platform || clean === `www.${platform}`) return false;
+  return clean.endsWith(`.${platform}`);
+}
+
 export default async function SignInPage({
   searchParams,
 }: {
@@ -29,6 +40,29 @@ export default async function SignInPage({
 
   const host = (await headers()).get('host');
   const school = await tenantFromHost(host);
+  const platformDomain = (process.env.PLATFORM_DOMAIN ?? '').toLowerCase();
+
+  // A tenant-shaped address that resolves to no ACTIVE school gets a neutral
+  // not-found page — never the platform sign-in, and never a reason why (an
+  // unknown subdomain and a suspended school must look identical from outside).
+  const hostLooksLikeTenant = isTenantShapedHost(host ?? '', platformDomain);
+  if (!school && hostLooksLikeTenant) {
+    return (
+      <main className="auth-shell">
+        <div className="auth-card">
+          <h1>No school at this address</h1>
+          <p className="sub">
+            This address is not linked to an active school. Check the web address
+            your school gave you, or contact the school office.
+          </p>
+          <p className="hint">
+            School staff and students sign in at their school&apos;s own address —
+            for example <code>schooleducbtname.{platformDomain}</code>.
+          </p>
+        </div>
+      </main>
+    );
+  }
 
   // The hostname identifies the school. If it resolves to nothing, there is no
   // school to sign in to — so this is the PLATFORM host, and the only account
@@ -38,15 +72,18 @@ export default async function SignInPage({
     async function platformSignIn(formData: FormData) {
       'use server';
 
+      // redirect() must stay OUT of the try block: NEXT_REDIRECT is an Error
+      // and would be re-labelled as a sign-in failure by the catch.
+      let destination = '/platform';
       try {
-        await signIn({
+        const { secondFactorRequired } = await signIn({
           loginId: String(formData.get('loginId') ?? '').trim(),
           password: String(formData.get('password') ?? ''),
           // null: the platform-admin sign-in path. The credential decision in
           // credentials.ts resolves ONLY platform-admin accounts with this.
           schoolId: null,
-          totpCode: String(formData.get('totpCode') ?? '').trim() || undefined,
         });
+        if (secondFactorRequired) destination = '/sign-in/two-step';
       } catch (error) {
         if (error instanceof Error && error.message) {
           redirect(`/sign-in?error=${encodeURIComponent(error.message)}`);
@@ -54,7 +91,7 @@ export default async function SignInPage({
         throw error;
       }
 
-      redirect('/platform');
+      redirect(destination);
     }
 
     return (
@@ -66,7 +103,7 @@ export default async function SignInPage({
           {params.error ? <p className="error">{params.error}</p> : null}
 
           <form action={platformSignIn}>
-            <label htmlFor="loginId">Platform sign-in ID</label>
+            <label htmlFor="loginId">Platform sign-in ID or email</label>
             <input
               id="loginId"
               name="loginId"
@@ -76,27 +113,14 @@ export default async function SignInPage({
             />
 
             <label htmlFor="password">Password</label>
-            <input
-              id="password"
-              name="password"
-              type="password"
-              autoComplete="current-password"
-              required
-            />
-
-            <label htmlFor="totpCode">Authenticator code <span className="muted">(only if two-factor is on)</span></label>
-            <input
-              id="totpCode"
-              name="totpCode"
-              type="text"
-              inputMode="numeric"
-              pattern="[0-9]*"
-              maxLength={6}
-              autoComplete="one-time-code"
-            />
+            <PasswordInput />
 
             <button type="submit">Sign in</button>
           </form>
+
+          <p className="auth-links">
+            <a href="/forgot-password">Forgot password?</a>
+          </p>
 
           <p className="hint">
             This address is not linked to a school. School staff and students
@@ -116,15 +140,18 @@ export default async function SignInPage({
     // this closure — and a defensive re-check is correct anyway.
     if (!school) redirect('/sign-in?error=School+not+found');
 
+    // redirect() must stay OUT of the try block: NEXT_REDIRECT is an Error
+    // and would be re-labelled as a sign-in failure by the catch.
+    let destination = target.startsWith('/') ? target : '/portal';
     try {
-      await signIn({
+      const { secondFactorRequired } = await signIn({
         loginId: String(formData.get('loginId') ?? '').trim(),
         password: String(formData.get('password') ?? ''),
         // The tenant comes from the HOSTNAME resolution in this closure —
         // never from the posted form, which a user could edit.
         schoolId: school.id,
-        totpCode: String(formData.get('totpCode') ?? '').trim() || undefined,
       });
+      if (secondFactorRequired) destination = '/sign-in/two-step';
     } catch (error) {
       // All expected failures throw a user-safe message (credentials.ts);
       // redirect surfaces it on the form. Anything else is a bug: rethrow.
@@ -135,17 +162,21 @@ export default async function SignInPage({
       throw error;
     }
 
-    redirect(target.startsWith('/') ? target : '/portal');
+    redirect(destination);
   }
 
   return (
     <main className="auth-shell">
       <div className="auth-card">
+        {school.logoUrl ? (
+          <img src={school.logoUrl} alt="" className="auth-logo" />
+        ) : null}
         <h1>{school.name}</h1>
         <p className="sub">Sign in to continue</p>
 
         {params.error ? <p className="error">{params.error}</p> : null}
         {params.notice === 'guardian-accepted' ? <p className="sub">Account created. Sign in with your email address and your new password.</p> : null}
+        {params.notice === 'reset' ? <p className="sub">Your password has been changed. Sign in with the new password.</p> : null}
 
         <form action={authenticate}>
           {/* The tenant is never posted: the server action takes the school
@@ -153,7 +184,7 @@ export default async function SignInPage({
               in this form cannot change which school's account is used. */}
           <input type="hidden" name="next" value={params.next ?? '/portal'} />
 
-          <label htmlFor="loginId">Admission or staff number</label>
+          <label htmlFor="loginId">Admission number, staff number or email</label>
           <input
             id="loginId"
             name="loginId"
@@ -164,31 +195,18 @@ export default async function SignInPage({
           />
 
           <label htmlFor="password">Password</label>
-          <input
-            id="password"
-            name="password"
-            type="password"
-            autoComplete="current-password"
-            required
-          />
-
-          <label htmlFor="totpCode">Authenticator code <span className="muted">(only if two-factor is on)</span></label>
-          <input
-            id="totpCode"
-            name="totpCode"
-            type="text"
-            inputMode="numeric"
-            pattern="[0-9]*"
-            maxLength={6}
-            autoComplete="one-time-code"
-          />
+          <PasswordInput />
 
           <button type="submit">Sign in</button>
         </form>
 
+        <p className="auth-links">
+          <a href="/forgot-password">Forgot password?</a>
+        </p>
+
         <p className="hint">
-          Forgotten your password? The school office will issue a new one — there is no
-          self-service reset, because most students have no email address on file.
+          Accounts without a recovery email on file should ask the school office
+          for a new password.
         </p>
       </div>
     </main>

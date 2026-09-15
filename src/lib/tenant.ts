@@ -9,7 +9,7 @@
 
 import { resolveSchoolByHost } from '@/db';
 
-export type Tenant = { id: number; name: string; status: string };
+export type Tenant = { id: number; name: string; status: string; logoUrl: string | null };
 
 export async function tenantFromHost(host: string | null): Promise<Tenant | null> {
   if (!host) return null;

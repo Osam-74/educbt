@@ -90,7 +90,7 @@ export async function queueEmailForUser(
 
 export async function queueEmail(
   tx: Tx,
-  input: { schoolId: number; to: string; subject: string; body: string },
+  input: { schoolId: number | null; to: string; subject: string; body: string },
 ): Promise<number> {
   if (!isMailable(input.to)) return 0;
   const [row] = await tx

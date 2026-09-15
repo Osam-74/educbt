@@ -21,6 +21,7 @@
     "test:scope": "tsx src/db/test-scope.ts",
     "test:auth": "tsx src/db/test-auth.ts",
     "test:totp": "tsx src/db/test-totp.ts",
+    "test:auth-recovery": "tsx src/db/test-auth-recovery.ts",
     "test:leak": "tsx src/db/test-leak.ts",
     "test:vault": "tsx src/db/test-vault.ts",
     "test:engine": "tsx src/db/test-engine.ts",

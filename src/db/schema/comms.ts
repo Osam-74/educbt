@@ -115,7 +115,8 @@ export const messages = pgTable('messages', {
 
 export const emailEvents = pgTable('email_events', {
   id: bigserial('id', { mode: 'number' }).primaryKey(),
-  schoolId: bigint('school_id', { mode: 'number' }).notNull(),
+  // Null ONLY for platform-scope mail (e.g. platform-admin password resets).
+  schoolId: bigint('school_id', { mode: 'number' }),
   toEmail: varchar('to_email', { length: 320 }).notNull(),
   subject: varchar('subject', { length: 200 }).notNull(),
   body: text('body').notNull(),

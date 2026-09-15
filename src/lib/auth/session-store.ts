@@ -26,12 +26,20 @@
  */
 
 import { createHash, randomBytes } from 'node:crypto';
-import { eq, lt } from 'drizzle-orm';
+import { and, eq, gt, lt } from 'drizzle-orm';
 import { sql } from 'drizzle-orm';
 import { db, schema } from '@/db';
 
 export const SESSION_COOKIE = 'educbt.session';
 export const SESSION_MAX_AGE_SECONDS = 60 * 60 * 12; // A school day, not a fortnight.
+export const PENDING_MAX_AGE_SECONDS = 60 * 15; // Staged 2FA: ample, but short-lived.
+
+export type PendingUser = {
+  id: number;
+  schoolId: number | null;
+  role: string;
+  loginId: string;
+};
 
 export type SessionUser = {
   id: number;
@@ -56,9 +64,11 @@ export async function createSession(
   userId: number,
   ip: string | null,
   userAgent: string | null,
+  options?: { pendingSecondFactor?: boolean },
 ): Promise<{ token: string; expiresAt: Date }> {
   const token = randomBytes(32).toString('base64url');
-  const expiresAt = new Date(Date.now() + SESSION_MAX_AGE_SECONDS * 1000);
+  const maxAge = options?.pendingSecondFactor ? PENDING_MAX_AGE_SECONDS : SESSION_MAX_AGE_SECONDS;
+  const expiresAt = new Date(Date.now() + maxAge * 1000);
 
   await db.transaction(async (tx) => {
     await tx.delete(schema.sessions).where(lt(schema.sessions.expiresAt, new Date()));
@@ -68,6 +78,7 @@ export async function createSession(
       expiresAt,
       ip: ip ?? null,
       userAgent: userAgent ?? null,
+      totpPending: options?.pendingSecondFactor ?? false,
     });
   });
 
@@ -93,12 +104,20 @@ export async function readSessionUser(token: string): Promise<SessionUser | null
 
   return db.transaction(async (tx) => {
     const [session] = await tx
-      .select({ userId: schema.sessions.userId, expiresAt: schema.sessions.expiresAt })
+      .select({
+        userId: schema.sessions.userId,
+        expiresAt: schema.sessions.expiresAt,
+        totpPending: schema.sessions.totpPending,
+      })
       .from(schema.sessions)
       .where(eq(schema.sessions.id, hashSessionToken(token)))
       .limit(1);
 
     if (!session || session.expiresAt.getTime() <= Date.now()) return null;
+
+    // Staged sign-in: primary credentials passed but the TOTP/recovery step
+    // has not. A pending session is not a session — it authorises nothing.
+    if (session.totpPending) return null;
 
     await tx.execute(
       sql`select set_config('app.session_user_id', ${String(session.userId)}, true)`,
@@ -177,4 +196,84 @@ export async function destroySession(token: string): Promise<void> {
 /** End EVERY session for a user — a password change kills all devices. */
 export async function destroyUserSessions(userId: number): Promise<void> {
   await db.delete(schema.sessions).where(eq(schema.sessions.userId, userId));
+}
+
+/**
+ * Resolve a PENDING (staged-2FA) session to the user awaiting a code.
+ *
+ * Returns null unless the token names a live, still-pending row — a finished
+ * session or an expired staged one is not a pending sign-in. Used only by the
+ * two-step verification page; it reads through the same session_user_lookup
+ * GUC as readSessionUser, so it can see exactly this user and nothing else.
+ */
+export async function readPendingUser(token: string): Promise<PendingUser | null> {
+  if (!token) return null;
+
+  return db.transaction(async (tx) => {
+    const [session] = await tx
+      .select({
+        userId: schema.sessions.userId,
+        expiresAt: schema.sessions.expiresAt,
+        totpPending: schema.sessions.totpPending,
+      })
+      .from(schema.sessions)
+      .where(eq(schema.sessions.id, hashSessionToken(token)))
+      .limit(1);
+
+    if (!session || !session.totpPending || session.expiresAt.getTime() <= Date.now()) {
+      return null;
+    }
+
+    await tx.execute(
+      sql`select set_config('app.session_user_id', ${String(session.userId)}, true)`,
+    );
+
+    const [user] = await tx
+      .select({
+        id: schema.users.id,
+        schoolId: schema.users.schoolId,
+        role: schema.users.role,
+        loginId: schema.users.loginId,
+        status: schema.users.status,
+      })
+      .from(schema.users)
+      .where(eq(schema.users.id, session.userId))
+      .limit(1);
+
+    if (!user || user.status !== 'active') return null;
+
+    return {
+      id: user.id,
+      schoolId: user.schoolId,
+      role: user.role,
+      loginId: user.loginId,
+    } satisfies PendingUser;
+  });
+}
+
+/**
+ * Finish a staged sign-in: the code was valid, so promote the pending session
+ * to a real one — clear the flag and extend the expiry to a full school day.
+ * A no-op for any token that is not a live pending row, so it cannot revive
+ * an expired or already-finalised session.
+ */
+export async function finalizePendingSession(token: string): Promise<boolean> {
+  if (!token) return false;
+
+  const rows = await db
+    .update(schema.sessions)
+    .set({
+      totpPending: false,
+      expiresAt: new Date(Date.now() + SESSION_MAX_AGE_SECONDS * 1000),
+    })
+    .where(
+      and(
+        eq(schema.sessions.id, hashSessionToken(token)),
+        eq(schema.sessions.totpPending, true),
+        gt(schema.sessions.expiresAt, new Date()),
+      ),
+    )
+    .returning({ id: schema.sessions.id });
+
+  return rows.length > 0;
 }

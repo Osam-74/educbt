@@ -15,21 +15,15 @@ import {
 export const dynamic = 'force-dynamic';
 
 /**
- * Two-factor enrollment, on the account holder's own session.
+ * Platform-admin two-factor enrollment — the /platform counterpart of
+ * /portal/account/security on the same services (totp-account handles a null
+ * schoolId via the platform-admin policies).
  *
- * The flow is deliberately three steps with a harmless middle state:
- *   1. Start — a secret is generated and stored, but stays DISABLED. A
- *      secret that was never confirmed changes nothing about sign-in.
- *   2. The user adds it to their authenticator (scan or type), then enters
- *      the code the app shows. A correct code flips two-factor on.
- *   3. Turning it off later requires a valid CURRENT code — a borrowed
- *      browser is not enough.
- *
- * Staff only: the roles the schema calls "can publish results or approve
- * papers" are the ones a shared staffroom password must not be enough for.
- * Students and parents keep password-only sign-in.
+ * PLACEMENT: this page deliberately lives in src/app/(standalone)/… so the
+ * guarded platform layout does not wrap it (see the password page note).
+ * The URL is unchanged.
  */
-export default async function SecurityPage({
+export default async function PlatformSecurityPage({
   searchParams,
 }: {
   searchParams: Promise<{ error?: string; done?: string }>;
@@ -38,20 +32,14 @@ export default async function SecurityPage({
   const session = await auth();
 
   if (!session) redirect('/sign-in');
+  if (session.role !== 'platform_admin') redirect('/portal');
 
-  const STAFF_ROLES = new Set(['principal', 'vice_principal', 'exam_officer', 'teacher']);
-  if (!STAFF_ROLES.has(session.role)) redirect('/portal');
+  const account = { id: session.id, schoolId: session.schoolId };
 
-  const { enabled } = await totpStatus({ id: session.id, schoolId: session.schoolId });
-  const pending = enabled ? null : await pendingEnrollment({ id: session.id, schoolId: session.schoolId });
-  const remaining = enabled
-    ? await recoveryCodesRemaining({ id: session.id, schoolId: session.schoolId })
-    : 0;
+  const { enabled } = await totpStatus(account);
+  const pending = enabled ? null : await pendingEnrollment(account);
+  const remaining = enabled ? await recoveryCodesRemaining(account) : 0;
 
-  // One-time recovery-code display: the confirm/regenerate action parks the
-  // plaintext codes in a short-lived httpOnly cookie (never the URL) and this
-  // read is the only other thing that sees them. Refreshing re-reads the same
-  // cookie for the next two minutes, then it is gone for good.
   const flash = (await cookies()).get('educbt.new_recovery_codes')?.value;
   let newCodes: string[] | null = null;
   if (flash) {
@@ -67,16 +55,16 @@ export default async function SecurityPage({
     'use server';
 
     const inner = await auth();
-    if (!inner) redirect('/sign-in');
+    if (!inner || inner.role !== 'platform_admin') redirect('/sign-in');
 
     try {
       await startTotpEnrollment({ id: inner.id, schoolId: inner.schoolId });
     } catch (error) {
       const msg = error instanceof TotpError ? error.message : 'The setup could not start.';
-      redirect(`/portal/account/security?error=${encodeURIComponent(msg)}`);
+      redirect(`/platform/account/security?error=${encodeURIComponent(msg)}`);
     }
 
-    redirect('/portal/account/security');
+    redirect('/platform/account/security');
   }
 
   async function confirm(formData: FormData) {
@@ -88,9 +76,10 @@ export default async function SecurityPage({
     const code = String(formData.get('code') ?? '').trim();
 
     try {
-      const { recoveryCodes } = await confirmTotpEnrollment({ id: inner.id, schoolId: inner.schoolId }, code);
-      // Plaintext exists ONCE: parked in a httpOnly flash cookie for this
-      // page to show, never in the URL, logs, or the database.
+      const { recoveryCodes } = await confirmTotpEnrollment(
+        { id: inner.id, schoolId: inner.schoolId },
+        code,
+      );
       (await cookies()).set('educbt.new_recovery_codes', JSON.stringify(recoveryCodes), {
         httpOnly: true,
         sameSite: 'lax',
@@ -100,10 +89,10 @@ export default async function SecurityPage({
       });
     } catch (error) {
       const msg = error instanceof TotpError ? error.message : 'The code could not be verified.';
-      redirect(`/portal/account/security?error=${encodeURIComponent(msg)}`);
+      redirect(`/platform/account/security?error=${encodeURIComponent(msg)}`);
     }
 
-    redirect('/portal/account/security?done=enabled');
+    redirect('/platform/account/security?done=enabled');
   }
 
   async function disable(formData: FormData) {
@@ -118,10 +107,10 @@ export default async function SecurityPage({
       await disableTotp({ id: inner.id, schoolId: inner.schoolId }, code);
     } catch (error) {
       const msg = error instanceof TotpError ? error.message : 'Two-factor could not be turned off.';
-      redirect(`/portal/account/security?error=${encodeURIComponent(msg)}`);
+      redirect(`/platform/account/security?error=${encodeURIComponent(msg)}`);
     }
 
-    redirect('/portal/account/security?done=disabled');
+    redirect('/platform/account/security?done=disabled');
   }
 
   async function regenerate(formData: FormData) {
@@ -143,33 +132,30 @@ export default async function SecurityPage({
       });
     } catch (error) {
       const msg = error instanceof TotpError ? error.message : 'The codes could not be regenerated.';
-      redirect(`/portal/account/security?error=${encodeURIComponent(msg)}`);
+      redirect(`/platform/account/security?error=${encodeURIComponent(msg)}`);
     }
 
-    redirect('/portal/account/security?done=enabled');
+    redirect('/platform/account/security?done=enabled');
   }
 
   return (
     <main className="auth-shell">
       <div className="auth-card">
-        <h1>Two-factor security</h1>
+        <h1>Platform account security</h1>
         <p className="sub">
           {enabled
             ? 'Your sign-in asks for a code from your authenticator app.'
-            : 'Add your account to an authenticator app (Google Authenticator, Authy, 1Password) so a password alone is not enough to reach your account.'}
+            : 'A platform-admin account can reach every school. A password alone is not enough.'}
         </p>
 
         {params.error ? <p className="error">{params.error}</p> : null}
-        {params.done === 'enabled' && !newCodes ? (
-          <p className="ok">Two-factor is on. Keep your authenticator safe — turning this off later needs a valid code.</p>
-        ) : null}
 
         {newCodes ? (
           <>
             <p className="ok">Two-factor is on. Save these one-time recovery codes now — this is the only time they are shown.</p>
             <p className="hint">
               Each code works once at sign-in instead of an authenticator code (it also asks you to set a
-              new password). Keep them somewhere safe — paper, not your phone.
+              new password).
             </p>
             <ul className="recovery-codes">
               {newCodes.map((c) => (
@@ -177,12 +163,8 @@ export default async function SecurityPage({
               ))}
             </ul>
           </>
-        ) : enabled ? (
-          <p className="hint">
-            {remaining > 0
-              ? `${remaining} unused recovery code${remaining === 1 ? '' : 's'} remain.`
-              : 'No unused recovery codes remain — if you lose your authenticator, only the school office can get you back in.'}
-          </p>
+        ) : params.done === 'enabled' ? (
+          <p className="ok">Two-factor is on. Keep your authenticator safe — turning this off later needs a valid code.</p>
         ) : null}
         {params.done === 'disabled' ? (
           <p className="ok">Two-factor is off. Your password is the only gate again.</p>
@@ -190,6 +172,11 @@ export default async function SecurityPage({
 
         {enabled ? (
           <>
+            <p className="hint">
+              {remaining > 0
+                ? `${remaining} unused recovery code${remaining === 1 ? '' : 's'} remain.`
+                : 'No unused recovery codes remain — losing your authenticator means an owner-level recovery procedure.'}
+            </p>
             <form action={disable}>
               <label htmlFor="code">Code from your authenticator</label>
               <input id="code" name="code" type="text" inputMode="numeric" pattern="[0-9]*" maxLength={6} autoComplete="one-time-code" required />
@@ -228,11 +215,7 @@ export default async function SecurityPage({
           </form>
         )}
 
-        <p className="hint">
-          Lost your authenticator? The school office can reset your account the same way it issues a new password.
-        </p>
-
-        <p><a href="/portal/account/password">Back to password</a></p>
+        <p><a href="/platform/account/password">Back to password</a></p>
       </div>
     </main>
   );

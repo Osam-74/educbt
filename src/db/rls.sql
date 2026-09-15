@@ -325,6 +325,33 @@ REVOKE UPDATE, DELETE ON audit_log FROM PUBLIC;
 -- Protected instead by an unguessable primary key and by expiry.
 ALTER TABLE sessions DISABLE ROW LEVEL SECURITY;
 
+-- ── password_reset_tokens ─────────────────────────────────────────────────────
+-- Same posture as sessions: reached BEFORE the tenant exists, by an
+-- unguessable primary key (the SHA-256 of a 256-bit token), and the table
+-- holds no tenant data of its own. The raw token is never stored anywhere.
+ALTER TABLE password_reset_tokens DISABLE ROW LEVEL SECURITY;
+
+-- ── totp_recovery_codes ───────────────────────────────────────────────────────
+-- Looked up by user_id — NOT by an unguessable key — so unlike sessions this
+-- table must be row-level secured. Three doors: the user's own live session
+-- (the GUC set by readSessionUser / the staged-2FA reader), the school's
+-- tenant scope (enrollment, regeneration, use are all tenant actions), and
+-- the platform admin (platform-admin rows own no tenant).
+ALTER TABLE totp_recovery_codes ENABLE ROW LEVEL SECURITY;
+ALTER TABLE totp_recovery_codes FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON totp_recovery_codes;
+CREATE POLICY tenant_isolation ON totp_recovery_codes
+  USING (
+    school_id = current_school_id()
+    OR is_platform_admin()
+    OR user_id = NULLIF(current_setting('app.session_user_id', true), '')::bigint
+  )
+  WITH CHECK (
+    school_id = current_school_id()
+    OR is_platform_admin()
+    OR user_id = NULLIF(current_setting('app.session_user_id', true), '')::bigint
+  );
+
 -- School configuration: normal tenant records and immutable grade versions.
 ALTER TABLE staff_signatures ENABLE ROW LEVEL SECURITY;
 ALTER TABLE staff_signatures FORCE ROW LEVEL SECURITY;

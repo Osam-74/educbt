@@ -43,7 +43,33 @@ const byIdentity = redis
     })
   : null;
 
+const resetByIp = redis
+  ? new Ratelimit({
+      redis,
+      limiter: Ratelimit.slidingWindow(5, '1 h'),
+      prefix: 'pwreset:ip',
+      analytics: false,
+    })
+  : null;
+
 export type ThrottleResult = { allowed: boolean; retryAfterSeconds?: number };
+
+/** Password-reset requests: 5 per hour per IP. Enumerating which emails have
+ *  accounts must be slow, and every request queues a row — both make a flood
+ *  worth stopping. Fails open like the login throttle (Redis outage must not
+ *  block recovery), but the token itself is unguessable and single-use. */
+export async function checkResetThrottle(ip: string): Promise<ThrottleResult> {
+  if (!resetByIp) return { allowed: true };
+  try {
+    const r = await resetByIp.limit(ip);
+    if (!r.success) {
+      return { allowed: false, retryAfterSeconds: Math.max(1, Math.ceil((r.reset - Date.now()) / 1000)) };
+    }
+    return { allowed: true };
+  } catch {
+    return { allowed: true };
+  }
+}
 
 export async function checkLoginThrottle(
   ip: string,

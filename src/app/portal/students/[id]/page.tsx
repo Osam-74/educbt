@@ -6,6 +6,7 @@ import { forSchool, schema } from '@/db';
 import { eq, and } from 'drizzle-orm';
 import {
   EditStudentForm, StandingForm, GuardianForm, SubjectRegistrationForm,
+  GuardianResetForm,
 } from '../StudentForms';
 import { subjectRegistrationView } from '@/lib/people/students';
 
@@ -34,6 +35,7 @@ export default async function StudentProfile({
   const guardians = await forSchool(actor.schoolId, async (tx) =>
     tx.select({
       id: schema.guardians.id,
+      userId: schema.guardians.userId,
       fullName: schema.guardians.fullName,
       email: schema.guardians.email,
       phone: schema.guardians.phone,
@@ -132,7 +134,14 @@ export default async function StudentProfile({
                     <td>{g.email ?? g.phone ?? '—'}</td>
                     <td>{g.relationship ?? 'parent'}</td>
                     <td>{g.canViewResults ? 'May view' : 'No'}</td>
-                    <td><span className={`pill pill--${g.inviteStatus ?? 'pending'}`}>{g.inviteStatus ?? 'pending'}</span></td>
+                    <td>
+                      <span className={`pill pill--${g.inviteStatus ?? 'pending'}`}>{g.inviteStatus ?? 'pending'}</span>
+                      {office && g.userId ? (
+                        <div style={{ marginTop: 6 }}>
+                          <GuardianResetForm guardianId={g.id} guardianName={g.fullName} />
+                        </div>
+                      ) : null}
+                    </td>
                   </tr>
                 ))}
               </tbody>

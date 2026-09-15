@@ -322,7 +322,7 @@ async function main() {
     });
     check('principal can sign in with the temporary password (12)', !!signedIn);
 
-    const { token } = await createSession(Number(signedIn.id), null, 'platform-test');
+    const { token } = await createSession(Number(signedIn.user.id), null, 'platform-test');
     const liveBefore = await readSessionUser(token);
     check('session resolves before suspension (12)', !!liveBefore);
 

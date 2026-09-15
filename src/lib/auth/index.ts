@@ -20,14 +20,23 @@ import { redirect } from 'next/navigation';
 import {
   SESSION_COOKIE,
   SESSION_MAX_AGE_SECONDS,
+  PENDING_MAX_AGE_SECONDS,
   createSession,
   readSessionUser,
+  readPendingUser,
+  finalizePendingSession,
   destroySession,
   type SessionUser,
+  type PendingUser,
 } from '@/lib/auth/session-store';
-import { authenticateCredentials, type SignInInput } from '@/lib/auth/credentials';
+import {
+  authenticateCredentials,
+  verifySecondFactor,
+  type SignInInput,
+  type SecondFactorInput,
+} from '@/lib/auth/credentials';
 
-export type { SessionUser };
+export type { SessionUser, PendingUser, SecondFactorInput };
 
 /**
  * The current signed-in user, or null. This is what every guard builds on.
@@ -42,10 +51,17 @@ export async function auth(): Promise<SessionUser | null> {
 
 /**
  * Verify credentials, create the session row, and set the cookie.
+ *
+ * For a two-factor account the row is created PENDING — it authorises
+ * nothing until completeStagedSignIn() verifies the code. The caller learns
+ * this from secondFactorRequired and sends the user to /sign-in/two-step.
  * Throws Error with a user-safe message on any failure.
  */
-export async function signIn(input: SignInInput): Promise<SessionUser> {
-  const user = await authenticateCredentials(input);
+export async function signIn(input: SignInInput): Promise<{
+  user: SessionUser;
+  secondFactorRequired: boolean;
+}> {
+  const { user, secondFactorRequired } = await authenticateCredentials(input);
 
   // Production-build server actions on Next 15.1 can lose the request scope,
   // making headers() throw (`\`headers\` was called outside a request scope`).
@@ -64,6 +80,7 @@ export async function signIn(input: SignInInput): Promise<SessionUser> {
     user.id,
     input.ip ?? forwardedFor,
     userAgent,
+    { pendingSecondFactor: secondFactorRequired },
   );
 
   (await cookies()).set(SESSION_COOKIE, token, {
@@ -71,11 +88,50 @@ export async function signIn(input: SignInInput): Promise<SessionUser> {
     sameSite: 'lax',
     secure: process.env.NODE_ENV === 'production',
     path: '/',
-    maxAge: SESSION_MAX_AGE_SECONDS,
+    maxAge: secondFactorRequired ? PENDING_MAX_AGE_SECONDS : SESSION_MAX_AGE_SECONDS,
     expires: expiresAt,
   });
 
-  return user;
+  return { user, secondFactorRequired };
+}
+
+/**
+ * Stage 2 of a staged sign-in: read the pending session the cookie points
+ * at, verify the code, then promote the row to a real session. Returns null
+ * when the cookie names no live pending sign-in (expired, finished, or an
+ * ordinary session) — callers bounce to /sign-in rather than leak why.
+ * Throws Error with a user-safe message on a wrong/locked/throttled code.
+ */
+export async function completeStagedSignIn(code: string): Promise<{
+  user: SessionUser;
+  recoveryCodeUsed: boolean;
+} | null> {
+  const token = (await cookies()).get(SESSION_COOKIE)?.value;
+  if (!token) return null;
+
+  const pending = await readPendingUser(token);
+  if (!pending) return null;
+
+  const { user, recoveryCodeUsed } = await verifySecondFactor(
+    {
+      userId: pending.id,
+      schoolId: pending.schoolId,
+      loginId: pending.loginId,
+    },
+    code,
+  );
+
+  const promoted = await finalizePendingSession(token);
+  if (!promoted) return null; // expired between the read and the write
+
+  return { user, recoveryCodeUsed };
+}
+
+/** The account awaiting a code, for rendering the stage-2 page. */
+export async function pendingSignIn(): Promise<PendingUser | null> {
+  const token = (await cookies()).get(SESSION_COOKIE)?.value;
+  if (!token) return null;
+  return readPendingUser(token);
 }
 
 /**

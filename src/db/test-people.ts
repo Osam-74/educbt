@@ -384,7 +384,7 @@ async function main() {
       assert.ok(row!.userId! > 0);
       // The parent can actually sign in with the password THEY chose.
       const sessionUser = await authenticateCredentials({ loginId: 'parent@example.com', password: 'ParentPass-2026!', schoolId: a.schoolId });
-      assert.equal(sessionUser.role, 'parent');
+      assert.equal(sessionUser.user.role, 'parent');
       // And the family view resolves their linked children.
       const kids = await forSchool(a.schoolId, (tx) => guardianChildren(tx, row!.userId!));
       assert.equal(kids.length, 2);

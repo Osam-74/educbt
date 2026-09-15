@@ -33,6 +33,8 @@ import { authenticateCredentials, GENERIC_FAILURE } from '@/lib/auth/credentials
 import {
   createSession,
   readSessionUser,
+  readPendingUser,
+  finalizePendingSession,
   destroySession,
   destroyUserSessions,
   hashSessionToken,
@@ -118,9 +120,23 @@ async function main() {
     const good = await authenticateCredentials({
       loginId: 'AUTH-PRIN', password: PASSWORD, schoolId,
     });
-    check('right password signs in', good.id === Number(principal!.id));
-    check('staff identity resolved', good.staffId === Number(staffRow!.id));
-    check('student session carries no staffId', good.staffId === Number(staffRow!.id) && good.studentId === null);
+    check('right password signs in', good.user.id === Number(principal!.id));
+    check('no second factor for a plain account', good.secondFactorRequired === false);
+    check('staff identity resolved', good.user.staffId === Number(staffRow!.id));
+
+    // Case-insensitive login: dictated admission numbers survive dictation.
+    const lower = await authenticateCredentials({
+      loginId: 'auth-prin', password: PASSWORD, schoolId,
+    });
+    check('login ID matches case-insensitively', lower.user.id === Number(principal!.id));
+
+    const studentLogin = await authenticateCredentials({
+      loginId: 'AUTH-STU', password: PASSWORD, schoolId,
+    });
+    check(
+      'student session carries studentId, not staffId',
+      studentLogin.user.studentId === Number(studentRow!.id) && studentLogin.user.staffId === null,
+    );
 
     let failed = false;
     try {
@@ -160,7 +176,7 @@ async function main() {
       .set({ failedAttempts: 0, lockedUntil: null })
       .where(eq(people.users.id, Number(principal!.id)));
     const retry = await authenticateCredentials({ loginId: 'AUTH-PRIN', password: PASSWORD, schoolId });
-    check('account works after unlock', retry.id === Number(principal!.id));
+    check('account works after unlock', retry.user.id === Number(principal!.id));
 
     // Suspension refuses sign-in
     await odb
@@ -279,9 +295,27 @@ async function main() {
       !!studentSession && studentSession.studentId === Number(studentRow!.id) && studentSession.staffId === null,
     );
 
+    // ── 3b. Staged (pending) sessions authorise nothing ────────────────────
+    const pendingToken = (
+      await createSession(Number(principal!.id), null, null, { pendingSecondFactor: true })
+    ).token;
+    check('pending session is not a session', (await readSessionUser(pendingToken)) === null);
+    const pendingUser = await readPendingUser(pendingToken);
+    check('pending session resolves the awaiting user', !!pendingUser && pendingUser.id === Number(principal!.id));
+    check('garbage token reads no pending user', (await readPendingUser('garbage')) === null);
+    check('finalise promotes a pending session', await finalizePendingSession(pendingToken));
+    check('promoted session reads as a real session', (await readPendingUser(pendingToken)) === null && (await readSessionUser(pendingToken)) !== null);
+    check('finalise is single-shot', (await finalizePendingSession(pendingToken)) === false);
+    const fakePending = (await createSession(Number(principal!.id), null, null)).token;
+    check('an ordinary session cannot be finalised again', (await finalizePendingSession(fakePending)) === false);
+
     // ── 4. Platform admin (no school) ───────────────────────────────────────
     const platform = await authenticateCredentials({ loginId: 'AUTH-PLATFORM', password: PASSWORD });
-    check('platform admin signs in without a school', platform.id === Number(platformAdmin!.id) && platform.schoolId === null);
+    check('platform admin resolves without a school', platform.user.role === 'platform_admin');
+    check(
+      'platform admin signs in without a school',
+      platform.user.id === Number(platformAdmin!.id) && platform.user.schoolId === null,
+    );
     const platformToken = (await createSession(Number(platformAdmin!.id), null, null)).token;
     const platformSession = await readSessionUser(platformToken);
     check('platform admin session carries no tenant', !!platformSession && platformSession.schoolId === null);

@@ -8,6 +8,7 @@ import {
   linkGuardian, setStudentSubjects, subjectRegistrationView,
   type Standing,
 } from '@/lib/people/students';
+import { GuardianResetError, resetGuardianPassword } from '@/lib/people/guardians';
 import { savePassportPhoto, PhotoError } from '@/lib/people/photos';
 
 export type ActionState = { ok: boolean; message: string; credentials?: string; invite?: string };
@@ -107,6 +108,22 @@ export async function studentAction(_previous: ActionState, form: FormData): Pro
         message: `Password reset for ${result.name}.`,
         credentials: `Login ${result.loginId} — initial password ${result.initialPassword} (their surname). Old sessions were signed out.`,
       };
+    }
+
+    if (operation === 'reset-guardian') {
+      const guardianId = Number(value('guardianId'));
+      try {
+        const result = await resetGuardianPassword(actor, guardianId);
+        revalidatePath(`/portal/students/${studentId}`);
+        return {
+          ok: true,
+          message: `Password reset for ${result.name}.`,
+          credentials: `Login ${result.loginId} — new temporary password ${result.temporaryPassword}. They must change it at next sign-in; their old sessions were signed out.`,
+        };
+      } catch (error) {
+        if (error instanceof GuardianResetError) return { ok: false, message: error.message };
+        throw error;
+      }
     }
 
     if (operation === 'link-guardian') {

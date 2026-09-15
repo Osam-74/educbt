@@ -62,6 +62,12 @@ export const users = pgTable('users', {
   lockedUntil: timestamp('locked_until', { withTimezone: true }),
   lastLoginAt: timestamp('last_login_at', { withTimezone: true }),
 
+  // OPTIONAL recovery email. Students never need one. Unique on lower(email)
+  // across ALL accounts — one recovery address resolves to one account, which
+  // keeps the forgot-password lookup unambiguous across schools.
+  email: varchar('email', { length: 320 }),
+  emailVerifiedAt: timestamp('email_verified_at', { withTimezone: true }),
+
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 }, (t) => ({
   // Scoped, not global. This is the whole auth design in one constraint.
@@ -82,10 +88,53 @@ export const sessions = pgTable('sessions', {
   expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
   ip: inet('ip'),
   userAgent: text('user_agent'),
+
+  // Staged two-step sign-in: true after correct primary credentials for a
+  // TOTP-enabled account, false only after the code step succeeds. A pending
+  // session authorises nothing; it lives 15 minutes and finalises on a code.
+  totpPending: boolean('totp_pending').default(false).notNull(),
+
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 }, (t) => ({
   userIdx: index('sessions_user_idx').on(t.userId),
   expiryIdx: index('sessions_expiry_idx').on(t.expiresAt),
+}));
+
+// ── Password reset tokens ────────────────────────────────────────────────────
+//
+// Short-lived, single-use. token_hash is the SHA-256 of the raw token sent in
+// the email — the raw value is never stored, never logged. Reached before a
+// tenant exists by an unguessable key, so (like sessions) it carries no RLS.
+
+export const passwordResetTokens = pgTable('password_reset_tokens', {
+  id: bigserial('id', { mode: 'number' }).primaryKey(),
+  tokenHash: varchar('token_hash', { length: 191 }).notNull(),
+  userId: bigint('user_id', { mode: 'number' }).notNull().references(() => users.id, { onDelete: 'cascade' }),
+  schoolId: bigint('school_id', { mode: 'number' }),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  usedAt: timestamp('used_at', { withTimezone: true }),
+  createdIp: inet('created_ip'),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+}, (t) => ({
+  tokenUq: uniqueIndex('password_reset_tokens_token_uq').on(t.tokenHash),
+  userIdx: index('password_reset_tokens_user_idx').on(t.userId, t.createdAt),
+}));
+
+// ── TOTP recovery codes ──────────────────────────────────────────────────────
+//
+// One-time codes shown once at TOTP enrollment. Only SHA-256 hashes are
+// stored. Looked up by user_id, so this table is FORCED row-level secured
+// (see rls.sql): tenant scope, the session's own user, or platform admin.
+
+export const totpRecoveryCodes = pgTable('totp_recovery_codes', {
+  id: bigserial('id', { mode: 'number' }).primaryKey(),
+  userId: bigint('user_id', { mode: 'number' }).notNull().references(() => users.id, { onDelete: 'cascade' }),
+  schoolId: bigint('school_id', { mode: 'number' }),
+  codeHash: varchar('code_hash', { length: 191 }).notNull(),
+  usedAt: timestamp('used_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+}, (t) => ({
+  userIdx: index('totp_recovery_codes_user_idx').on(t.userId, t.usedAt),
 }));
 
 // ── Staff ────────────────────────────────────────────────────────────────────
