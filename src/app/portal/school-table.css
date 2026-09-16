@@ -1,0 +1,107 @@
+/* ── School Area table pattern ────────────────────────────────────────────
+   Shared visual language for the school-area registers (Subjects, Staff,
+   Students, and future ones). Extracted from the legacy plugin's
+   educbt-portal.css — `.educbt-table`, `.educbt-pill`, `.educbt-btn` — so
+   every School Area table follows the same plugin-derived look without
+   touching global classes used by other areas (`.tbl`, `.pill`, `.btn-small`).
+
+   Scoped with an `sa-` prefix and imported only by the pages that use it. */
+
+/* Cards: the plugin's soft double shadow (educbt-portal.css:159) */
+.sa-card { box-shadow: 0 1px 2px rgba(16, 28, 22, .04), 0 8px 24px -12px rgba(16, 28, 22, .1); }
+.sa-card h2 { margin: 0 0 14px; font-size: 15.5px; font-weight: 660; }
+.sa-card h2 .muted { font-size: 13.5px; font-weight: 400; }
+
+/* Table — the plugin's .educbt-table exactly (educbt-portal.css:229-237):
+   green header band, 14px cells, hairline row rules, rounded border. */
+.sa-table-wrap { overflow-x: auto; } /* narrow viewports scroll, not squish */
+.sa-table {
+  width: 100%; border-collapse: separate; border-spacing: 0; background: var(--white);
+  font-size: 14px; border: 1px solid #e2e8e4; border-radius: 12px; overflow: hidden;
+}
+.sa-table th, .sa-table td { text-align: left; padding: 12px 14px; border-bottom: 1px solid #e2e8e4; }
+.sa-table th { font-size: 12px; font-weight: 650; background: #14532d; color: #fff; border-bottom: 0; }
+.sa-table tbody tr:hover { background: #f5f7f6; }
+.sa-table tbody tr:last-child td { border-bottom: 0; }
+.sa-table code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 13px; }
+/* Multi-line cells (teacher lists, assignments) use the plugin's 13px rows */
+.sa-table .sa-sub { font-size: 13px; }
+
+/* Status pills — the plugin's .educbt-pill (educbt-portal.css:331-335):
+   squarish 6px radius, 12px/600, capitalized status words. */
+.sa-pill {
+  display: inline-block; padding: 3px 10px; border-radius: 6px; font-size: 12px;
+  font-weight: 600; text-transform: capitalize; background: #f0f4f1; color: #64726b;
+}
+.sa-pill--active, .sa-pill--approved, .sa-pill--published, .sa-pill--graduated {
+  background: #dcfce7; color: #166534;
+}
+.sa-pill--draft, .sa-pill--pending { background: #fef9c3; color: #854d0e; }
+.sa-pill--suspended { background: #fef3c7; color: #92400e; }
+.sa-pill--withdrawn, .sa-pill--expelled { background: #fee2e2; color: #991b1b; }
+
+/* Buttons — the plugin's .educbt-btn family (educbt-portal.css:167-176).
+   Default: white with hairline border; primary: solid green; danger: red text. */
+.sa-btn {
+  display: inline-block; padding: 9px 16px; border: 1px solid #e2e8e4; border-radius: 9px;
+  background: var(--white); color: #16211c; font: inherit; font-size: 14px; font-weight: 550;
+  text-decoration: none; cursor: pointer;
+}
+.sa-btn:hover { border-color: #14532d; color: #14532d; }
+.sa-btn--primary, .sa-btn--primary:hover, .sa-btn--primary:focus {
+  background: #14532d; border-color: #14532d; color: #fff;
+}
+.sa-btn--danger, .sa-btn--danger:hover { color: #b91c1c; border-color: #fca5a5; }
+/* Row-level actions: the plugin's inline `font-size:.8rem;padding:3px 10px` */
+.sa-btn--small { font-size: 12.5px; padding: 3px 10px; }
+
+/* Toolbar — filters above the table, inside the card, as in the plugin's
+   Subjects/Students filter forms: plain flex row, selects auto-submit. */
+.sa-toolbar { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; margin-bottom: 16px; }
+.sa-toolbar .sa-field > label {
+  display: block; margin-bottom: 4px; font-size: 12.5px; font-weight: 600; color: #16211c;
+}
+.sa-toolbar select, .sa-toolbar input[type='search'] {
+  padding: 9px 12px; border: 1px solid #d7dedb; border-radius: 9px; font: inherit;
+  font-size: 14px; background: var(--white); color: #16211c;
+}
+.sa-toolbar select:focus, .sa-toolbar input[type='search']:focus {
+  outline: none; border-color: #14532d; box-shadow: 0 0 0 3px rgba(20, 83, 45, .12);
+}
+.sa-toolbar input[type='search'] { flex: 1 1 230px; min-width: 200px; }
+
+/* Empty state — the plugin's muted paragraph instead of a bare table */
+.sa-empty { color: #64726b; font-size: 13.5px; }
+
+/* Inline edit row — the plugin's hidden `<tr>` under the data row
+   (subjects.php:259, staff.php, students.php): wash background, one flex
+   row of labelled fields, save in primary green. */
+.sa-edit-row > td { background: #f5f7f6; }
+.sa-edit-form { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end; padding: 12px 0; }
+.sa-edit-form label { display: block; font-size: 13.5px; font-weight: 550; color: #16211c; margin-bottom: 5px; }
+.sa-edit-form label.check { display: flex; align-items: center; gap: 8px; font-weight: 400; margin-bottom: 0; }
+.sa-edit-form input[type='text'], .sa-edit-form input[type='email'],
+.sa-edit-form input[type='tel'], .sa-edit-form input[type='date'], .sa-edit-form select {
+  padding: 9px 12px; border: 1px solid #d7dedb; border-radius: 9px; font: inherit;
+  font-size: 14px; background: var(--white); color: #16211c; width: 100%;
+}
+.sa-edit-form input:focus, .sa-edit-form select:focus {
+  outline: none; border-color: #14532d; box-shadow: 0 0 0 3px rgba(20, 83, 45, .12);
+}
+.sa-edit-form input[type='checkbox'] { width: auto; accent-color: #14532d; margin: 0; }
+.sa-edit-form .sa-edit-field { display: grid; min-width: 0; }
+
+/* Mobile: actions wrap, forms stack; the table itself scrolls (wrap above). */
+@media (max-width: 640px) {
+  .sa-edit-form { flex-direction: column; align-items: stretch; }
+}
+
+/* Card forms (Add-subject etc.) — plugin field controls (educbt-portal.css:257):
+   scoped to School Area cards only, so global form styling is untouched. */
+.sa-card .form-grid label { color: #16211c; font-weight: 550; }
+.sa-card .form-grid input, .sa-card .form-grid select {
+  padding: 9px 12px; border: 1px solid #d7dedb; border-radius: 9px;
+}
+.sa-card .form-grid input:focus, .sa-card .form-grid select:focus {
+  outline: none; border-color: #14532d; box-shadow: 0 0 0 3px rgba(20, 83, 45, .12);
+}

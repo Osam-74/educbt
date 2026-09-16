@@ -1,3 +1,4 @@
+import '../school-table.css';
 import { requireSchoolSession } from '@/lib/session';
 import { subjectsView, type SubjectRow } from '@/lib/subjects/service';
 import { AddSubjectForm, StandardListCard, SubjectsTable } from './SubjectsClient';
