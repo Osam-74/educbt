@@ -34,7 +34,7 @@ export default function ExamOfficeDashboard({ data }: { data: DashboardData }) {
           <h1>{heading}</h1>
           <p>{subheading}</p>
         </div>
-        <Link className="sd-action" href="/portal/exams/new">
+        <Link className="sd-action" href="/portal/exams/papers">
           <PortalIcon name="exam" />Create examination
         </Link>
       </div>
