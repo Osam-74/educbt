@@ -94,12 +94,20 @@ export async function staffAction(_previous: ActionState, form: FormData): Promi
     if (operation === 'assign') {
       const type = value('assignmentType') === 'class_teacher' ? 'class_teacher' as const : 'subject_teacher' as const;
 
-      // The bulk form posts N rows of one teacher + many classes (+ subjects).
-      // Grouped here so the form stays simple for the person using it.
-      const staffId = Number(value('staffId'));
-      const classIds = form.getAll('classIds').map(Number).filter((n) => n > 0);
-      const subjectIds = form.getAll('subjectIds').map(Number).filter((n) => n > 0);
-      const result = await assignBulk(actor, type, [{ staffId, classIds, subjectIds }]);
+      // The builder posts N rows (row0.staffId, row0.classIds, …) — one per
+      // teacher, "Add another teacher" appends the next index. Class-level
+      // chips expand to their arm ids client-side before posting.
+      const rowIndexes = new Set<number>();
+      for (const key of form.keys()) {
+        const match = /^row(\d+)\.(staffId|classIds|subjectIds)$/.exec(key);
+        if (match) rowIndexes.add(Number(match[1]));
+      }
+      const rows = [...rowIndexes].sort((a, b) => a - b).map((i) => ({
+        staffId: Number(value(`row${i}.staffId`)),
+        classIds: form.getAll(`row${i}.classIds`).map(Number).filter((n) => n > 0),
+        subjectIds: form.getAll(`row${i}.subjectIds`).map(Number).filter((n) => n > 0),
+      }));
+      const result = await assignBulk(actor, type, rows);
 
       revalidatePath('/portal/staff');
       const warning = result.problems.length > 0 ? ` Skipped: ${result.problems.join('; ')}.` : '';
@@ -107,9 +115,14 @@ export async function staffAction(_previous: ActionState, form: FormData): Promi
     }
 
     if (operation === 'drop') {
-      await dropAssignment(actor, Number(value('assignmentId')));
+      // Grouped drops (a whole subject) post several ids; a single drop posts
+      // one. Both shapes end the same way: status -> 'ended'.
+      const ids = form.getAll('assignmentIds').map(Number).filter((n) => n > 0);
+      const single = Number(value('assignmentId'));
+      if (!ids.length && single > 0) ids.push(single);
+      for (const id of ids) await dropAssignment(actor, id);
       revalidatePath('/portal/staff');
-      return { ok: true, message: 'Assignment dropped.' };
+      return { ok: true, message: ids.length > 1 ? 'Assignments dropped.' : 'Assignment dropped.' };
     }
 
     return { ok: false, message: 'Unknown staff action.' };

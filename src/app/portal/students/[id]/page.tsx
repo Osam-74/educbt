@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
+import '../../school-table.css';
 import { requireSchoolSession } from '@/lib/session';
 import { getStudent, listClasses, isSchoolWide } from '@/lib/queries';
 import { forSchool, schema } from '@/db';
@@ -84,7 +85,7 @@ export default async function StudentProfile({
             {student.admissionNumber}
             {enrolment?.className ? ` · ${enrolment.className}` : ' · Unenrolled'}
             {' · '}
-            <span className={`pill pill--${student.status}`}>{student.status}</span>
+            <span className={`sa-pill sa-pill--${student.status}`}>{student.status}</span>
           </p>
           <dl className="facts">
             {facts.map(([k, v]) => (
@@ -123,7 +124,8 @@ export default async function StudentProfile({
         <section className="card">
           <h2>Guardians ({guardians.length})</h2>
           {guardians.length > 0 && (
-            <table className="tbl">
+            <div className="sa-table-wrap">
+            <table className="sa-table">
               <thead>
                 <tr><th>Name</th><th>Contact</th><th>Relationship</th><th>Results</th><th>Invite</th></tr>
               </thead>
@@ -135,7 +137,7 @@ export default async function StudentProfile({
                     <td>{g.relationship ?? 'parent'}</td>
                     <td>{g.canViewResults ? 'May view' : 'No'}</td>
                     <td>
-                      <span className={`pill pill--${g.inviteStatus ?? 'pending'}`}>{g.inviteStatus ?? 'pending'}</span>
+                      <span className={`sa-pill sa-pill--${g.inviteStatus ?? 'pending'}`}>{g.inviteStatus ?? 'pending'}</span>
                       {office && g.userId ? (
                         <div style={{ marginTop: 6 }}>
                           <GuardianResetForm guardianId={g.id} guardianName={g.fullName} />
@@ -146,6 +148,7 @@ export default async function StudentProfile({
                 ))}
               </tbody>
             </table>
+            </div>
           )}
           {office && <GuardianForm studentId={studentId} />}
           {!office && guardians.length === 0 && <p className="muted">The school office links guardians.</p>}

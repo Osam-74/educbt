@@ -79,7 +79,7 @@ export function RegisterStudentForm({ classes, teacher }: { classes: ClassOption
         <p className="muted">The guardian is created (or found by email/phone) and linked; their account is activated with an invitation token, never a school-chosen password.</p>
       </fieldset>
 
-      <button type="submit" disabled={pending}>{pending ? 'Enrolling…' : 'Enrol student'}</button>
+      <button type="submit" disabled={pending} className="sa-btn sa-btn--primary" style={{ marginTop: 16 }}>{pending ? 'Enrolling…' : 'Enrol student'}</button>
       {teacher && <p className="muted">You are a class teacher: the record is created and placed in your class, but stays pending until the office approves it.</p>}
 
       {state.message && <p role={state.ok ? 'status' : 'alert'} className={state.ok ? 'note' : 'error'}>{state.message}</p>}
@@ -98,14 +98,14 @@ export function StudentRowActions({ studentId, status, office }: { studentId: nu
       <form action={action} className="inline-form">
         <input type="hidden" name="operation" value="reset" />
         <input type="hidden" name="studentId" value={studentId} />
-        <button type="submit" disabled={pending} className="btn-small">Reset password</button>
+        <button type="submit" disabled={pending} className="sa-btn sa-btn--small">Reset password</button>
       </form>
 
       {office && status === 'pending_approval' && (
         <form action={action} className="inline-form">
           <input type="hidden" name="operation" value="approve" />
           <input type="hidden" name="studentId" value={studentId} />
-          <button type="submit" disabled={pending} className="btn-small">Approve</button>
+          <button type="submit" disabled={pending} className="sa-btn sa-btn--small sa-btn--primary">Approve</button>
         </form>
       )}
 
@@ -165,7 +165,7 @@ export function EditStudentForm({ student, classes }: {
         </label>
       </fieldset>
 
-      <button type="submit" disabled={pending}>{pending ? 'Saving…' : 'Save changes'}</button>
+      <button type="submit" disabled={pending} className="sa-btn sa-btn--primary">{pending ? 'Saving…' : 'Save changes'}</button>
 
       {state.message && <p role={state.ok ? 'status' : 'alert'} className={state.ok ? 'note' : 'error'}>{state.message}</p>}
     </form>
@@ -195,7 +195,7 @@ export function StandingForm({ studentId, status }: { studentId: number; status:
         ))}
       </div>
 
-      <button type="submit" disabled={pending} className="btn-small">Apply standing</button>
+      <button type="submit" disabled={pending} className="sa-btn">Apply standing</button>
 
       {state.message && <p role={state.ok ? 'status' : 'alert'} className={state.ok ? 'note' : 'error'}>{state.message}</p>}
     </form>
@@ -211,7 +211,7 @@ export function GuardianResetForm({ guardianId, guardianName }: { guardianId: nu
     <form action={action} className="inline-form">
       <input type="hidden" name="operation" value="reset-guardian" />
       <input type="hidden" name="guardianId" value={guardianId} />
-      <button type="submit" disabled={pending} className="btn-small" title={`Issue a temporary password to ${guardianName}`}>
+      <button type="submit" disabled={pending} className="sa-btn sa-btn--small" title={`Issue a temporary password to ${guardianName}`}>
         {pending ? 'Resetting…' : 'Reset login'}
       </button>
       {state.message && !state.ok && (
@@ -257,7 +257,7 @@ export function GuardianForm({ studentId }: { studentId: number }) {
       </fieldset>
       <p className="muted">An email or a phone is required — the guardian activates their own account with the invitation token, so no password is ever chosen for them.</p>
 
-      <button type="submit" disabled={pending}>{pending ? 'Linking…' : 'Link guardian'}</button>
+      <button type="submit" disabled={pending} className="sa-btn sa-btn--primary" style={{ marginTop: 16 }}>{pending ? 'Linking…' : 'Link guardian'}</button>
 
       {state.message && <p role={state.ok ? 'status' : 'alert'} className={state.ok ? 'note' : 'error'}>{state.message}</p>}
       {state.ok && state.invite && <p role="status" className="credentials">{state.invite}</p>}
@@ -319,7 +319,7 @@ export function SubjectRegistrationForm({ studentId, core, electives, registered
         </div>
       </fieldset>
 
-      <button type="submit" disabled={pending}>{pending ? 'Saving…' : 'Save registration'}</button>
+      <button type="submit" disabled={pending} className="sa-btn sa-btn--primary">{pending ? 'Saving…' : 'Save registration'}</button>
 
       {state.message && <p role={state.ok ? 'status' : 'alert'} className={state.ok ? 'note' : 'error'}>{state.message}</p>}
     </form>

@@ -1,3 +1,4 @@
+import '../school-table.css';
 import Link from 'next/link';
 import { requireSchoolSession } from '@/lib/session';
 import { isSchoolWide } from '@/lib/queries';
@@ -43,67 +44,71 @@ export default async function StudentsPage({
 
       {scopeNote ? <p className="note">{scopeNote}</p> : null}
 
-      {classes.length > 0 && (
-        <div className="stack">
-          <RegisterStudentForm classes={classes} teacher={!office} />
-        </div>
-      )}
+      <div className="stack">
+        {classes.length > 0 && <RegisterStudentForm classes={classes} teacher={!office} />}
 
-      <form className="filters" method="get">
-        <input
-          type="search"
-          name="q"
-          placeholder="Search name or admission number"
-          defaultValue={params.q ?? ''}
-        />
-        <select name="status" defaultValue={params.status ?? 'active'}>
-          <option value="active">Active</option>
-          <option value="suspended">Suspended</option>
-          <option value="withdrawn">Withdrawn</option>
-          <option value="expelled">Expelled</option>
-          <option value="pending_approval">Pending approval</option>
-          <option value="all">All</option>
-        </select>
-        <select name="class" defaultValue={params.class ?? ''}>
-          <option value="">All classes</option>
-          {classes.map((c) => (
-            <option key={c.id} value={c.id}>{c.displayName}</option>
-          ))}
-        </select>
-        <button type="submit">Apply</button>
-      </form>
+        <section className="card sa-card">
+          <h2>Enrolled students <span className="muted">({rows.length})</span></h2>
 
-      <p className="muted">{rows.length} student{rows.length === 1 ? '' : 's'}</p>
+          <form className="sa-toolbar" method="get">
+            <input
+              type="search"
+              name="q"
+              placeholder="Search name or admission number"
+              defaultValue={params.q ?? ''}
+            />
+            <select name="status" defaultValue={params.status ?? 'active'}>
+              <option value="active">Active</option>
+              <option value="suspended">Suspended</option>
+              <option value="withdrawn">Withdrawn</option>
+              <option value="expelled">Expelled</option>
+              <option value="pending_approval">Pending approval</option>
+              <option value="all">All</option>
+            </select>
+            <select name="class" defaultValue={params.class ?? ''}>
+              <option value="">All classes</option>
+              {classes.map((c) => (
+                <option key={c.id} value={c.id}>{c.displayName}</option>
+              ))}
+            </select>
+            <button type="submit" className="sa-btn sa-btn--small sa-btn--primary">Search</button>
+            {params.q && <a className="sa-btn sa-btn--small" href="/portal/students">Clear</a>}
+            <noscript><button type="submit" className="sa-btn sa-btn--small">Apply</button></noscript>
+          </form>
 
-      {rows.length === 0 ? (
-        <p className="muted">No students match.</p>
-      ) : (
-        <table className="tbl">
-          <thead>
-            <tr>
-              <th>Name</th><th>Admission no.</th><th>Class</th><th>Status</th><th />
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((s) => (
-              <tr key={s.id}>
-                <td>{s.lastName} {s.firstName}</td>
-                <td className="mono">{s.admissionNumber}</td>
-                <td>{s.className ?? <span className="muted">Unenrolled</span>}</td>
-                <td>
-                  <span className={`pill pill--${s.status}`}>
-                    {STATUS_LABEL[s.status] ?? s.status}
-                  </span>
-                </td>
-                <td className="row-actions">
-                  <Link href={`/portal/students/${s.id}`}>View</Link>
-                  <StudentRowActions studentId={s.id} status={s.status} office={office} />
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
+          {rows.length === 0 ? (
+            <p className="sa-empty">No students match.</p>
+          ) : (
+            <div className="sa-table-wrap">
+              <table className="sa-table">
+                <thead>
+                  <tr>
+                    <th>Admission no.</th><th>Student</th><th>Class</th><th>Status</th><th />
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.map((s) => (
+                    <tr key={s.id}>
+                      <td className="mono">{s.admissionNumber}</td>
+                      <td>{s.lastName} {s.firstName}</td>
+                      <td>{s.className ?? <span className="muted">Unenrolled</span>}</td>
+                      <td>
+                        <span className={`sa-pill sa-pill--${s.status}`}>
+                          {STATUS_LABEL[s.status] ?? s.status}
+                        </span>
+                      </td>
+                      <td className="row-actions">
+                        <Link href={`/portal/students/${s.id}`} className="sa-btn sa-btn--small sa-btn--primary">View</Link>
+                        <StudentRowActions studentId={s.id} status={s.status} office={office} />
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </section>
+      </div>
     </>
   );
 }
