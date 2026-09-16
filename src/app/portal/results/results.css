@@ -17,7 +17,7 @@
 .result-correction textarea { width: 100%; max-width: 650px; }
 .result-student { border-top: 1px solid #ccd8cf; padding: 16px 0; }
 .result-student summary { font-weight: 600; cursor: pointer; }
-.result-table-wrap { overflow-x: auto; }
+.result-table-wrap { overflow-x: auto; margin-top: 16px; }
 .results-page table { border-collapse: collapse; width: 100%; min-width: 760px; }
 .results-page th, .results-page td { padding: 10px; text-align: left; border-bottom: 1px solid #dce4de; }
 .results-page thead { background: #e6f1e7; }
@@ -26,12 +26,23 @@
 /* Keep the existing navigation usable on this route without changing other portals. */
 .portal:has(.results-page) .portal__bar nav { flex-wrap: wrap; max-width: 100%; }
 
-/* ── Classes table (plugin school/results.php port) ───────────────────── */
-.results-classes { width: 100%; }
-.results-classes th, .results-classes td {
+/* ── Classes table (plugin school/results.php port) ─────────────────────
+   Same canonical look every other table in the app uses (.tbl/.sa-table):
+   rounded card, solid forest-green header band in white text — this table
+   had drifted onto its own older pale-mint header and never been migrated. */
+/* Prefixed with .results-page so this beats the page's own generic
+   ".results-page table" / ".results-page th, .results-page td" rules
+   above (same file, otherwise-higher specificity from the type selector). */
+.results-page .results-classes {
+  width: 100%; min-width: 0; border-collapse: separate; border-spacing: 0; background: #fff;
+  border: 1px solid #dce4de; border-radius: 12px; overflow: hidden;
+}
+.results-page .results-classes th, .results-page .results-classes td {
   padding: 12px 14px; text-align: left; border-bottom: 1px solid #dce4de; vertical-align: top;
 }
-.results-classes thead { background: #e6f1e7; }
+.results-page .results-classes th { background: #14532d; color: #fff; font-size: 12px; font-weight: 650; border-bottom: 0; }
+.results-page .results-classes tbody tr:hover { background: #f5f7f6; }
+.results-page .results-classes tbody tr:last-child td { border-bottom: 0; }
 .result-stage--compiled { background: #e6f1e7; color: #194c32; }
 .result-stage--reviewed { background: #eef3ff; color: #1e3a8a; }
 .result-stage--published { background: #eafaf0; color: #14532d; }

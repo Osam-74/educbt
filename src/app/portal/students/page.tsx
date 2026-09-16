@@ -60,8 +60,6 @@ export default async function StudentsPage({
               placeholder="Search name or student ID"
               defaultValue={params.q ?? ''}
             />
-            <button type="submit" className="sa-btn sa-btn--small sa-btn--primary">Search</button>
-            {params.q && <a className="sa-btn sa-btn--small" href="/portal/students">Clear</a>}
             <AutoSubmitSelect name="class" defaultValue={params.class ?? ''} aria-label="Filter by class">
               <option value="">All classes</option>
               {classes.map((c) => (
@@ -76,6 +74,8 @@ export default async function StudentsPage({
               <option value="expelled">Expelled</option>
               <option value="all">All</option>
             </AutoSubmitSelect>
+            <button type="submit" className="sa-btn sa-btn--small sa-btn--primary">Search</button>
+            {params.q && <a className="sa-btn sa-btn--small" href="/portal/students">Clear</a>}
             <noscript><button type="submit" className="sa-btn sa-btn--small">Filter</button></noscript>
           </form>
 

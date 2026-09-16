@@ -235,7 +235,7 @@
 .pa-panel-link { font-size: 12.5px; font-weight: 650; color: var(--pa-forest); text-decoration: none; display: inline-flex; align-items: center; gap: 4px; }
 .pa-panel-link:hover { color: var(--pa-emerald-700); }
 
-.pa-table-wrap { overflow-x: auto; }
+.pa-table-wrap { overflow-x: auto; margin-top: 16px; }
 .pa-table { width: 100%; border-collapse: collapse; text-align: left; font-size: 13.5px; }
 .pa-table thead tr { background: rgba(245,245,244,0.7); border-bottom: 1px solid var(--pa-stone-200); }
 .pa-table th { padding: 11px 20px; font-size: 10.5px; font-weight: 750; text-transform: uppercase; letter-spacing: 0.06em; color: var(--pa-stone-600); }

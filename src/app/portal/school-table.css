@@ -14,7 +14,7 @@
 
 /* Table — the plugin's .educbt-table exactly (educbt-portal.css:229-237):
    green header band, 14px cells, hairline row rules, rounded border. */
-.sa-table-wrap { overflow-x: auto; } /* narrow viewports scroll, not squish */
+.sa-table-wrap { overflow-x: auto; margin-top: 16px; } /* narrow viewports scroll, not squish */
 .sa-table {
   width: 100%; border-collapse: separate; border-spacing: 0; background: var(--white);
   font-size: 14px; border: 1px solid #e2e8e4; border-radius: 12px; overflow: hidden;
@@ -43,8 +43,8 @@
 /* Buttons — the plugin's .educbt-btn family (educbt-portal.css:167-176).
    Default: white with hairline border; primary: solid green; danger: red text. */
 .sa-btn {
-  display: inline-block; padding: 9px 16px; border: 1px solid #e2e8e4; border-radius: 9px;
-  background: var(--white); color: #16211c; font: inherit; font-size: 14px; font-weight: 550;
+  display: inline-block; padding: 7px 13px; border: 1px solid #e2e8e4; border-radius: 8px;
+  background: var(--white); color: #16211c; font: inherit; font-size: 13.5px; font-weight: 550;
   text-decoration: none; cursor: pointer;
 }
 .sa-btn:hover { border-color: #14532d; color: #14532d; }

@@ -2,7 +2,7 @@
    (school/review.php inline <style>): sticky student column, compact
    component inputs, live totals in the school green. */
 .review-page .review-card { padding: 18px 20px; }
-.review-table-wrap { overflow-x: auto; }
+.review-table-wrap { overflow-x: auto; margin-top: 16px; }
 .review-table { border-collapse: collapse; width: 100%; min-width: 760px; }
 .review-table th, .review-table td {
   padding: 10px 12px; text-align: left; border-bottom: 1px solid var(--line);

@@ -53,7 +53,7 @@ export default function NewTermDialog({ sessions, terms, currentSessionId, curre
   };
 
   return <>
-    <button type="button" className="sd-action" onClick={() => setOpen(true)}>
+    <button type="button" className="sd-action sd-action--term" onClick={() => setOpen(true)}>
       <PortalIcon name="calendar" />Start New Session/Term
     </button>
 

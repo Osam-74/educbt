@@ -8,6 +8,15 @@
 }
 .broad-controls__field { flex: 1 1 220px; }
 .broad-controls__field label { display: block; margin-bottom: 6px; }
+/* The <select> itself had no rule at all — a bare browser control sitting
+   next to a styled label and button, the one unstyled field on the page. */
+.broad-controls__field select {
+  width: 100%; padding: 9px 12px; border: 1px solid #d7dedb; border-radius: 9px;
+  font: inherit; font-size: 14px; background: var(--white); color: #16211c;
+}
+.broad-controls__field select:focus {
+  outline: none; border-color: var(--forest); box-shadow: 0 0 0 3px rgba(20, 83, 45, .12);
+}
 .broad-controls__btn {
   padding: 10px 18px;
   border: 0;
