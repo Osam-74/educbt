@@ -90,6 +90,10 @@
 }
 .sa-edit-form input[type='checkbox'] { width: auto; accent-color: #14532d; margin: 0; }
 .sa-edit-form .sa-edit-field { display: grid; min-width: 0; }
+/* The field grid must span the whole flex form or it sizes to its content
+   and auto-fit collapses to a single long column. Full-basis fixes it and
+   keeps the columns responsive (auto-fit reflows on narrow screens). */
+.sa-edit-form > .sa-grid { flex: 1 1 100%; }
 
 /* Mobile: actions wrap, forms stack; the table itself scrolls (wrap above). */
 @media (max-width: 640px) {
@@ -169,6 +173,24 @@
   display: block; margin-bottom: 5px; font-weight: 550; font-size: 13.5px; color: #16211c;
 }
 .sa-btn--ghost { border-color: transparent; color: #64726b; padding: 7px 10px; }
+
+/* ── Collapsible entry sections (plugin students.php <details><summary><h2>)
+   ──────────────────────────────────────────────────────────────────────────
+   The roll is what the page is for; the entry forms fold away beneath it.
+   Ported from educbt-portal.css:386-401 — summary IS the card's header band,
+   with a +/− indicator; the card inside drops its top border when open. */
+.sa-details > summary {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  cursor: pointer; padding: 16px 18px; list-style: none;
+  background: #fff; border: 1px solid #e2e8e4; border-radius: 12px;
+  margin-bottom: 16px;
+}
+.sa-details > summary::-webkit-details-marker { display: none; }
+.sa-details > summary h2 { margin: 0; font-size: 15.5px; font-weight: 660; }
+.sa-details[open] > summary { border-radius: 12px 12px 0 0; margin-bottom: 0; border-bottom: 0; }
+.sa-details[open] > .card { border-radius: 0 0 12px 12px; border-top: 0; }
+.sa-details > summary::after { content: '+'; color: #64726b; font-size: 18px; line-height: 1; }
+.sa-details[open] > summary::after { content: '\2212'; }
 
 /* The plugin's warning note (educbt-portal.css:241) — shown above the
    stand-down form when the person still holds duties. */

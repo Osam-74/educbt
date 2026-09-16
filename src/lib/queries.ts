@@ -57,6 +57,12 @@ export type StudentRow = {
   gender: string | null;
   status: string;
   className: string | null;
+  photoUrl: string | null;
+  parentName: string | null;
+  parentPhone: string | null;
+  parentEmail: string | null;
+  address: string | null;
+  classId: number | null;
 };
 
 export async function listStudents(
@@ -109,6 +115,12 @@ export async function listStudents(
         gender: schema.students.gender,
         status: schema.students.status,
         className: schema.classes.displayName,
+        photoUrl: schema.students.photoUrl,
+        parentName: schema.students.parentName,
+        parentPhone: schema.students.parentPhone,
+        parentEmail: schema.students.parentEmail,
+        address: schema.students.address,
+        classId: schema.enrollments.classId,
       })
       .from(schema.students)
       .leftJoin(schema.enrollments, and(
@@ -125,6 +137,21 @@ export async function listStudents(
     rows,
     scopeNote: reachable === 'all' ? null : 'Showing students in your assigned classes only.',
   };
+}
+
+/** Students waiting on the office's approval — the banner the plugin shows
+ *  above the register. Counted on student standing so the number matches the
+ *  Pending Approval filter the banner links to. */
+export async function pendingApprovalCount(actor: Actor): Promise<number> {
+  if (!isSchoolWide(actor.role)) return 0; // teachers approve nothing
+  const [row] = await forSchool(actor.schoolId, async (tx) =>
+    tx.select({ n: count() }).from(schema.students)
+      .where(and(
+        eq(schema.students.schoolId, actor.schoolId),
+        eq(schema.students.status, 'pending_approval'),
+      )),
+  );
+  return Number(row?.n ?? 0);
 }
 
 export async function getStudent(actor: Actor, studentId: number) {

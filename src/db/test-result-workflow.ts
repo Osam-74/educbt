@@ -332,8 +332,10 @@ async function main() {
           const errors: string[] = [];
           page.on('pageerror', (e: Error) => errors.push(e.message));
           // CI runners need a cold-start budget for the first browser render;
-          // the assertions themselves are unchanged.
-          page.setDefaultTimeout(90000);
+          // the assertions themselves are unchanged. 180s after the 2026-09-15
+          // flake: a green run 75 timed out at 90s on a loaded runner and
+          // passed unchanged on retry — the budget, not the app, was the bug.
+          page.setDefaultTimeout(180000);
           await page.goto(url.href, { waitUntil: 'networkidle' });
           await check('browser desktop dashboard renders without runtime errors', async () => {
             await page.getByRole('heading', { name: 'Review results', exact: true }).waitFor();

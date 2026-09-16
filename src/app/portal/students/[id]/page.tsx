@@ -109,6 +109,10 @@ export default async function StudentProfile({
               dateOfBirth: student.dateOfBirth ? student.dateOfBirth.toISOString().slice(0, 10) : null,
               admissionNumber: student.admissionNumber,
               classId: enrolment?.classId ?? null,
+              parentName: student.parentName,
+              parentPhone: student.parentPhone,
+              parentEmail: student.parentEmail,
+              address: student.address,
             }}
             classes={classes}
           />

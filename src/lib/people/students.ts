@@ -321,6 +321,12 @@ export type UpdateStudentInput = {
   admissionNumber?: string; // changed = the login moves with it
   photoUrl?: string; // new photo; undefined = keep the current one
   classId?: number; // changed = move in the CURRENT session only
+  // The parent block the plugin's edit row carries (educbt_update_student):
+  // who to call, and where the student lives. Free text, no behavior attached.
+  parentName?: string;
+  parentPhone?: string;
+  parentEmail?: string;
+  address?: string;
 };
 
 export async function updateStudent(actor: Actor, input: UpdateStudentInput): Promise<void> {
@@ -342,6 +348,14 @@ export async function updateStudent(actor: Actor, input: UpdateStudentInput): Pr
       gender: input.gender?.trim() || null,
       dateOfBirth: input.dateOfBirth ? new Date(input.dateOfBirth) : null,
     };
+
+    // Parent contact and home address — the plugin's edit row edits these in
+    // place. Empty string clears the field (the office strikes a wrong
+    // number); undefined leaves it untouched.
+    if (input.parentName !== undefined) updates.parentName = input.parentName.trim() || null;
+    if (input.parentPhone !== undefined) updates.parentPhone = input.parentPhone.trim() || null;
+    if (input.parentEmail !== undefined) updates.parentEmail = input.parentEmail.trim() || null;
+    if (input.address !== undefined) updates.address = input.address.trim() || null;
 
     // Absent = keep the current photograph; only an explicit new upload
     // replaces it, so an edit without a file never blanks the photo.
@@ -401,6 +415,62 @@ export async function updateStudent(actor: Actor, input: UpdateStudentInput): Pr
       },
     });
   });
+}
+
+// Bulk import lives in students-import.ts (pure — no db imports); it is
+// re-exported here so the service and its callers see one surface.
+export { IMPORT_COLUMNS, parseStudentCsv } from './students-import';
+import type { ImportRow, ImportOutcome } from './students-import';
+
+export type ImportResult = {
+  created: number;
+  pendingApproval: boolean;
+  outcomes: ImportOutcome[];
+};
+
+/**
+ * Import many students into one class. Each row registers through the SAME
+ * registerStudent path as the single form — ID generation, surname password,
+ * enrolment, teacher-pending rules — so an import can never create a student
+ * the office could not have created by hand. One bad row does not sink the
+ * file: the office gets a per-row report and fixes the misses.
+ */
+export async function importStudents(
+  actor: Actor,
+  input: { classId: number; rows: ImportRow[] },
+): Promise<ImportResult> {
+  const outcomes: ImportOutcome[] = [];
+  let created = 0;
+  let pendingApproval = false;
+
+  for (let i = 0; i < input.rows.length; i++) {
+    const row = input.rows[i]!;
+    try {
+      const result = await registerStudent(actor, {
+        firstName: row.firstName,
+        lastName: row.lastName,
+        gender: row.gender,
+        dateOfBirth: row.dateOfBirth,
+        classId: input.classId,
+      });
+      created++;
+      pendingApproval = pendingApproval || result.pendingApproval;
+      outcomes.push({
+        row: i + 2, // header is row 1
+        ok: true,
+        admissionNumber: result.admissionNumber,
+        initialPassword: result.initialPassword,
+      });
+    } catch (error) {
+      outcomes.push({
+        row: i + 2,
+        ok: false,
+        error: error instanceof StudentError ? error.message : 'That row could not be imported.',
+      });
+    }
+  }
+
+  return { created, pendingApproval, outcomes };
 }
 
 // ── Class placement ───────────────────────────────────────────────────────────

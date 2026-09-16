@@ -6,6 +6,7 @@ import {
   StudentError, registerStudent, updateStudent, moveStudent,
   setStudentStanding, approveStudent, resetStudentPassword,
   linkGuardian, setStudentSubjects, subjectRegistrationView,
+  importStudents, parseStudentCsv,
   type Standing,
 } from '@/lib/people/students';
 import { GuardianResetError, resetGuardianPassword } from '@/lib/people/guardians';
@@ -28,7 +29,8 @@ export async function studentAction(_previous: ActionState, form: FormData): Pro
       // form before the photograph. Absent photo = keep whatever exists.
       const photoUrl = await savePassportPhoto(actor, form.get('photo'));
 
-      const guardianName = value('guardianFullName').trim();
+      const guardianName = [value('guardianFirstName').trim(), value('guardianLastName').trim()]
+        .filter(Boolean).join(' ').trim();
       const guardianEmail = value('guardianEmail').trim();
       const guardianPhone = value('guardianPhone').trim();
 
@@ -71,6 +73,10 @@ export async function studentAction(_previous: ActionState, form: FormData): Pro
         admissionNumber: value('admissionNumber'),
         photoUrl: photoUrl ?? undefined,
         classId: Number(value('classId')) || undefined,
+        parentName: value('parentName'),
+        parentPhone: value('parentPhone'),
+        parentEmail: value('parentEmail'),
+        address: value('address'),
       });
 
       revalidatePath('/portal/students');
@@ -143,6 +149,41 @@ export async function studentAction(_previous: ActionState, form: FormData): Pro
             ? 'Existing guardian linked (deduplicated by email or phone). Their pending invitation is re-issued below.'
             : 'Existing guardian linked (deduplicated by email or phone). They already have an account — no invitation is needed.',
         invite: result.inviteToken ? `Invitation: /guardian/accept?t=${result.inviteToken}` : undefined,
+      };
+    }
+
+    if (operation === 'import') {
+      // The plugin's "Import many students": one class, one CSV, IDs and
+      // passwords generated. Bad rows are reported, not silently skipped.
+      const file = form.get('csv');
+      if (!(file instanceof File) || file.size === 0) {
+        return { ok: false, message: 'Choose a CSV file to import.' };
+      }
+      if (file.size > 1_000_000) {
+        return { ok: false, message: 'That file is too large. Split it into smaller imports.' };
+      }
+      const text = await file.text();
+      const { rows, errors } = parseStudentCsv(text);
+      if (errors.length > 0) return { ok: false, message: errors[0]!.error };
+      if (rows.length === 0) return { ok: false, message: 'The file has no student rows.' };
+      if (rows.length > 500) return { ok: false, message: 'Import at most 500 students at a time.' };
+
+      const result = await importStudents(actor, { classId: Number(value('classId')), rows });
+      revalidatePath('/portal/students');
+
+      const failures = result.outcomes.filter((o) => !o.ok);
+      const lines = [
+        `${result.created} student${result.created === 1 ? '' : 's'} imported`,
+        result.pendingApproval ? ' (pending the office\'s approval)' : '',
+        '.',
+      ];
+      const roster = result.outcomes.filter((o) => o.ok)
+        .map((o) => `${o.admissionNumber} — password ${o.initialPassword}`)
+        .join(' · ');
+      return {
+        ok: result.created > 0,
+        message: `${lines.join('')}${failures.length ? ` ${failures.length} row(s) failed: ${failures.map((f) => `row ${f.row} (${f.error})`).join('; ')}.` : ''}`,
+        credentials: roster || undefined,
       };
     }
 

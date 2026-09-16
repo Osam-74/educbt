@@ -274,6 +274,86 @@ async function main() {
       assert.equal(en!.status, 'active');
     });
 
+    // ── Edit-row parent block + bulk import (plugin students.php) ─────────────
+    await students.updateStudent(a.principal, {
+      studentId: s1.studentId, firstName: 'Ada', lastName: 'Obi',
+      parentName: 'Mrs Ifeoma Obi', parentPhone: '+2348012345678',
+      parentEmail: 'ifeoma@example.com', address: '12 Unity Road, Ibadan',
+    });
+    await check('the edit row persists the parent block and address', async () => {
+      const [st] = await db.select().from(schema.students).where(eq(schema.students.id, s1.studentId));
+      assert.equal(st!.parentName, 'Mrs Ifeoma Obi');
+      assert.equal(st!.parentPhone, '+2348012345678');
+      assert.equal(st!.parentEmail, 'ifeoma@example.com');
+      assert.equal(st!.address, '12 Unity Road, Ibadan');
+    });
+    await students.updateStudent(a.principal, {
+      studentId: s1.studentId, firstName: 'Ada', lastName: 'Obi', parentEmail: '  ',
+    });
+    await check('an emptied parent field clears, untouched fields survive', async () => {
+      const [st] = await db.select().from(schema.students).where(eq(schema.students.id, s1.studentId));
+      assert.equal(st!.parentEmail, null);
+      assert.equal(st!.parentName, 'Mrs Ifeoma Obi');
+    });
+
+    await check('the CSV reader handles quotes, commas and CRLF', () => {
+      const parsed = students.parseStudentCsv(
+        'first_name,last_name,gender,date_of_birth\r\n' +
+        '"Ojo, Jr",Ade,male,2010-02-03\r\n' +
+        'Bola,,female,\r\n',
+      );
+      assert.equal(parsed.errors.length, 0);
+      assert.deepEqual(parsed.rows, [
+        { firstName: 'Ojo, Jr', lastName: 'Ade', gender: 'male', dateOfBirth: '2010-02-03' },
+        { firstName: 'Bola', lastName: '', gender: 'female', dateOfBirth: '' },
+      ]);
+    });
+    await check('a CSV without the required columns is rejected up front', () => {
+      const parsed = students.parseStudentCsv('name,phone\nAda,080\n');
+      assert.ok(parsed.errors.length > 0 && parsed.errors[0]!.error.includes('first_name'));
+    });
+
+    const imported = await students.importStudents(a.principal, {
+      classId: a.classes[0]!.id,
+      rows: [
+        { firstName: 'Import', lastName: 'One', gender: 'male' },
+        { firstName: 'I', lastName: 'Two' },
+        { firstName: 'Import', lastName: 'Three' },
+      ],
+    });
+    await check('bulk import registers rows and reports the bad one', async () => {
+      assert.equal(imported.created, 2);
+      assert.equal(imported.outcomes.length, 3);
+      assert.equal(imported.outcomes[0]!.ok, true);
+      assert.match(imported.outcomes[0]!.admissionNumber!, new RegExp(`^${a.code}/\\d{4}/\\d{4}$`));
+      assert.equal(imported.outcomes[1]!.ok, false);
+      assert.ok(imported.outcomes[1]!.error!.includes('first name and a surname'));
+      assert.equal(imported.outcomes[2]!.ok, true);
+      const [st] = await db.select().from(schema.students)
+        .where(eq(schema.students.admissionNumber, imported.outcomes[0]!.admissionNumber!));
+      assert.equal(st!.firstName, 'Import');
+      const [en] = await db.select().from(schema.enrollments).where(eq(schema.enrollments.studentId, st!.id));
+      assert.equal(en!.classId, a.classes[0]!.id);
+      assert.equal(en!.status, 'active');
+    });
+    const teacherImport = await students.importStudents(a.teacher, {
+      classId: a.classes[0]!.id,
+      rows: [{ firstName: 'Teacher', lastName: 'Imported' }],
+    });
+    await check('a teacher import goes pending like their manual additions', () => {
+      assert.equal(teacherImport.pendingApproval, true);
+      assert.equal(teacherImport.outcomes[0]!.ok, true);
+    });
+    await check('import cannot place students outside the actor\'s scope', async () => {
+      const denied = await students.importStudents(a.teacher, {
+        classId: a.classes[1]!.id,
+        rows: [{ firstName: 'No', lastName: 'Scope' }],
+      });
+      assert.equal(denied.created, 0);
+      assert.equal(denied.outcomes[0]!.ok, false);
+      assert.ok(denied.outcomes[0]!.error!.includes('class you hold'));
+    });
+
     // ── Moving and history ───────────────────────────────────────────────────
     await db.insert(schema.enrollments).values({
       schoolId: a.schoolId, studentId: s1.studentId, classId: a.classes[1]!.id, sessionId: a.oldSession.id,

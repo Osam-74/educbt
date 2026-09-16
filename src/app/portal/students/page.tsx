@@ -1,20 +1,9 @@
 import '../school-table.css';
-import Link from 'next/link';
 import { requireSchoolSession } from '@/lib/session';
-import { isSchoolWide } from '@/lib/queries';
-import { listStudents, listClasses } from '@/lib/queries';
-import { RegisterStudentForm, StudentRowActions } from './StudentForms';
+import { isSchoolWide, listStudents, listClasses, pendingApprovalCount } from '@/lib/queries';
+import { RegisterStudentForm, ImportStudentsForm, StudentRowForm, AutoSubmitSelect } from './StudentForms';
 
 export const dynamic = 'force-dynamic';
-
-const STATUS_LABEL: Record<string, string> = {
-  active: 'Active',
-  suspended: 'Suspended',
-  withdrawn: 'Withdrawn',
-  expelled: 'Expelled',
-  pending_approval: 'Pending approval',
-  graduated: 'Graduated',
-};
 
 export default async function StudentsPage({
   searchParams,
@@ -23,14 +12,16 @@ export default async function StudentsPage({
 }) {
   const params = await searchParams;
   const actor = await requireSchoolSession();
+  const status = params.status ?? 'active';
 
-  const [{ rows, scopeNote }, classes] = await Promise.all([
+  const [{ rows, scopeNote }, classes, pendingCount] = await Promise.all([
     listStudents(actor, {
       search: params.q?.trim(),
-      status: params.status ?? 'active',
+      status,
       classId: params.class ? Number(params.class) : undefined,
     }),
     listClasses(actor),
+    pendingApprovalCount(actor),
   ]);
 
   // Teachers enrol into their own classes only, and the record waits for the
@@ -45,7 +36,19 @@ export default async function StudentsPage({
       {scopeNote ? <p className="note">{scopeNote}</p> : null}
 
       <div className="stack">
-        {classes.length > 0 && <RegisterStudentForm classes={classes} teacher={!office} />}
+        {office && pendingCount > 0 && status !== 'pending_approval' && (
+          <section className="card sa-card" style={{ borderLeft: '4px solid #E2A33B', background: '#FFF8E8' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10 }}>
+              <div>
+                <strong>{pendingCount} student{pendingCount === 1 ? '' : 's'} pending approval</strong>
+                <p className="muted" style={{ margin: '4px 0 0', fontSize: 12 }}>
+                  A teacher added these students. Review and approve them to activate their enrolment.
+                </p>
+              </div>
+              <a className="sa-btn sa-btn--primary" href="/portal/students?status=pending_approval">Review pending</a>
+            </div>
+          </section>
+        )}
 
         <section className="card sa-card">
           <h2>Enrolled students <span className="muted">({rows.length})</span></h2>
@@ -54,30 +57,30 @@ export default async function StudentsPage({
             <input
               type="search"
               name="q"
-              placeholder="Search name or admission number"
+              placeholder="Search name or student ID"
               defaultValue={params.q ?? ''}
             />
-            <select name="status" defaultValue={params.status ?? 'active'}>
-              <option value="active">Active</option>
-              <option value="suspended">Suspended</option>
-              <option value="withdrawn">Withdrawn</option>
-              <option value="expelled">Expelled</option>
-              <option value="pending_approval">Pending approval</option>
-              <option value="all">All</option>
-            </select>
-            <select name="class" defaultValue={params.class ?? ''}>
+            <button type="submit" className="sa-btn sa-btn--small sa-btn--primary">Search</button>
+            {params.q && <a className="sa-btn sa-btn--small" href="/portal/students">Clear</a>}
+            <AutoSubmitSelect name="class" defaultValue={params.class ?? ''} aria-label="Filter by class">
               <option value="">All classes</option>
               {classes.map((c) => (
                 <option key={c.id} value={c.id}>{c.displayName}</option>
               ))}
-            </select>
-            <button type="submit" className="sa-btn sa-btn--small sa-btn--primary">Search</button>
-            {params.q && <a className="sa-btn sa-btn--small" href="/portal/students">Clear</a>}
-            <noscript><button type="submit" className="sa-btn sa-btn--small">Apply</button></noscript>
+            </AutoSubmitSelect>
+            <AutoSubmitSelect name="status" defaultValue={status} aria-label="Filter by status">
+              <option value="active">Active</option>
+              <option value="suspended">Suspended</option>
+              <option value="pending_approval">Pending Approval</option>
+              <option value="withdrawn">Withdrawn</option>
+              <option value="expelled">Expelled</option>
+              <option value="all">All</option>
+            </AutoSubmitSelect>
+            <noscript><button type="submit" className="sa-btn sa-btn--small">Filter</button></noscript>
           </form>
 
           {rows.length === 0 ? (
-            <p className="sa-empty">No students match.</p>
+            <p className="sa-empty">No students enrolled yet.</p>
           ) : (
             <div className="sa-table-wrap">
               <table className="sa-table">
@@ -88,26 +91,27 @@ export default async function StudentsPage({
                 </thead>
                 <tbody>
                   {rows.map((s) => (
-                    <tr key={s.id}>
-                      <td className="mono">{s.admissionNumber}</td>
-                      <td>{s.lastName} {s.firstName}</td>
-                      <td>{s.className ?? <span className="muted">Unenrolled</span>}</td>
-                      <td>
-                        <span className={`sa-pill sa-pill--${s.status}`}>
-                          {STATUS_LABEL[s.status] ?? s.status}
-                        </span>
-                      </td>
-                      <td className="row-actions">
-                        <Link href={`/portal/students/${s.id}`} className="sa-btn sa-btn--small sa-btn--primary">View</Link>
-                        <StudentRowActions studentId={s.id} status={s.status} office={office} />
-                      </td>
-                    </tr>
+                    <StudentRowForm key={s.id} student={s} classes={classes} office={office} />
                   ))}
                 </tbody>
               </table>
             </div>
           )}
         </section>
+
+        {classes.length > 0 && (
+          <details className="sa-details">
+            <summary><h2>Register a student</h2></summary>
+            <RegisterStudentForm classes={classes} teacher={!office} />
+          </details>
+        )}
+
+        {office && classes.length > 0 && (
+          <details className="sa-details">
+            <summary><h2>Import many students</h2></summary>
+            <ImportStudentsForm classes={classes} />
+          </details>
+        )}
       </div>
     </>
   );
