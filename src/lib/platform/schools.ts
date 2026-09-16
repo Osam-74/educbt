@@ -387,6 +387,32 @@ async function seedDefaultAcademicPeriod(tx: Tx, schoolId: number): Promise<void
   })));
 }
 
+/**
+ * Legacy Seeder::seed_school() parity (Core/Seeder.php): every school starts
+ * with the standard Nigerian secondary structure — JSS 1–3, SS 1–3 and the
+ * three senior streams — instead of an empty Classes page the principal must
+ * build from nothing. This MUST run before seedStandardSubjects(): the
+ * standard subject list attaches senior departmental subjects (Physics,
+ * Economics, Literature, …) to a department by name lookup, so a school
+ * onboarded without departments first seeds every senior elective with a
+ * null department — invisible in the department subject split ever after.
+ */
+async function seedDefaultClassStructure(tx: Tx, schoolId: number): Promise<void> {
+  await tx.insert(schema.departments).values([
+    { schoolId, name: 'Science', sortOrder: 1 },
+    { schoolId, name: 'Arts', sortOrder: 2 },
+    { schoolId, name: 'Commercial', sortOrder: 3 },
+  ]);
+  await tx.insert(schema.classLevels).values([
+    { schoolId, name: 'JSS 1', stage: 'junior', levelOrder: 1 },
+    { schoolId, name: 'JSS 2', stage: 'junior', levelOrder: 2 },
+    { schoolId, name: 'JSS 3', stage: 'junior', levelOrder: 3 },
+    { schoolId, name: 'SS 1', stage: 'senior', levelOrder: 4 },
+    { schoolId, name: 'SS 2', stage: 'senior', levelOrder: 5 },
+    { schoolId, name: 'SS 3', stage: 'senior', levelOrder: 6 },
+  ]);
+}
+
 export async function createSchoolWithPrincipal(
   actor: PlatformActor,
   rawInput: OnboardingInput,
@@ -439,6 +465,10 @@ export async function createSchoolWithPrincipal(
         });
 
       await seedDefaultAcademicPeriod(tx, Number(school!.id));
+
+      // Departments and class levels BEFORE subjects — see
+      // seedDefaultClassStructure's docblock for why the order matters.
+      await seedDefaultClassStructure(tx, Number(school!.id));
 
       // Seed the standard NERDC subject offering (see subjects/service.ts). A
       // school otherwise opens its Subjects page to an empty list and types

@@ -351,7 +351,14 @@ async function main() {
             await page.screenshot({ path: 'baseline-logs/results-desktop.png', fullPage: true });
           });
           await check('browser principal signs off review through server action', async () => {
-            await page.getByRole('button', { name: 'Sign off review', exact: true }).click();
+            // JSS1 B is compiled independently for isolation coverage (see
+            // 'other class can compile independently'), so the dashboard
+            // lists two 'Sign off review' buttons — one per compiled class.
+            // Scope the click to a.scope's own row (JSS1 A) rather than the
+            // page-wide role locator, which is ambiguous once a second class
+            // reaches the same state.
+            await page.getByRole('row', { name: 'JSS1 A', exact: false })
+              .getByRole('button', { name: 'Sign off review', exact: true }).click();
             await page.getByText('3 subject results moved to reviewed.', { exact: true }).waitFor();
             assert.equal((await rows()).find(r => r.studentId === a.students[0]!.id)!.state, 'reviewed');
           });
@@ -368,14 +375,31 @@ async function main() {
             await page.getByRole('button', { name: 'Lock results', exact: true }).click();
             await page.getByText('3 subject results moved to locked.', { exact: true }).waitFor();
           });
+          // Backward actions (Unlock, Withdraw, Reopen) render inside the
+          // row's <details class="class-correction"> disclosure — collapsed
+          // by default so a principal cannot fat-finger a reversal — so
+          // neither is in the accessibility tree, and getByRole('button')
+          // waits out its full timeout, until the row's own 'Correction…'
+          // summary is opened first.
+          const jss1ARow = () => page.getByRole('row', { name: 'JSS1 A', exact: false });
+          const openCorrection = async () => {
+            const details = jss1ARow().locator('details.class-correction');
+            if (!(await details.evaluate((el: HTMLDetailsElement) => el.open))) {
+              await jss1ARow().getByText('Correction…', { exact: true }).click();
+            }
+          };
           await check('browser refuses unlock without correction reason', async () => {
-            await page.getByRole('button', { name: 'Unlock results', exact: true }).click();
+            await openCorrection();
+            await jss1ARow().getByRole('button', { name: 'Unlock results', exact: true }).click();
             await page.getByText('Provide a written correction reason of at least 10 characters.', { exact: true }).waitFor();
             assert.equal((await rows()).find(r => r.studentId === a.students[0]!.id)!.state, 'locked');
           });
           await check('browser accepts reasoned unlock and retains publication', async () => {
-            await page.getByLabel('Written correction reason').fill('Correct the examination mark after review');
-            await page.getByRole('button', { name: 'Unlock results', exact: true }).click();
+            await openCorrection();
+            // The reason field has no <label>, only a placeholder, so
+            // getByLabel never matches it — target the textarea directly.
+            await jss1ARow().locator('textarea[name="reason"]').fill('Correct the examination mark after review');
+            await jss1ARow().getByRole('button', { name: 'Unlock results', exact: true }).click();
             await page.getByText('3 subject results moved to published.', { exact: true }).waitFor();
             assert((await rows()).find(r => r.studentId === a.students[0]!.id)!.published);
             assert.deepEqual(errors, []);

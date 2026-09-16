@@ -58,6 +58,7 @@ export function ClassRow({ scope, stage, principal, configured }: {
         <details className="class-correction">
           <summary>Correction…</summary>
           <textarea name="reason" rows={2} maxLength={2000}
+            aria-label="Written correction reason"
             placeholder="Written correction reason (at least 10 characters)." />
           <button type="submit" name="operation" value={backward[stage]![0]} disabled={pending}>
             {backward[stage]![1]}

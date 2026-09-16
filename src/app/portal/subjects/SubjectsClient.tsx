@@ -220,15 +220,19 @@ function Row({
     {editing && (
       <tr className="sa-edit-row">
         <td colSpan={7}>
-          <form action={action} className="sa-edit-form sa-edit-form--grid">
+          <form action={action} className="sa-edit-form">
             <input type="hidden" name="operation" value="save" />
             <input type="hidden" name="subjectId" value={subject.id} />
 
-            <div className="sa-edit-field">
+            <div className="sa-edit-field" style={{ flex: '2 1 220px' }}>
               <label htmlFor={`name-${subject.id}`}>Subject name</label>
               <input id={`name-${subject.id}`} name="name" type="text" defaultValue={subject.name} required maxLength={150} />
             </div>
-            <div className="sa-edit-field" style={{ maxWidth: 110 }}>
+            {/* Fixed 110px basis, matching the plugin's code input
+               (subjects.php:283 style="max-width:110px") — a shrink-only
+               max-width inside an auto-fit grid track left dead space
+               beside the field; a flex row with a real basis does not. */}
+            <div className="sa-edit-field" style={{ flex: '0 0 110px' }}>
               <label htmlFor={`code-${subject.id}`}>Code</label>
               <input id={`code-${subject.id}`} name="code" type="text" defaultValue={subject.code} maxLength={50} />
             </div>
