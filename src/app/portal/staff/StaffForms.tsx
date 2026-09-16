@@ -1,6 +1,6 @@
 'use client';
 
-import { useActionState } from 'react';
+import { useActionState, useState } from 'react';
 import { staffAction, type ActionState } from './actions';
 
 const EMPTY: ActionState = { ok: false, message: '' };
@@ -41,7 +41,7 @@ export function RegisterStaffForm() {
   const [state, action, pending] = useActionState(staffAction, EMPTY);
 
   return (
-    <form action={action} className="card" encType="multipart/form-data">
+    <form action={action} className="card sa-card" encType="multipart/form-data">
       <h2>Add a staff member</h2>
       <p className="muted">The staff number, login and a temporary password are generated and shown once. Hand them over in person.</p>
 
@@ -87,7 +87,9 @@ export function RegisterStaffForm() {
         </label>
       </fieldset>
 
-      <button type="submit" disabled={pending}>{pending ? 'Registering…' : 'Register staff member'}</button>
+      <button type="submit" disabled={pending} className="sa-btn sa-btn--primary" style={{ marginTop: 16 }}>
+        {pending ? 'Registering…' : 'Add staff member'}
+      </button>
 
       {state.message && <p role={state.ok ? 'status' : 'alert'} className={state.ok ? 'note' : 'error'}>{state.message}</p>}
       {state.ok && state.credentials && <p role="status" className="credentials">{state.credentials}</p>}
@@ -108,7 +110,7 @@ export function AssignStaffForm({ classes, subjects, staffOptions }: {
   const [state, action, pending] = useActionState(staffAction, EMPTY);
 
   return (
-    <form action={action} className="card">
+    <form action={action} className="card sa-card">
       <h2>Assign duties</h2>
       <p className="muted">Class teacher is a duty, not a role: exactly one class teacher per class — assigning a second replaces the first. A subject teacher may take several subjects across several classes in one save.</p>
 
@@ -154,17 +156,27 @@ export function AssignStaffForm({ classes, subjects, staffOptions }: {
         </div>
       </fieldset>
 
-      <button type="submit" disabled={pending}>{pending ? 'Saving…' : 'Save assignments'}</button>
+      <button type="submit" disabled={pending} className="sa-btn sa-btn--primary" style={{ marginTop: 16 }}>
+        {pending ? 'Saving…' : 'Save assignments'}
+      </button>
 
       {state.message && <p role={state.ok ? 'status' : 'alert'} className={state.ok ? 'note' : 'error'}>{state.message}</p>}
     </form>
   );
 }
 
-/** One staff row: identity, duties, and the act-on-this-person controls. */
-export function StaffRowForm({ staff, classes }: { staff: StaffRow; classes: Option[] }) {
+/**
+ * One staff row: identity, duties, and the act-on-this-person controls. The
+ * edit form (and the stand-down confirmation) live in a wash-background row
+ * under the data row — the plugin's hidden-tr pattern, toggled with state
+ * instead of a nested <details> inside a table cell.
+ */
+export function StaffRowForm({ staff }: { staff: StaffRow }) {
   const [state, action, pending] = useActionState(staffAction, EMPTY);
+  // 'edit' opens the record form; 'stand-down' opens the confirmation.
+  const [panel, setPanel] = useState<'edit' | 'stand-down' | null>(null);
   const inactive = staff.status !== 'active';
+  const fullName = `${staff.title ? `${staff.title} ` : ''}${staff.firstName} ${staff.lastName}`;
 
   // The message row lives UNDER the data row: a failed reset must stay next
   // to the person it concerns, not vanish into the page banner.
@@ -173,103 +185,119 @@ export function StaffRowForm({ staff, classes }: { staff: StaffRow; classes: Opt
     <tr className={inactive ? 'row--inactive' : undefined}>
       <td className="mono">{staff.staffNumber}</td>
       <td>
-        <details>
-          <summary className="details-plain">
-            {staff.photoUrl
-              ? <img src={staff.photoUrl} alt="" width={26} height={32} />
-              : null}
-            {staff.title ? `${staff.title} ` : ''}{staff.firstName} {staff.lastName}
-          </summary>
-
-          <form action={action} encType="multipart/form-data" className="inline-edit">
-            <input type="hidden" name="operation" value="update" />
-            <input type="hidden" name="staffId" value={staff.id} />
-            <fieldset disabled={pending} className="form-grid">
-              <label>Title
-                <input name="title" type="text" defaultValue={staff.title ?? ''} maxLength={50} />
-              </label>
-              <label>First name *
-                <input name="firstName" type="text" required defaultValue={staff.firstName} maxLength={100} />
-              </label>
-              <label>Surname *
-                <input name="lastName" type="text" required defaultValue={staff.lastName} maxLength={100} />
-              </label>
-              <label>Email
-                <input name="email" type="email" defaultValue={staff.email ?? ''} maxLength={191} />
-              </label>
-              <label>Phone
-                <input name="phone" type="text" defaultValue={staff.phone ?? ''} maxLength={50} />
-              </label>
-              <label>Role
-                <select name="role" defaultValue={staff.role}>
-                  {ROLES.map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}
-                </select>
-              </label>
-              <label>Replace photograph (optional)
-                <input type="file" name="photo" accept="image/jpeg,image/png,image/webp" />
-              </label>
-              {staff.role !== 'principal' ? (
-                <label className="check">
-                  <input type="checkbox" name="confirmTransfer" />
-                  Allow transfer of the principal role (the current principal becomes a vice principal)
-                </label>
-              ) : null}
-            </fieldset>
-            <button type="submit" name="operation" value="update" disabled={pending}>Save changes</button>
-          </form>
-        </details>
+        {staff.photoUrl
+          ? <img src={staff.photoUrl} alt="" width={26} height={32} style={{ objectFit: 'cover', borderRadius: 4, marginRight: 8, verticalAlign: 'middle' }} />
+          : null}
+        {fullName}
       </td>
       <td>{ROLE_LABEL[staff.role] ?? staff.role}</td>
       <td>
         {staff.duties.length === 0
           ? <span className="muted">—</span>
-          : (
-            <details>
-              <summary className="details-plain">{staff.duties.length} active</summary>
-              <ul className="duty-list">
-                {staff.duties.map((d) => (
-                  <li key={d.id}>
-                    {d.label}
-                    <form action={action} className="inline-form">
-                      <input type="hidden" name="operation" value="drop" />
-                      <input type="hidden" name="assignmentId" value={d.id} />
-                      <button type="submit" name="operation" value="drop" disabled={pending} className="btn-small">Drop</button>
-                    </form>
-                  </li>
-                ))}
-              </ul>
-            </details>
-          )}
+          : staff.duties.map((d) => (
+            <div key={d.id} className="sa-sub" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span style={{ flex: 1 }}>{d.label}</span>
+              <form action={action} className="inline-form">
+                <input type="hidden" name="operation" value="drop" />
+                <input type="hidden" name="assignmentId" value={d.id} />
+                <button type="submit" name="operation" value="drop" disabled={pending} className="sa-btn sa-btn--small sa-btn--danger">Drop</button>
+              </form>
+            </div>
+          ))}
       </td>
-      <td><span className={`pill pill--${staff.status}`}>{staff.status}</span></td>
-      <td className="row-actions">
+      <td><span className={`sa-pill sa-pill--${staff.status}`}>{staff.status}</span></td>
+      <td className="row-actions" style={{ whiteSpace: 'nowrap' }}>
+        <button type="button" className="sa-btn sa-btn--small" onClick={() => setPanel(panel === 'edit' ? null : 'edit')}>
+          {panel === 'edit' ? 'Close' : 'Edit'}
+        </button>{' '}
         <form action={action} className="inline-form">
           <input type="hidden" name="staffId" value={staff.id} />
-          <button type="submit" name="operation" value="reset" disabled={pending} className="btn-small">Reset password</button>
-        </form>
-
+          <button type="submit" name="operation" value="reset" disabled={pending} className="sa-btn sa-btn--small">Reset password</button>
+        </form>{' '}
         {inactive
           ? (
             <form action={action} className="inline-form">
               <input type="hidden" name="staffId" value={staff.id} />
-              <button type="submit" name="operation" value="reactivate" disabled={pending} className="btn-small">Reactivate</button>
+              <button type="submit" name="operation" value="reactivate" disabled={pending} className="sa-btn sa-btn--small">Reactivate</button>
             </form>
           )
           : (
-            <details className="stand-down">
-              <summary className="btn-small">Stand down…</summary>
-              <form action={action} className="inline-edit">
-                <input type="hidden" name="staffId" value={staff.id} />
-                <label className="check">
-                  <input type="checkbox" name="confirmReassign" />
-                  Release their duties and disable their login
-                </label>
-                <button type="submit" name="operation" value="stand-down" disabled={pending} className="btn-small danger">Confirm stand-down</button>
-              </form>
-            </details>
+            <button type="button" className="sa-btn sa-btn--small sa-btn--danger" onClick={() => setPanel(panel === 'stand-down' ? null : 'stand-down')}>
+              Stand down…
+            </button>
           )}
       </td>
     </tr>
+
+    {panel === 'edit' && (
+      <tr className="sa-edit-row">
+        <td colSpan={6}>
+          <form action={action} encType="multipart/form-data" className="sa-edit-form">
+            <input type="hidden" name="operation" value="update" />
+            <input type="hidden" name="staffId" value={staff.id} />
+
+            <div className="sa-edit-field">
+              <label htmlFor={`title-${staff.id}`}>Title</label>
+              <input id={`title-${staff.id}`} name="title" type="text" defaultValue={staff.title ?? ''} maxLength={50} />
+            </div>
+            <div className="sa-edit-field">
+              <label htmlFor={`fn-${staff.id}`}>First name *</label>
+              <input id={`fn-${staff.id}`} name="firstName" type="text" required defaultValue={staff.firstName} maxLength={100} />
+            </div>
+            <div className="sa-edit-field">
+              <label htmlFor={`ln-${staff.id}`}>Surname *</label>
+              <input id={`ln-${staff.id}`} name="lastName" type="text" required defaultValue={staff.lastName} maxLength={100} />
+            </div>
+            <div className="sa-edit-field">
+              <label htmlFor={`em-${staff.id}`}>Email</label>
+              <input id={`em-${staff.id}`} name="email" type="email" defaultValue={staff.email ?? ''} maxLength={191} />
+            </div>
+            <div className="sa-edit-field">
+              <label htmlFor={`ph-${staff.id}`}>Phone</label>
+              <input id={`ph-${staff.id}`} name="phone" type="tel" defaultValue={staff.phone ?? ''} maxLength={50} />
+            </div>
+            <div className="sa-edit-field">
+              <label htmlFor={`role-${staff.id}`}>Role</label>
+              <select id={`role-${staff.id}`} name="role" defaultValue={staff.role}>
+                {ROLES.map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}
+              </select>
+            </div>
+            <div className="sa-edit-field">
+              <label htmlFor={`photo-${staff.id}`}>Replace photograph</label>
+              <input id={`photo-${staff.id}`} type="file" name="photo" accept="image/jpeg,image/png,image/webp" />
+            </div>
+            {staff.role !== 'principal' ? (
+              <label className="check">
+                <input type="checkbox" name="confirmTransfer" />
+                Allow transfer of the principal role (the current principal becomes a vice principal)
+              </label>
+            ) : null}
+
+            <button type="submit" name="operation" value="update" disabled={pending} className="sa-btn sa-btn--primary">
+              {pending ? 'Saving…' : 'Save changes'}
+            </button>
+          </form>
+        </td>
+      </tr>
+    )}
+
+    {panel === 'stand-down' && (
+      <tr className="sa-edit-row">
+        <td colSpan={6}>
+          <form action={action} className="sa-edit-form">
+            <input type="hidden" name="staffId" value={staff.id} />
+            <label className="check">
+              <input type="checkbox" name="confirmReassign" />
+              Release their duties and disable their login
+            </label>
+            <button type="submit" name="operation" value="stand-down" disabled={pending} className="sa-btn sa-btn--small sa-btn--danger">
+              {pending ? 'Standing down…' : 'Confirm stand-down'}
+            </button>
+          </form>
+        </td>
+      </tr>
+    )}
+
     {state.message || (state.ok && state.credentials)
       ? (
         <tr className="row--message">

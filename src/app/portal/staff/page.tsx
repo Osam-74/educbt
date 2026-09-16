@@ -1,3 +1,4 @@
+import '../school-table.css';
 import { requireSchoolSession, requireRole, SCHOOL_WIDE } from '@/lib/session';
 import { forSchool, schema } from '@/db';
 import { and, asc, eq } from 'drizzle-orm';
@@ -104,19 +105,21 @@ export default async function StaffPage() {
 
         <AssignStaffForm classes={data.classes} subjects={data.subjects} staffOptions={staffOptions} />
 
-        <div className="card">
-          <h2>Staff register ({staff.length})</h2>
+        <div className="card sa-card">
+          <h2>Staff <span className="muted">({staff.length})</span></h2>
           <p className="muted">Class teacher is an assignment a person holds, not a separate role — one class, one class teacher.</p>
-          <table className="tbl">
-            <thead>
-              <tr>
-                <th>Staff no.</th><th>Name</th><th>Role</th><th>Duties</th><th>Status</th><th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {staff.map((s) => <StaffRowForm key={s.id} staff={s} classes={data.classes} />)}
-            </tbody>
-          </table>
+          <div className="sa-table-wrap">
+            <table className="sa-table">
+              <thead>
+                <tr>
+                  <th>Staff no.</th><th>Name</th><th>Role</th><th>Duties</th><th>Status</th><th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {staff.map((s) => <StaffRowForm key={s.id} staff={s} />)}
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
     </>
