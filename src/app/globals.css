@@ -328,6 +328,10 @@ button[type='submit']:disabled { opacity: .6; cursor: default; }
 
 .form-grid { display: grid; gap: 14px 18px; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); border: 0; margin: 0 0 16px; padding: 0; }
 .form-grid legend { display: none; }
+/* A form-grid heading + intro paragraph (e.g. Classes' "Create classes")
+   are prose, not a field, and must not be squeezed into a 220px field
+   column alongside the real inputs — span the full row above them. */
+.form-grid > h2, .form-grid > h3, .form-grid > p { grid-column: 1 / -1; }
 .form-grid label { display: grid; gap: 6px; font-size: 13.5px; color: var(--muted); }
 .form-grid input, .form-grid select { width: 100%; padding: 8px 10px; border: 1px solid var(--line); border-radius: 7px; font: inherit; color: var(--ink); background: var(--white); }
 

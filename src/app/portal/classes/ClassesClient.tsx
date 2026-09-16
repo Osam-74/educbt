@@ -56,7 +56,7 @@ export function CreateClassesCard({ levels, departments }: {
         <input type="hidden" name="operation" value="create" />
 
         <label htmlFor="level_id">
-          Level <span className="muted">*</span>
+          Level *
           <select
             id="level_id" name="levelId" required value={levelId}
             onChange={(e) => setLevelId(e.target.value)}
