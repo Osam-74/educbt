@@ -577,12 +577,30 @@
   .doc--broadsheet .doc__table tbody tr:hover { background: #f5f7f6; }
   .doc--broadsheet .doc__table tbody tr:last-child td { border-bottom: 0; }
 
-  /* The letterhead's centred crest/name/address is the official print
-     layout every other document keeps (see "Letterhead" above) — but on
-     screen the broadsheet is a working meeting sheet, not a WAEC-style
-     printout, so its header reads left, like the rest of this portal card. */
-  .doc--broadsheet .doc__head { text-align: left; }
-  .doc--broadsheet .doc__crest { margin: 0 0 2mm; }
+  /* The letterhead's centred, stacked crest/name/address is the official
+     print layout every other document keeps (see "Letterhead" above) — but
+     on screen the broadsheet is a working meeting sheet, not a WAEC-style
+     printout: crest as its own column on the left, school name / BROADSHEET
+     / address stacked in a second column beside it, everything reading left
+     like the rest of this portal card. */
+  .doc--broadsheet .doc__head {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    text-align: left;
+    padding-bottom: 3mm;
+  }
+  .doc--broadsheet .doc__crest { margin: 0; flex-shrink: 0; }
+  .doc--broadsheet .doc__title { text-align: left; margin: 1mm 0 0; }
+
+  /* The Student/Subject name column is the row's identifying label — left
+     it reads, like every other column-1 in the app; marks, totals and
+     positions stay centred numeric columns. The table itself has no fixed
+     per-column widths (table-layout stays the browser default "auto"), so
+     every column — this one included — shrinks on its own as more subject
+     columns are added, rather than overflowing. */
+  .doc--broadsheet .doc__table th:first-child,
+  .doc--broadsheet .doc__table td:first-child { text-align: left; }
 }
 
 /* ── Academic transcript (issued document) ───────────────────────────────── */
