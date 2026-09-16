@@ -576,6 +576,13 @@
   }
   .doc--broadsheet .doc__table tbody tr:hover { background: #f5f7f6; }
   .doc--broadsheet .doc__table tbody tr:last-child td { border-bottom: 0; }
+
+  /* The letterhead's centred crest/name/address is the official print
+     layout every other document keeps (see "Letterhead" above) — but on
+     screen the broadsheet is a working meeting sheet, not a WAEC-style
+     printout, so its header reads left, like the rest of this portal card. */
+  .doc--broadsheet .doc__head { text-align: left; }
+  .doc--broadsheet .doc__crest { margin: 0 0 2mm; }
 }
 
 /* ── Academic transcript (issued document) ───────────────────────────────── */

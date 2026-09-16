@@ -122,15 +122,6 @@
 .sa-card .form-grid label.check { display: flex; align-items: center; gap: 8px; font-weight: 400; }
 .sa-card .form-grid label.check input[type='checkbox'] { width: auto; accent-color: #14532d; }
 
-/* Classes' inline edit row nests a few uniform-width fields (arm, capacity,
-   department) ahead of Save in their own sub-grid so they wrap as whole
-   rows on narrow screens. Subjects reverted to the plain .sa-edit-form flex
-   row above — its mixed-width fields (a fixed 110px code beside three
-   grow/shrink fields) don't share a single track size, so forcing them into
-   this auto-fit grid left dead space beside the narrow code column. */
-.sa-edit-form--grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); align-items: end; }
-.sa-edit-form--grid .sa-btn { justify-self: start; }
-
 /* Card forms (Add-subject etc.) — plugin field controls (educbt-portal.css:257):
    scoped to School Area cards only, so global form styling is untouched. */
 .sa-card .form-grid label { color: #16211c; font-weight: 550; }

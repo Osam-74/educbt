@@ -59,7 +59,7 @@ export default async function TranscriptsPage({
         </form>
 
         {search !== '' ? (found === null || found.length === 0 ? <p className="muted">No student matched.</p> : (
-          <table className="tbl">
+          <div className="table-wrap"><table className="tbl">
             <thead><tr><th>Adm. no.</th><th>Student</th><th>Status</th><th>Issued</th><th></th></tr></thead>
             <tbody>
               {found.map(s => {
@@ -80,13 +80,13 @@ export default async function TranscriptsPage({
                       <input type="hidden" name="q" value={search} />
                       <label className="sr-only" htmlFor={'purpose-' + s.id}>Purpose</label>
                       <input id={'purpose-' + s.id} name="purpose" type="text" placeholder="Purpose, e.g. transfer" maxLength={255} />
-                      <button type="submit" className="primary">{previouslyIssued ? 'Reissue' : 'Issue'}</button>
+                      <button type="submit" className="primary primary--small">{previouslyIssued ? 'Reissue' : 'Issue'}</button>
                     </form>
                   </td>
                 </tr>;
               })}
             </tbody>
-          </table>
+          </table></div>
         )) : null}
       </section>
 
@@ -94,7 +94,7 @@ export default async function TranscriptsPage({
         <h2 className="sub-head">Issued</h2>
         {issued.length === 0 ? <p className="muted">None yet.</p> : (
           <>
-            <table className="tbl">
+            <div className="table-wrap"><table className="tbl">
               <thead><tr><th>Adm. no.</th><th>Student</th><th>Serial</th><th>Purpose</th><th>Times issued</th><th>Last issued</th><th>Status</th></tr></thead>
               <tbody>
                 {issued.map(t => <tr key={t.studentId}>
@@ -107,7 +107,7 @@ export default async function TranscriptsPage({
                   <td><span className="pill pill--published">Issued</span></td>
                 </tr>)}
               </tbody>
-            </table>
+            </table></div>
             <p className="muted">One row per student. The serial shown is the latest issue. All copies are recorded for traceability.</p>
           </>
         )}

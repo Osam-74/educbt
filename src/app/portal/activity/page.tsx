@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { requireSchoolSession } from '@/lib/session';
 import { activityFilters, activityPage, activityTitle } from '@/lib/portal-dashboard';
+import '../school-table.css';
 
 
 export const dynamic = 'force-dynamic';

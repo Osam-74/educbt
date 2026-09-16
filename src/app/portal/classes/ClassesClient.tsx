@@ -107,26 +107,31 @@ function ClassRowForm({ row, departments }: { row: ClassRow; departments: Depart
       {open && (
         <tr className="sa-edit-row" data-for-class={row.id}>
           <td colSpan={5}>
-            <form action={action} className="sa-edit-form">
-              <fieldset disabled={pending} style={{ border: 0, padding: 0, margin: 0, width: '100%' }}>
-                <input type="hidden" name="operation" value="update" />
-                <input type="hidden" name="classId" value={row.id} />
-                <div className="sa-edit-form--grid" style={{ width: '100%' }}>
-                  <label className="sa-edit-field">Arm
-                    <input name="arm" type="text" defaultValue={row.arm ?? ''} />
-                  </label>
-                  <label className="sa-edit-field">Capacity <span className="muted">(0 = no limit)</span>
-                    <input name="capacity" type="number" min={0} defaultValue={row.capacity} />
-                  </label>
-                  <label className="sa-edit-field">Department
-                    <select name="departmentId" defaultValue={row.departmentId ?? ''}>
-                      <option value="">None</option>
-                      {departments.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
-                    </select>
-                  </label>
-                  <button type="submit" className="sa-btn sa-btn--primary">Save changes</button>
+            {/* Same shape as the Staff edit row (StaffForms.tsx): a plain
+               .sa-edit-form for the padding, one .sa-grid of labelled fields
+               (auto-fit columns, real gap), Save as its own sibling below —
+               not squeezed into a bespoke bare-label grid with no gap. */}
+            <form action={action} className="sa-edit-form" style={{ padding: '12px 0' }}>
+              <input type="hidden" name="operation" value="update" />
+              <input type="hidden" name="classId" value={row.id} />
+              <div className="sa-grid">
+                <div>
+                  <label htmlFor={`arm-${row.id}`}>Arm</label>
+                  <input id={`arm-${row.id}`} name="arm" type="text" defaultValue={row.arm ?? ''} disabled={pending} />
                 </div>
-              </fieldset>
+                <div>
+                  <label htmlFor={`capacity-${row.id}`}>Capacity <span className="muted">(0 = no limit)</span></label>
+                  <input id={`capacity-${row.id}`} name="capacity" type="number" min={0} defaultValue={row.capacity} disabled={pending} />
+                </div>
+                <div>
+                  <label htmlFor={`dept-${row.id}`}>Department</label>
+                  <select id={`dept-${row.id}`} name="departmentId" defaultValue={row.departmentId ?? ''} disabled={pending}>
+                    <option value="">None</option>
+                    {departments.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
+                  </select>
+                </div>
+              </div>
+              <button type="submit" disabled={pending} className="sa-btn sa-btn--primary" style={{ marginTop: 12 }}>Save changes</button>
             </form>
 
             <div style={{ borderTop: '1px solid #e2e8e4', paddingTop: 12, display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>

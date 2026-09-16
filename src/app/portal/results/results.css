@@ -38,7 +38,7 @@
   border: 1px solid #dce4de; border-radius: 12px; overflow: hidden;
 }
 .results-page .results-classes th, .results-page .results-classes td {
-  padding: 12px 14px; text-align: left; border-bottom: 1px solid #dce4de; vertical-align: top;
+  padding: 12px 14px; text-align: left; border-bottom: 1px solid #dce4de; vertical-align: middle;
 }
 .results-page .results-classes th { background: #14532d; color: #fff; font-size: 12px; font-weight: 650; border-bottom: 0; }
 .results-page .results-classes tbody tr:hover { background: #f5f7f6; }

@@ -231,15 +231,21 @@ export function AssignDutiesForm({ staffOptions, levels, subjects, existing }: {
         <input type="hidden" name="operation" value="assign" />
         <input type="hidden" name="assignmentType" value={kind} />
 
-        <div style={{ marginBottom: 14 }}>
-          <label htmlFor="bulk_type" style={{ display: 'block', marginBottom: 5, fontWeight: 550, fontSize: 13.5 }}>What are you assigning?</label>
-          <select
-            id="bulk_type" value={kind}
-            onChange={(e) => setKind(e.target.value === 'class_teacher' ? 'class_teacher' : 'subject_teacher')}
-          >
-            <option value="subject_teacher">Subject teachers</option>
-            <option value="class_teacher">Class teachers</option>
-          </select>
+        {/* Wrapped exactly like a row's Teacher field below (.sa-assign-row >
+           .sa-field) so the two selects share the same label style and the
+           same 100%/max-520px width, instead of this one sitting at native
+           select width beside a full-width one. */}
+        <div className="sa-assign-row">
+          <div className="sa-field">
+            <label htmlFor="bulk_type">What are you assigning?</label>
+            <select
+              id="bulk_type" value={kind}
+              onChange={(e) => setKind(e.target.value === 'class_teacher' ? 'class_teacher' : 'subject_teacher')}
+            >
+              <option value="subject_teacher">Subject teachers</option>
+              <option value="class_teacher">Class teachers</option>
+            </select>
+          </div>
         </div>
 
         <div>

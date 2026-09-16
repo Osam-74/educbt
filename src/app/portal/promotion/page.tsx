@@ -9,6 +9,7 @@ import {
   searchPromotionStudents, moveStudent, promotionRulesFor, savePromotionRules,
 } from '@/lib/promotion/promotion';
 import ChipSelect from './ChipSelect';
+import '../school-table.css';
 
 export const dynamic = 'force-dynamic';
 

@@ -222,39 +222,41 @@ function Row({
     {editing && (
       <tr className="sa-edit-row">
         <td colSpan={7}>
-          <form action={action} className="sa-edit-form">
+          {/* Same shape as the Staff edit row (StaffForms.tsx): a plain
+             .sa-edit-form for the padding, one .sa-grid of labelled fields
+             (auto-fit columns, real gap), Save as its own sibling below —
+             not squeezed into the grid or a bespoke flex-basis per field. */}
+          <form action={action} className="sa-edit-form" style={{ padding: '12px 0' }}>
             <input type="hidden" name="operation" value="save" />
             <input type="hidden" name="subjectId" value={subject.id} />
 
-            <div className="sa-edit-field" style={{ flex: '2 1 220px' }}>
-              <label htmlFor={`name-${subject.id}`}>Subject name</label>
-              <input id={`name-${subject.id}`} name="name" type="text" defaultValue={subject.name} required maxLength={150} />
+            <div className="sa-grid">
+              <div>
+                <label htmlFor={`name-${subject.id}`}>Subject name</label>
+                <input id={`name-${subject.id}`} name="name" type="text" defaultValue={subject.name} required maxLength={150} />
+              </div>
+              <div>
+                <label htmlFor={`code-${subject.id}`}>Code</label>
+                <input id={`code-${subject.id}`} name="code" type="text" defaultValue={subject.code} maxLength={50} />
+              </div>
+              <div>
+                <label htmlFor={`stage-${subject.id}`}>Level</label>
+                <select id={`stage-${subject.id}`} name="stage" defaultValue={subject.stage}>
+                  {STAGE_OPTIONS.map((o) => <option key={o.value} value={o.value}>{STAGE_LABEL[o.value]}</option>)}
+                </select>
+              </div>
+              <div>
+                <label htmlFor={`dept-${subject.id}`}>Department</label>
+                <select id={`dept-${subject.id}`} name="departmentId" defaultValue={String(subject.departmentId ?? 0)}>
+                  <option value="0">All / none</option>
+                  {departments.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
+                </select>
+              </div>
+              <label className="sa-check">
+                <input name="is_compulsory" type="checkbox" value="1" defaultChecked={subject.isCompulsory} /> Compulsory
+              </label>
             </div>
-            {/* Fixed 110px basis, matching the plugin's code input
-               (subjects.php:283 style="max-width:110px") — a shrink-only
-               max-width inside an auto-fit grid track left dead space
-               beside the field; a flex row with a real basis does not. */}
-            <div className="sa-edit-field" style={{ flex: '0 0 110px' }}>
-              <label htmlFor={`code-${subject.id}`}>Code</label>
-              <input id={`code-${subject.id}`} name="code" type="text" defaultValue={subject.code} maxLength={50} />
-            </div>
-            <div className="sa-edit-field">
-              <label htmlFor={`stage-${subject.id}`}>Level</label>
-              <select id={`stage-${subject.id}`} name="stage" defaultValue={subject.stage}>
-                {STAGE_OPTIONS.map((o) => <option key={o.value} value={o.value}>{STAGE_LABEL[o.value]}</option>)}
-              </select>
-            </div>
-            <div className="sa-edit-field">
-              <label htmlFor={`dept-${subject.id}`}>Department</label>
-              <select id={`dept-${subject.id}`} name="departmentId" defaultValue={String(subject.departmentId ?? 0)}>
-                <option value="0">All / none</option>
-                {departments.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
-              </select>
-            </div>
-            <label className="check">
-              <input name="is_compulsory" type="checkbox" value="1" defaultChecked={subject.isCompulsory} /> Compulsory
-            </label>
-            <PendingButton pendingLabel="Saving…" className="sa-btn sa-btn--primary">Save changes</PendingButton>
+            <PendingButton pendingLabel="Saving…" className="sa-btn sa-btn--primary" style={{ marginTop: 12 }}>Save changes</PendingButton>
           </form>
         </td>
       </tr>
