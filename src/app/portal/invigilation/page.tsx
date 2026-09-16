@@ -274,7 +274,7 @@ export default async function InvigilationPage({
                           </td>
                           {manage ? (
                             <td style={{ minWidth: 200 }}>
-                              <form action={invigilator} style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                              <form action={invigilator} className="eo-mini-form" style={{ gap: 6 }}>
                                 <input type="hidden" name="paperId" value={p.id} />
                                 <select name="staffId" defaultValue={String(p.invigilatorStaffId ?? 0)}>
                                   <option value="0">— nobody —</option>

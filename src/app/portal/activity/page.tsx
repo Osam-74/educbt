@@ -63,36 +63,28 @@ export default async function ActivityPage({ searchParams }: {
   return <>
     <h1 className="page-title">Activity Log</h1>
 
-    <div className="filter-bar">
-      <form method="get" className="filter-form">
+    <section className="card sa-card">
+      <form method="get" className="sa-toolbar">
         <div className="filter-input-wrap">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
           <input id="activity-search-input" type="search" name="q" defaultValue={filter.q ?? ''} placeholder="Search action, user or detail"/>
         </div>
-        {filters && filters.actions.length > 0 && <select id="activity-action-filter" name="action" className="filter-select" defaultValue={filter.action ?? ''}>
+        {filters && filters.actions.length > 0 && <select id="activity-action-filter" name="action" defaultValue={filter.action ?? ''}>
           <option value="">All actions</option>
           {filters.actions.map(a => <option key={a} value={a}>{activityTitle(a)}</option>)}
         </select>}
-        {filters && filters.actors.length > 0 && <select id="activity-user-filter" name="user" className="filter-select" defaultValue={filter.userId ? String(filter.userId) : ''}>
+        {filters && filters.actors.length > 0 && <select id="activity-user-filter" name="user" defaultValue={filter.userId ? String(filter.userId) : ''}>
           <option value="">All users</option>
           {filters.actors.map(u => <option key={u.id} value={u.id!}>{u.label}</option>)}
         </select>}
-        <button type="submit" id="activity-filter-submit-btn" className="filter-submit">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3 5h18l-7 8v6l-4-2v-4Z"/></svg>
-          <span>Filter</span>
-        </button>
-        {filtered && <Link href="/portal/activity" id="activity-reset-filter-btn" className="filter-clear">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 2.6-6.4L3 8"/><path d="M3 3v5h5"/></svg>
-          <span>Clear</span>
-        </Link>}
+        <button type="submit" id="activity-filter-submit-btn" className="sa-btn sa-btn--small sa-btn--primary">Filter</button>
+        {filtered && <Link href="/portal/activity" id="activity-reset-filter-btn" className="sa-btn sa-btn--small">Clear</Link>}
       </form>
-      <div className="filter-summary">
-        <span>Showing <strong>{data.total}</strong> log entr{data.total === 1 ? 'y' : 'ies'}{filtered ? ' for this filter' : ''}</span>
-      </div>
-    </div>
+      <p className="muted" style={{ fontSize: 12.5, margin: '10px 0 18px' }}>
+        Showing <strong>{data.total}</strong> log entr{data.total === 1 ? 'y' : 'ies'}{filtered ? ' for this filter' : ''}
+      </p>
 
-    <section className="card">
-      {data.rows.length === 0 ? <p className="muted">No activity recorded{filtered ? ' for this filter' : ' yet'}.</p> : <><div className="table-wrap"><table className="tbl">
+      {data.rows.length === 0 ? <p className="sa-empty">No activity recorded{filtered ? ' for this filter' : ' yet'}.</p> : <><div className="sa-table-wrap"><table className="sa-table">
         <thead><tr><th>When</th><th>Action</th><th>By</th><th>Details</th></tr></thead>
         <tbody>
           {data.rows.map(row => <tr key={row.id}>

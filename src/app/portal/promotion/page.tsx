@@ -296,30 +296,33 @@ export default async function PromotionPage({
             )) : null}
           </section>
 
-          <section className="card">
+          <section className="card sa-card">
             <h2 className="sub-head">Run a promotion</h2>
             <p className="muted">Every student in the level is scored against the rules and a proposal is produced. <strong>Nothing moves until you commit it.</strong></p>
             <form action={propose}>
-              <div className="form-grid">
-                <label>Level
-                  <select name="levelId" required>
+              <fieldset className="sa-grid" style={{ border: 0, padding: 0, margin: 0 }}>
+                <div>
+                  <label htmlFor="propose_level">Level</label>
+                  <select id="propose_level" name="levelId" required>
                     <option value="">Choose</option>
                     {options?.levels.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
                   </select>
-                </label>
-                <label>From session
-                  <select name="fromSessionId" required>
+                </div>
+                <div>
+                  <label htmlFor="propose_from">From session</label>
+                  <select id="propose_from" name="fromSessionId" required>
                     {options?.sessions.map(s => <option key={s.id} value={s.id}>{s.title}</option>)}
                   </select>
-                </label>
-                <label>Into session
-                  <select name="toSessionId" required>
+                </div>
+                <div>
+                  <label htmlFor="propose_to">Into session</label>
+                  <select id="propose_to" name="toSessionId" required>
                     {options?.sessions.map(s => <option key={s.id} value={s.id}>{s.title}</option>)}
                   </select>
                   <small className="muted">Add next year&rsquo;s session under Settings first.</small>
-                </label>
-              </div>
-              <button type="submit" className="primary">Produce a proposal</button>
+                </div>
+              </fieldset>
+              <button type="submit" className="sa-btn sa-btn--primary" style={{ marginTop: 16 }}>Produce a proposal</button>
             </form>
           </section>
 
@@ -327,30 +330,40 @@ export default async function PromotionPage({
               a school with no class levels yet still sees the rules form, with an
               empty level select. Our old levels.length gate hid the whole card,
               which read as "promotion rules are missing" on a fresh school. */}
-          <section className="card">
+          <section className="card sa-card">
               <h2 className="sub-head">Promotion rules</h2>
               <p className="muted">Set per level, so JSS3 can differ from SS2. Proposals use these rules for the chosen level.</p>
-              <form method="get" className="inline-form">
-                <label htmlFor="rules_level">Level</label>
-                <select id="rules_level" name="rules_level" defaultValue={String(rulesLevelId)}>
-                  {(options?.levels.length ?? 0) === 0 && <option value="0">No class levels yet — create classes first</option>}
-                  {options?.levels.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
-                </select>
-                <button type="submit">Load</button>
+              <form method="get" className="sa-toolbar" style={{ marginBottom: 18 }}>
+                <div className="sa-field">
+                  <label htmlFor="rules_level">Level</label>
+                  <select id="rules_level" name="rules_level" defaultValue={String(rulesLevelId)}>
+                    {(options?.levels.length ?? 0) === 0 && <option value="0">No class levels yet — create classes first</option>}
+                    {options?.levels.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
+                  </select>
+                </div>
+                <button type="submit" className="sa-btn sa-btn--primary">Load</button>
               </form>
               <form action={saveRules}>
                 <input type="hidden" name="levelId" value={rulesLevelId} />
                 {rulesLevelId === 0 && <p className="muted">Create classes (with levels) first — rules save against a level, exactly as the plugin does.</p>}
-                <div className="form-grid">
-                  <label>Promote at average (%)
-                    <input name="promoteAverage" type="number" step="0.5" min="0" max="100" defaultValue={savedRules.promoteAverage} /></label>
-                  <label>On trial at average (%)
-                    <input name="trialAverage" type="number" step="0.5" min="0" max="100" defaultValue={savedRules.trialAverage} /></label>
-                  <label>A subject is passed at (%)
-                    <input name="passMark" type="number" step="0.5" min="0" max="100" defaultValue={savedRules.passMark} /></label>
-                  <label>Subjects that must be passed
-                    <input name="minSubjectsPassed" type="number" min="1" max="20" defaultValue={savedRules.minSubjectsPassed} />
-                    <small className="muted">Capped at the number a student actually offers.</small></label>
+                <fieldset className="sa-grid" style={{ border: 0, padding: 0, margin: '0 0 4px' }}>
+                  <div>
+                    <label htmlFor="rules_promote">Promote at average (%)</label>
+                    <input id="rules_promote" name="promoteAverage" type="number" step="0.5" min="0" max="100" defaultValue={savedRules.promoteAverage} />
+                  </div>
+                  <div>
+                    <label htmlFor="rules_trial">On trial at average (%)</label>
+                    <input id="rules_trial" name="trialAverage" type="number" step="0.5" min="0" max="100" defaultValue={savedRules.trialAverage} />
+                  </div>
+                  <div>
+                    <label htmlFor="rules_passmark">A subject is passed at (%)</label>
+                    <input id="rules_passmark" name="passMark" type="number" step="0.5" min="0" max="100" defaultValue={savedRules.passMark} />
+                  </div>
+                  <div>
+                    <label htmlFor="rules_minsubjects">Subjects that must be passed</label>
+                    <input id="rules_minsubjects" name="minSubjectsPassed" type="number" min="1" max="20" defaultValue={savedRules.minSubjectsPassed} />
+                    <small className="muted">Capped at the number a student actually offers.</small>
+                  </div>
                   <div style={{ gridColumn: '1 / -1' }}>
                     <span className="field-label">Subjects that must be passed</span>
                     <ChipSelect name="mustPassCodes" selected={savedRules.mustPassCodes}
@@ -358,12 +371,12 @@ export default async function PromotionPage({
                       placeholder="Click to select subjects…" />
                     <small className="muted">Failing any of these means repeating the year, whatever the average.</small>
                   </div>
-                </div>
+                </fieldset>
                 <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 400 }}>
                   <input type="checkbox" name="requireCore" value="1" defaultChecked={savedRules.requireCore} style={{ width: 'auto' }} />
                   Enforce the compulsory subjects
                 </label>
-                <button type="submit" className="primary">Save rules</button>
+                <button type="submit" className="sa-btn sa-btn--primary" style={{ marginTop: 4 }}>Save rules</button>
               </form>
           </section>
 

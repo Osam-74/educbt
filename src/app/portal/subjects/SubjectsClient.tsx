@@ -84,31 +84,33 @@ export function AddSubjectForm({ departments }: { departments: Department[] }) {
   return (
     <form action={action} className="card sa-card">
       <h2>Add a subject</h2>
-      <fieldset disabled={pending} className="form-grid">
+      <fieldset disabled={pending} className="sa-grid">
         <input type="hidden" name="operation" value="save" />
 
-        <label>Subject name *
-          <input name="name" type="text" required maxLength={150} />
-        </label>
+        <div><label htmlFor="subj_name">Subject name *</label>
+          <input id="subj_name" name="name" type="text" required maxLength={150} />
+        </div>
 
-        <label>Code
-          <input name="code" type="text" placeholder="auto" maxLength={50} />
-        </label>
+        <div><label htmlFor="subj_code">Code</label>
+          <input id="subj_code" name="code" type="text" placeholder="auto" maxLength={50} />
+        </div>
 
-        <label>Level
-          <select name="stage" defaultValue="both">
+        <div>
+          <label htmlFor="subj_stage">Level</label>
+          <select id="subj_stage" name="stage" defaultValue="both">
             {STAGE_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
           </select>
-        </label>
+        </div>
 
-        <label>Department
-          <select name="departmentId" defaultValue="0">
+        <div>
+          <label htmlFor="subj_dept">Department</label>
+          <select id="subj_dept" name="departmentId" defaultValue="0">
             <option value="0">None (open to all)</option>
             {departments.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
           </select>
-        </label>
+        </div>
 
-        <label className="check">
+        <label className="sa-check">
           <input name="is_compulsory" type="checkbox" value="1" /> Every student must offer this
         </label>
       </fieldset>

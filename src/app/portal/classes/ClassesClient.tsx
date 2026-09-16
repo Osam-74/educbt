@@ -46,17 +46,17 @@ export function CreateClassesCard({ levels, departments }: {
 
   return (
     <form action={action} className="card sa-card">
-      <fieldset disabled={pending} className="form-grid">
-        <h2>Create classes</h2>
-        <p className="muted" style={{ marginTop: -6 }}>
-          Add every arm of a level at once — type <code>A, B, C</code>. Leave the arms
-          box empty if the level has only one class.
-        </p>
+      <h2>Create classes</h2>
+      <p className="muted" style={{ marginTop: -6 }}>
+        Add every arm of a level at once — type <code>A, B, C</code>. Leave the arms
+        box empty if the level has only one class.
+      </p>
 
+      <fieldset disabled={pending} className="sa-grid">
         <input type="hidden" name="operation" value="create" />
 
-        <label htmlFor="level_id">
-          Level *
+        <div>
+          <label htmlFor="level_id">Level *</label>
           <select
             id="level_id" name="levelId" required value={levelId}
             onChange={(e) => setLevelId(e.target.value)}
@@ -64,28 +64,26 @@ export function CreateClassesCard({ levels, departments }: {
             <option value="">Choose a level</option>
             {levels.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
           </select>
-        </label>
+        </div>
 
-        <label htmlFor="arms">
-          Arms
+        <div>
+          <label htmlFor="arms">Arms</label>
           <input id="arms" name="arms" type="text" placeholder="A, B, C" />
-        </label>
+        </div>
 
-        <label htmlFor="department_id">
-          Department
+        <div>
+          <label htmlFor="department_id">Department</label>
           <select id="department_id" name="departmentId" disabled={junior}>
             <option value="">None</option>
             {departments.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
           </select>
-        </label>
-
-        <button type="submit" className="sa-btn sa-btn--primary" style={{ justifySelf: 'start' }}>
-          Create classes
-        </button>
-        {state.message && (
-          <p className={state.ok ? "note" : "error"} style={{ gridColumn: '1 / -1' }}>{state.message}</p>
-        )}
+        </div>
       </fieldset>
+
+      <button type="submit" className="sa-btn sa-btn--primary" style={{ marginTop: 16 }}>
+        Create classes
+      </button>
+      {state.message && <p className={state.ok ? "note" : "error"}>{state.message}</p>}
     </form>
   );
 }

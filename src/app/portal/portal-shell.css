@@ -188,3 +188,4 @@ button.sd-action { border-width:1px; font:inherit; }
 .eo-mini-form { display:flex; gap:8px; flex-wrap:wrap; align-items:flex-end; }
 .eo-mini-form label { display:flex; flex-direction:column; gap:4px; font-size:11.5px; font-weight:600; color:#69766c; }
 .eo-mini-form input { padding:7px 9px; border:1px solid #d7ded9; border-radius:7px; font:inherit; font-size:13px; background:#fff; color:#173c26; }
+.eo-mini-form select { padding:7px 9px; border:1px solid #d7ded9; border-radius:7px; font:inherit; font-size:13px; background:#fff; color:#173c26; }
