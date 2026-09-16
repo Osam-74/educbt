@@ -224,6 +224,7 @@ button[type='submit']:disabled { opacity: .6; cursor: default; }
 .pill--submitted, .pill--under_review { background: #e0f2fe; color: #075985; }
 .pill--returned { background: #fef3c7; color: #92400e; }
 .pill--approved, .pill--published { background: #e8f3ea; color: #1f6b33; }
+.pill--closed { background: #eef1ed; color: #52624e; }
 .card button.danger { background: #fff; color: #b91c1c; border: 1.5px solid #fca5a5; }
 
 /* ── Exam room ──────────────────────────────────────────────────────────── */

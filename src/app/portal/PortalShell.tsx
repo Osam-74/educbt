@@ -18,7 +18,25 @@ export function portalAreas(role: string, teaching: boolean, classTeacher: boole
   if (role === 'teacher' || role === 'exam_officer' || (wide && teaching)) areas.push({ label: 'Teaching', items: [item('', 'Dashboard', 'area:teacher'), item('/classes', 'My assignments', 'classes'), ...(classTeacher || wide ? [item('/students', 'My students', 'students')] : []), item('/ca', 'Record scores', 'scores')] });
   if (wide) areas.find(a => a.label === 'School')!.items.push(item('/settings', 'School Settings', 'settings'));
   else if (role === 'teacher' && classTeacher) areas.find(a => a.label === 'Teaching')!.items.push(item('/settings', 'Signatures & remarks', 'edit'));
-  if (wide || role === 'teacher') areas.push({ label: 'Examinations', items: [...(wide ? [item('/exams', 'Exam office', 'papers')] : []), item('/timetable', 'Timetable', 'timetable'), item('/invigilation', 'Invigilation', 'invigilation'), item('/invigilate', 'Live sessions', 'invigilate'), item('/questions', 'Question Bank', 'questions'), item('/marking', 'Marking', 'marking'), ...(wide ? [item('/exams/approvals', 'Approve Questions', 'approvals')] : [])] });
+  // Legacy parity (PortalRouter::sections()['exams']): Overview, Question
+  // Bank, Approve Questions, Exam Papers, Timetable, Invigilation Schedule,
+  // Test/Exam Sessions, Marking Status — same order, names and icon keys as
+  // the plugin. Overview / Approve Questions / Exam Papers stay wide-only,
+  // matching the existing route guards (requireRole(actor, SCHOOL_WIDE)).
+  // "Test/Exam Sessions" routes to the live-sessions board for now — the
+  // plugin folds its own live board into that same page (its `invigilate`
+  // section is "Hidden from nav — merged into Test/Exam Sessions"); the
+  // full session-log page is a later batch.
+  if (wide || role === 'teacher') areas.push({ label: 'Examinations', items: [
+    ...(wide ? [item('/exams', 'Overview', 'grid')] : []),
+    item('/questions', 'Question Bank', 'questions'),
+    ...(wide ? [item('/exams/approvals', 'Approve Questions', 'approvals')] : []),
+    ...(wide ? [item('/exams/papers', 'Exam Papers', 'papers')] : []),
+    item('/timetable', 'Timetable', 'timetable'),
+    item('/invigilation', 'Invigilation Schedule', 'invigilation'),
+    item('/invigilate', 'Test/Exam Sessions', 'sessions'),
+    item('/marking', 'Marking Status', 'marking'),
+  ] });
   if (role === 'student') areas.push({ label: 'Student', items: [item('', 'Dashboard', 'area:student'), item('/my-results', 'My results', 'results'), item('/practice', 'Practice', 'tests')] });
   if (role === 'parent') areas.push({ label: 'Parent', items: [item('', 'Dashboard', 'area:guardian'), item('/children', 'My children', 'children'), item('/timetable', 'Exam timetable', 'timetable')] });
   // Communications are for everyone: the inbox, the announcements board and

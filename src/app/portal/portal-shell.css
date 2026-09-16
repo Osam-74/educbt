@@ -67,3 +67,65 @@ a.sd-stat:hover { border-color:#96bc9e; }.sd-icon { width:42px; height:42px; dis
 @media (min-width: 640px) { .filter-form { flex-wrap: nowrap; } .filter-input-wrap { flex: 1 1 auto; min-width: 160px; } }
 .filter-summary { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line); color: var(--muted); font-size: 13.5px; }
 .filter-summary strong { color: var(--ink); font-weight: 700; }
+
+/* ── Exam Office dashboard (Examinations area — owned by this route only) ──
+   Reuses the School dashboard's visual language (.sd-* above: same colours,
+   radius, shadow, spacing) so the portal feels like one product. New rules
+   are scoped under "eo-" so they never collide with .sd-*.
+   Legacy reference: templates/portal/exams/index.php ("Overview"). */
+.eo-stats { display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:18px; margin-bottom:32px; }
+@media (max-width:1080px) { .eo-stats { grid-template-columns:repeat(3,minmax(0,1fr)); } }
+@media (max-width:640px) { .eo-stats { grid-template-columns:repeat(2,minmax(0,1fr)); } }
+.eo-stat { display:flex; flex-direction:column; align-items:flex-start; gap:6px; background:white; border:1px solid #e0e6e4; padding:24px; border-radius:16px; box-shadow:0 6px 18px #142b1705; }
+.eo-icon { width:34px; height:34px; border-radius:10px; display:flex; align-items:center; justify-content:center; background:#ecf9dc; color:#28603a; }
+.eo-icon--warn { background:#fdf0e0; color:#8a4b12; }
+.eo-stat strong { font-size:26px; line-height:1.1; }
+.eo-stat span { font-size:12px; color:#69766c; text-transform:uppercase; letter-spacing:.04em; font-weight:600; }
+
+.eo-pipeline { list-style:none; margin:0; padding:0 22px; }
+.eo-pipe { display:flex; align-items:center; gap:14px; padding:14px 0; border-bottom:1px solid #eef1ed; }
+.eo-pipe:last-child { border-bottom:0; }
+.eo-pipe__num { width:26px; height:26px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:700; flex-shrink:0; background:#f8faf8; color:#748178; border:1px solid #e0e6e4; }
+.eo-pipe__text { flex:1; min-width:0; }
+.eo-pipe__text strong { display:block; font-size:13.5px; font-weight:650; color:#173c26; }
+.eo-pipe__text span { font-size:12.5px; color:#69766c; }
+.eo-pipe__go { font-size:12.5px; font-weight:650; text-decoration:none; color:#69766c; white-space:nowrap; }
+.eo-pipe--done .eo-pipe__num { background:#e2f8e8; color:#24703b; border-color:#c7ecd2; }
+.eo-pipe--act { background:#fcfdfc; }
+.eo-pipe--act .eo-pipe__num { background:#173c26; color:#cbeb6e; border-color:#173c26; }
+.eo-pipe--act .eo-pipe__go { color:#24703b; }
+.eo-pipe--wait .eo-pipe__num { background:#fdf0e0; color:#8a4b12; border-color:#f4dcb8; }
+.eo-pipe--idle .eo-pipe__text strong, .eo-pipe--idle .eo-pipe__go { color:#a3ada0; }
+@media (max-width:640px) { .eo-pipe { flex-wrap:wrap; } .eo-pipe__go { width:100%; padding-left:40px; } }
+
+.eo-progress { display:inline-flex; align-items:center; gap:8px; }
+.eo-progress__bar { background:#eef1ed; border-radius:6px; height:7px; overflow:hidden; width:88px; }
+.eo-progress__fill { background:#173c26; height:100%; border-radius:6px; }
+.eo-progress__text { font-size:11px; font-weight:650; color:#69766c; }
+
+.eo-links { display:flex; flex-wrap:wrap; gap:10px; padding:20px 22px; }
+.eo-link { padding:8px 15px; border-radius:9px; background:#f8faf8; border:1px solid #e0e6e4; color:#193a26; font-size:13px; font-weight:600; text-decoration:none; }
+.eo-link:hover { background:#eef1ed; }
+
+/* ── Approve Questions (Examinations area) ──
+   Legacy reference: templates/portal/exams/approvals.php ("Question
+   Approval"). Filters + review cards, in the same sd-/eo- class language
+   as the rest of the Examinations area. */
+.sd-action--ghost { background:#f8faf8; border-color:#e0e6e4; color:#193a26; cursor:pointer; }
+.sd-action--ghost:hover { background:#eef1ed; }
+.sd-action--danger { background:#fdf0ee; border-color:#f3c9c2; color:#8f2c1c; cursor:pointer; }
+.sd-action--danger:hover { background:#fbe2dd; }
+button.sd-action { border-width:1px; font:inherit; }
+
+.eo-filters { display:flex; flex-wrap:wrap; align-items:flex-end; gap:14px; padding:0 22px 18px; margin:0 -22px; }
+.eo-filters label { display:flex; flex-direction:column; gap:5px; font-size:12px; font-weight:600; color:#69766c; text-transform:uppercase; letter-spacing:.03em; }
+.eo-filters select { padding:9px 11px; border:1px solid #d7ded9; border-radius:8px; background:#fff; color:#173c26; font:inherit; font-size:13.5px; min-width:150px; }
+.eo-filters__reset { align-self:center; font-size:12.5px; font-weight:650; color:#8a4b12; text-decoration:none; padding-bottom:2px; }
+@media (max-width:640px) { .eo-filters { flex-direction:column; align-items:stretch; padding:0 14px 16px; margin:0 -14px; } .eo-filters select { min-width:0; } }
+
+.eo-review-card { border:1px solid #e0e6e4; border-radius:14px; padding:18px 20px; margin:0 0 16px; background:#fcfdfc; }
+.eo-review-card:last-child { margin-bottom:0; }
+.eo-review-card h3 { margin:0 0 6px; font-size:15px; font-weight:650; color:#173c26; }
+.eo-review-card__form { display:flex; flex-direction:column; gap:10px; margin-top:12px; }
+.eo-review-card__form input[type="text"] { padding:10px 12px; border:1px solid #d7ded9; border-radius:8px; font:inherit; font-size:13.5px; }
+.eo-review-card__form label { font-size:12px; font-weight:600; color:#69766c; }
