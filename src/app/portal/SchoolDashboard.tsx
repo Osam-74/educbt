@@ -2,12 +2,17 @@ import Link from 'next/link';
 import type { schoolDashboard } from '@/lib/portal-dashboard';
 import { activityTitle, activityAllowed } from '@/lib/portal-dashboard';
 import { PortalIcon } from './PortalShell';
+import NewTermDialog from './NewTermDialog';
 
 export default function SchoolDashboard({ data, role }: { data: NonNullable<Awaited<ReturnType<typeof schoolDashboard>>>; role: string }) {
   const title = role === 'principal' ? 'Principal’s Dashboard' : role === 'vice_principal' ? 'Vice Principal’s Dashboard' : 'School Overview';
   const stages: Record<string, string> = { draft: 'Draft', compiled: 'Compiled', reviewed: 'Reviewed', published: 'Published', locked: 'Locked' };
   return <div className="school-dashboard">
-    <div className="sd-heading"><div><p className="sd-eyebrow">School overview</p><h1>{title}</h1><p>{data.session?.title ?? 'No current session'} · {data.term?.title ?? 'No current term'}</p></div><Link className="sd-action" href="/portal/results"><PortalIcon name="chart"/>Manage results <span aria-hidden="true">↗</span></Link></div>
+    <div className="sd-heading"><div><p className="sd-eyebrow">School overview</p><h1>{title}</h1><p>{data.session?.title ?? 'No current session'} · {data.term?.title ?? 'No current term'}</p></div>
+      <div className="sd-heading-actions">
+        {role === 'principal' && <NewTermDialog sessions={data.sessions} terms={data.terms} currentSessionId={data.session?.id ?? 0} currentTermId={data.term?.id ?? 0} />}
+        <Link className="sd-action sd-action--ghost" href="/portal/settings"><PortalIcon name="settings" />School Settings</Link>
+      </div></div>
     <div className="sd-stats">
       {[{ label: 'Active students', value: data.students, icon: 'school', href: '/portal/students' }, { label: 'Active staff', value: data.staff, icon: 'person', href: '/portal/staff' }, { label: 'Active classes', value: data.classes, icon: 'layers', href: '/portal/classes' }].map(s => <Link className="sd-stat" href={s.href} key={s.label}><span className="sd-icon"><PortalIcon name={s.icon}/></span><strong>{s.value}</strong><span>{s.label}</span></Link>)}
       <div className="sd-stat sd-calendar"><span className="sd-icon"><PortalIcon name="calendar"/></span><strong>{data.session?.title ?? 'Not set'}</strong><span>{data.term?.title ?? 'No current term'}</span></div>

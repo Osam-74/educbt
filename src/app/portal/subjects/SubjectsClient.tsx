@@ -220,7 +220,7 @@ function Row({
     {editing && (
       <tr className="sa-edit-row">
         <td colSpan={7}>
-          <form action={action} className="sa-edit-form">
+          <form action={action} className="sa-edit-form sa-edit-form--grid">
             <input type="hidden" name="operation" value="save" />
             <input type="hidden" name="subjectId" value={subject.id} />
 

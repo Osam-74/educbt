@@ -45,7 +45,14 @@ export async function schoolDashboard(actor: Actor) {
       .groupBy(c.id, c.displayName, r.state).orderBy(asc(c.displayName), asc(r.state)) : [];
     const activity = canViewActivity(actor) ? await tx.select({ id: schema.auditLog.id, action: schema.auditLog.action, createdAt: schema.auditLog.createdAt }).from(schema.auditLog)
       .where(schoolActivity(actor.schoolId)).orderBy(desc(schema.auditLog.createdAt), desc(schema.auditLog.id)).limit(5) : null;
-    return { ...calendar, students: students!.n, staff: staff!.n, classes: classes!.n, pendingApprovals: pending!.n, pipeline, activity };
+    // Every session and its terms — the dashboard's "Start New Session/Term"
+    // switcher (legacy school/index.php modal) pre-loads the whole map so
+    // switching session in the dialog never needs a round trip.
+    const sessions = await tx.select({ id: schema.academicSessions.id, title: schema.academicSessions.title, isCurrent: schema.academicSessions.isCurrent })
+      .from(schema.academicSessions).where(eq(schema.academicSessions.schoolId, actor.schoolId)).orderBy(asc(schema.academicSessions.title));
+    const terms = await tx.select({ id: schema.terms.id, title: schema.terms.title, sessionId: schema.terms.sessionId, position: schema.terms.position, isCurrent: schema.terms.isCurrent })
+      .from(schema.terms).where(eq(schema.terms.schoolId, actor.schoolId)).orderBy(asc(schema.terms.sessionId), asc(schema.terms.position));
+    return { ...calendar, students: students!.n, staff: staff!.n, classes: classes!.n, pendingApprovals: pending!.n, pipeline, activity, sessions, terms };
   });
 }
 

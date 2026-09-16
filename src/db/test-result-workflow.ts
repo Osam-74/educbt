@@ -336,9 +336,17 @@ async function main() {
           // flake: a green run 75 timed out at 90s on a loaded runner and
           // passed unchanged on retry — the budget, not the app, was the bug.
           page.setDefaultTimeout(180000);
-          await page.goto(url.href, { waitUntil: 'networkidle' });
+          // CI flake (runs 74/75): on a loaded runner the first navigation can
+          // starve past the entire budget and pass unchanged on a manual
+          // retry — a hung request, not a slow page. Two 120s attempts inside
+          // the suite beat one 180s hang: a real render bug fails both, a
+          // starved first load only fails the first.
+          const openDashboard = async () => {
+            await page.goto(url.href, { waitUntil: 'networkidle' });
+            await page.getByRole('heading', { name: 'Review results', exact: true }).waitFor({ timeout: 120000 });
+          };
+          await openDashboard().catch(() => openDashboard());
           await check('browser desktop dashboard renders without runtime errors', async () => {
-            await page.getByRole('heading', { name: 'Review results', exact: true }).waitFor();
             assert.deepEqual(errors, []);
             await page.screenshot({ path: 'baseline-logs/results-desktop.png', fullPage: true });
           });

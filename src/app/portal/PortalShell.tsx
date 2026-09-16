@@ -96,7 +96,7 @@ export function PortalIcon({ name }: { name: string }) {
   return <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" dangerouslySetInnerHTML={{ __html: body }} />;
 }
 
-export default function PortalShell({ children, school, displayName, role, calendar, teaching, classTeacher, signOut, unread = 0 }: { children: React.ReactNode; school: string; displayName: string; role: string; calendar: string; teaching: boolean; classTeacher: boolean; signOut: () => Promise<void>; unread?: number }) {
+export default function PortalShell({ children, school, displayName, role, sessionTitle, termTitle, teaching, classTeacher, signOut, unread = 0 }: { children: React.ReactNode; school: string; displayName: string; role: string; sessionTitle: string; termTitle: string; teaching: boolean; classTeacher: boolean; signOut: () => Promise<void>; unread?: number }) {
   const pathname = usePathname();
   const areas = portalAreas(role, teaching, classTeacher);
   const matches = (href: string) => pathname === href || (href !== '/portal' && pathname.startsWith(href + '/'));
@@ -129,6 +129,6 @@ export default function PortalShell({ children, school, displayName, role, calen
     <a className="ps-skip" href="#portal-main">Skip to content</a>
     <aside className="ps-sidebar">{navigation()}</aside>
     <dialog ref={drawer} className="ps-drawer" aria-label="Portal navigation" onCancel={() => setOpen(false)} onClose={() => { setOpen(false); burger.current?.focus(); }} onClick={e => { if (e.target === e.currentTarget) setOpen(false); }}><div className="ps-drawer-inner"><button className="ps-close" type="button" onClick={() => setOpen(false)}>Close menu ×</button>{navigation()}</div></dialog>
-    <div className="ps-workspace"><header className="ps-topbar"><button ref={burger} className="ps-burger" type="button" aria-label="Open navigation" aria-expanded={open} onClick={() => setOpen(true)}><PortalIcon name="menu"/></button><strong>{title}</strong><span className="ps-context">{calendar}</span><Link className="ps-bell" href="/portal/notifications" aria-label={`${unread} unread notifications`}>{unread > 0 ? <span className="ps-badge">{unread}</span> : null}<PortalIcon name="activity"/></Link></header><main id="portal-main" className="portal__body" tabIndex={-1}>{children}</main></div>
+    <div className="ps-workspace"><header className="ps-topbar"><button ref={burger} className="ps-burger" type="button" aria-label="Open navigation" aria-expanded={open} onClick={() => setOpen(true)}><PortalIcon name="menu"/></button><strong>{title}</strong><span className="ps-context"><span className="ps-chip"><PortalIcon name="calendar"/>{sessionTitle}</span><span className="ps-chip"><PortalIcon name="clock"/>{termTitle}</span></span><Link className="ps-bell" href="/portal/notifications" aria-label={`${unread} unread notifications`}>{unread > 0 ? <span className="ps-badge">{unread}</span> : null}<PortalIcon name="activity"/></Link></header><main id="portal-main" className="portal__body" tabIndex={-1}>{children}</main></div>
   </div>;
 }

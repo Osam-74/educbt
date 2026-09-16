@@ -57,7 +57,7 @@
 
 /* Toolbar — filters above the table, inside the card, as in the plugin's
    Subjects/Students filter forms: plain flex row, selects auto-submit. */
-.sa-toolbar { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; margin-bottom: 16px; }
+.sa-toolbar { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; margin-bottom: 22px; }
 .sa-toolbar .sa-field > label {
   display: block; margin-bottom: 4px; font-size: 12.5px; font-weight: 600; color: #16211c;
 }
@@ -99,6 +99,31 @@
 @media (max-width: 640px) {
   .sa-edit-form { flex-direction: column; align-items: stretch; }
 }
+
+/* Bare <select> elements in School Area cards (staff.php's "What are you
+   assigning?" and Teacher fields) — every other control here is styled, so
+   an unscoped select renders as a browser skeleton next to them. Same
+   control style as .sa-grid/.sa-toolbar selects. */
+.sa-card select {
+  padding: 9px 12px; border: 1px solid #d7dedb; border-radius: 9px;
+  font: inherit; font-size: 14px; background: var(--white); color: #16211c;
+}
+.sa-card select:focus {
+  outline: none; border-color: #14532d; box-shadow: 0 0 0 3px rgba(20, 83, 45, .12);
+}
+.sa-assign-row select { width: 100%; max-width: 520px; }
+
+/* The plugin prints the compulsory checkbox with its label BESIDE the box
+   (subjects.php:181); the global .form-grid label is display:grid, which
+   stacks the caption below the checkbox. Restore the inline row. */
+.sa-card .form-grid label.check { display: flex; align-items: center; gap: 8px; font-weight: 400; }
+.sa-card .form-grid label.check input[type='checkbox'] { width: auto; accent-color: #14532d; }
+
+/* Subjects inline edit row: a wrapping flex row leaves wrapped fields at
+   ragged levels (the table cell is narrower than the card forms). The
+   auto-fit grid wraps WHOLE rows and keeps every field on one level. */
+.sa-edit-form--grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); align-items: end; }
+.sa-edit-form--grid .sa-btn { justify-self: start; }
 
 /* Card forms (Add-subject etc.) — plugin field controls (educbt-portal.css:257):
    scoped to School Area cards only, so global form styling is untouched. */

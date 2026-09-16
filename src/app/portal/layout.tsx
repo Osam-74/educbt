@@ -52,6 +52,6 @@ export default async function PortalLayout({ children }: { children: React.React
   const calendar = await portalCalendar(actor);
   const assignments = actor.staffId ? await forSchool(actor.schoolId, tx => tx.select({ type: schema.staffAssignments.assignmentType }).from(schema.staffAssignments).where(and(eq(schema.staffAssignments.staffId, actor.staffId!), eq(schema.staffAssignments.status, 'active')))) : [];
   return <PortalShell school={school?.name ?? 'School'} displayName={displayName} role={actor.role} unread={unread}
-    calendar={`${calendar.session?.title ?? 'No current session'} · ${calendar.term?.title ?? 'No current term'}`}
+    sessionTitle={calendar.session?.title ?? 'No current session'} termTitle={calendar.term?.title ?? 'No current term'}
     teaching={assignments.length > 0} classTeacher={assignments.some(a => a.type === 'class_teacher')} signOut={endSession}>{children}</PortalShell>;
 }
