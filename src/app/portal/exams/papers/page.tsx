@@ -1,7 +1,7 @@
 import { redirect } from 'next/navigation';
 import { asc, eq } from 'drizzle-orm';
 import { requireSchoolSession, requireRole, SCHOOL_WIDE } from '@/lib/session';
-import { listSeries, createSeries } from '@/lib/exam/compose';
+import { listSeries, createSeries, publishSeries } from '@/lib/exam/compose';
 import { forSchool, schema } from '@/db';
 import { PortalIcon } from '../../PortalShell';
 import { TYPE_LABEL, STATUS_LABEL, fmtDay } from '../labels';
@@ -15,11 +15,18 @@ export const dynamic = 'force-dynamic';
  * right above the list it feeds, so the office never leaves this page to
  * start one. This mirrors that — "Create examination" is an in-page form,
  * not a separate route, using the same createSeries() action as before.
+ *
+ * This is a partial pass toward full plugin parity — see
+ * docs/examination-area-parity-todo.md for the practice-exam notice,
+ * question-bank window controller, CA-tests table, open-assessment-window
+ * form, and submitted-papers review queue that still need to be built.
+ * This pass adds real row actions (Build timetable / Publish) to the
+ * examinations table, using the existing publishSeries() action.
  */
 export default async function ExamPapersPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string }>;
+  searchParams: Promise<{ error?: string; ok?: string }>;
 }) {
   const actor = await requireSchoolSession();
   // The menu hides this link for other roles; the server refuses regardless.
@@ -77,6 +84,22 @@ export default async function ExamPapersPage({
     redirect(destination);
   }
 
+  async function publish(formData: FormData) {
+    'use server';
+
+    const inner = await requireSchoolSession();
+    requireRole(inner, SCHOOL_WIDE);
+    const seriesId = Number(formData.get('seriesId'));
+
+    try {
+      const count = await publishSeries(inner, seriesId);
+      redirect(`/portal/exams/papers?ok=${encodeURIComponent(`Published ${count} paper(s).`)}`);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Could not publish this examination.';
+      redirect(`/portal/exams/papers?error=${encodeURIComponent(message)}`);
+    }
+  }
+
   const defaultSession = sessions.find((s) => s.isCurrent) ?? sessions[0];
   const defaultTerm = terms.find((t) => t.isCurrent && t.sessionId === defaultSession?.id) ?? terms[0];
 
@@ -94,6 +117,7 @@ export default async function ExamPapersPage({
       </div>
 
       {query.error ? <p className="error" style={{ marginBottom: 16 }}>{query.error}</p> : null}
+      {query.ok ? <p className="ok" style={{ marginBottom: 16 }}>{query.ok}</p> : null}
 
       <section className="sd-panel sd-panel--wide" style={{ marginBottom: 22 }}>
         <header><h2><PortalIcon name="exam" />Create examination</h2></header>
@@ -203,7 +227,20 @@ export default async function ExamPapersPage({
                           {STATUS_LABEL[s.status] ?? s.status}
                         </span>
                       </td>
-                      <td><a href={`/portal/exams/${s.id}`}>Open</a></td>
+                      <td style={{ display: 'flex', gap: 10, alignItems: 'center', whiteSpace: 'nowrap' }}>
+                        <a href={`/portal/exams/${s.id}`}>Open</a>
+                        {s.paperCount > 0 ? (
+                          <a href={`/portal/timetable?series=${s.id}`}>Build timetable</a>
+                        ) : null}
+                        {s.status !== 'published' && s.paperCount > 0 ? (
+                          <form action={publish} style={{ display: 'inline' }}>
+                            <input type="hidden" name="seriesId" value={s.id} />
+                            <button type="submit" className="sd-action sd-action--ghost" style={{ padding: '3px 10px', fontSize: 12.5 }}>
+                              Publish
+                            </button>
+                          </form>
+                        ) : null}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
