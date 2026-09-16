@@ -181,6 +181,29 @@ export default async function BroadsheetPage({
   const classAverage = reportAverage(ranked.map((p) => p.average));
   const stage = states.length > 1 ? 'mixed' : (states[0] ?? '');
 
+  // "By subject" cohort stats — the plugin's BroadsheetService::stats()
+  // per_subject block: entered count, average, spread and a 40-mark pass
+  // rate for each subject offered in the class, so a results meeting can
+  // see which subject is dragging the class down without opening every row.
+  const perSubjectStats = subjects
+    .map((subject) => {
+      const totals = students
+        .map((s) => cells.get(`${Number(s.id)}:${subject.id}`))
+        .filter((c): c is { total: number; grade: string; complete: boolean } => !!c?.complete)
+        .map((c) => c.total);
+      if (totals.length === 0) return null;
+      const entered = totals.length;
+      const average = totals.reduce((sum, t) => sum + t, 0) / entered;
+      const passRate = (totals.filter((t) => t >= 40).length / entered) * 100;
+      return {
+        subject, entered, average,
+        highest: Math.max(...totals),
+        lowest: Math.min(...totals),
+        passRate,
+      };
+    })
+    .filter((s): s is NonNullable<typeof s> => s !== null);
+
   return (
     <>
       {/* Screen area: one card, exactly like the plugin's — description,
@@ -290,6 +313,38 @@ export default async function BroadsheetPage({
               A dash means the student does not offer that subject — it is not a zero.
               <strong> nr</strong> — not ranked: one or more assessment scores are missing.
             </p>
+
+            {perSubjectStats.length > 0 && (
+              <div style={{ marginTop: 16 }}>
+                <h2 style={{ fontSize: 15, fontWeight: 660, margin: '0 0 10px' }}>By subject</h2>
+                <div className="doc__scroll">
+                  <table className="doc__table">
+                    <thead>
+                      <tr>
+                        <th className="subject">Subject</th>
+                        <th>Entered</th>
+                        <th>Average</th>
+                        <th>Highest</th>
+                        <th>Lowest</th>
+                        <th>Pass rate</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {perSubjectStats.map(({ subject, entered, average, highest, lowest, passRate }) => (
+                        <tr key={subject.id}>
+                          <td className="subject">{subject.name}</td>
+                          <td>{entered}</td>
+                          <td>{average.toFixed(2)}</td>
+                          <td>{highest.toFixed(0)}</td>
+                          <td>{lowest.toFixed(0)}</td>
+                          <td>{passRate.toFixed(1)}%</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}

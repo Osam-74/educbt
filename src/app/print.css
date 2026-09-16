@@ -537,6 +537,34 @@
   }
 }
 
+/* ── Broadsheet on screen: a working document, not an official printed sheet ─
+   Every other .doc is a WAEC-style report meant to be previewed exactly as it
+   prints. The broadsheet is the internal sheet a results meeting works from —
+   on screen it should read as a normal branded portal card, with the app's
+   one canonical table look (rounded corners, forest-green header band — the
+   same .sa-table/.tbl rule everywhere else in the system). The @media print
+   block above is untouched: the actual PDF/printout stays the plain
+   black-and-white grid, unchanged. */
+@media screen {
+  .doc--broadsheet.doc { background: transparent; padding: 0; }
+  .doc--broadsheet .doc__sheet {
+    width: auto; min-height: 0; max-width: 100%; margin: 0; padding: 20px;
+    background: var(--white); border-radius: 12px;
+    box-shadow: 0 1px 2px rgba(16, 28, 22, .04), 0 8px 24px -12px rgba(16, 28, 22, .1);
+  }
+  .doc--broadsheet .doc__table {
+    border-collapse: separate; border-spacing: 0; font-size: 14px;
+    border: 1px solid #e2e8e4; border-radius: 12px; overflow: hidden;
+  }
+  .doc--broadsheet .doc__table th,
+  .doc--broadsheet .doc__table td { border: 0; border-bottom: 1px solid #e2e8e4; padding: 12px 14px; }
+  .doc--broadsheet .doc__table thead th {
+    background: #14532d; color: #fff; font-weight: 650; font-size: 12px; letter-spacing: 0;
+  }
+  .doc--broadsheet .doc__table tbody tr:hover { background: #f5f7f6; }
+  .doc--broadsheet .doc__table tbody tr:last-child td { border-bottom: 0; }
+}
+
 /* ── Academic transcript (issued document) ───────────────────────────────── */
 
 /* Single-line OFFICIAL COPY watermark: fixed so it repeats on every printed
