@@ -336,16 +336,16 @@ async function main() {
           // flake: a green run 75 timed out at 90s on a loaded runner and
           // passed unchanged on retry — the budget, not the app, was the bug.
           page.setDefaultTimeout(180000);
-          // CI flake (runs 74/75): on a loaded runner the first navigation can
-          // starve past the entire budget and pass unchanged on a manual
-          // retry — a hung request, not a slow page. Two 120s attempts inside
-          // the suite beat one 180s hang: a real render bug fails both, a
-          // starved first load only fails the first.
+          // The Results page was rebuilt (1812aed) as the plugin's per-class
+          // table: the old 'Review results' h2 no longer exists, and waiting
+          // for it read as a cold-start flake while actually failing every
+          // run. Wait for the real page heading — the per-class table with the
+          // 'Sign off review' action asserted below.
           const openDashboard = async () => {
             await page.goto(url.href, { waitUntil: 'networkidle' });
-            await page.getByRole('heading', { name: 'Review results', exact: true }).waitFor({ timeout: 120000 });
+            await page.getByRole('heading', { name: 'Results', exact: true }).waitFor({ timeout: 120000 });
           };
-          await openDashboard().catch(() => openDashboard());
+          await openDashboard();
           await check('browser desktop dashboard renders without runtime errors', async () => {
             assert.deepEqual(errors, []);
             await page.screenshot({ path: 'baseline-logs/results-desktop.png', fullPage: true });
