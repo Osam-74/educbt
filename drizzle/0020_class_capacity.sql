@@ -1,0 +1,1 @@
+ALTER TABLE "classes" ADD COLUMN "capacity" integer DEFAULT 0 NOT NULL;

@@ -154,6 +154,9 @@ export const classes = pgTable('classes', {
     .references(() => departments.id, { onDelete: 'set null' }),
   arm: varchar('arm', { length: 20 }),
   displayName: varchar('display_name', { length: 150 }).notNull(),
+  // 0 = no limit (classes.php's edit row). Enforced at registration: a full
+  // class refuses new students instead of quietly over-subscribing them.
+  capacity: integer('capacity').default(0).notNull(),
   status: varchar('status', { length: 20 }).default('active').notNull(),
 }, (t) => ({
   scopeUq: uniqueIndex('classes_scope_uq')

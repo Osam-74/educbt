@@ -99,6 +99,28 @@ async function assertCanTouchStudent(actor: Actor, tx: Tx, studentId: number): P
   }
 }
 
+/**
+ * The capacity gate registration and class moves share (the plugin's
+ * StudentRegistrationService): a class with capacity > 0 refuses new
+ * students instead of quietly over-subscribing them. An unbounded class (0)
+ * or a missing row passes through untouched.
+ */
+async function assertClassHasRoom(tx: Tx, schoolId: number, classId: number, sessionId: number): Promise<void> {
+  const [row] = await tx.select({ capacity: schema.classes.capacity }).from(schema.classes)
+    .where(and(eq(schema.classes.id, classId), eq(schema.classes.schoolId, schoolId))).limit(1);
+  if (!row || row.capacity <= 0) return;
+
+  const [occupied] = await tx.select({ count: sql`count(*)`.mapWith(Number) }).from(schema.enrollments)
+    .where(and(
+      eq(schema.enrollments.classId, classId),
+      eq(schema.enrollments.sessionId, sessionId),
+      eq(schema.enrollments.status, 'active'),
+    ));
+  if (occupied && occupied.count >= row.capacity) {
+    throw new StudentError('That class has reached its capacity.');
+  }
+}
+
 /** The school's current academic session. A student is always placed into a
  *  session; without one there is nowhere to enrol them. */
 export async function currentSessionId(tx: Tx, schoolId: number): Promise<number> {
@@ -220,6 +242,8 @@ export async function registerStudent(actor: Actor, input: RegisterStudentInput)
       .from(schema.classes)
       .where(and(eq(schema.classes.id, input.classId), eq(schema.classes.schoolId, actor.schoolId))).limit(1);
     if (!classRow || classRow.status !== 'active') throw new StudentError('That class could not be found.');
+
+    await assertClassHasRoom(tx, actor.schoolId, input.classId, sessionId);
 
     // A school that runs its own student IDs types theirs and keeps it.
     // Uppercased because a student ID is a code, not a sentence.
@@ -510,6 +534,8 @@ async function moveStudentWithinTx(
 
   const sessionId = await currentSessionId(tx, actor.schoolId);
   if (!sessionId) throw new StudentError('The school has no current academic session.');
+
+  await assertClassHasRoom(tx, actor.schoolId, classId, sessionId);
 
   const [existing] = await tx.select({ id: schema.enrollments.id, classId: schema.enrollments.classId })
     .from(schema.enrollments)
