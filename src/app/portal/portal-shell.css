@@ -129,3 +129,33 @@ button.sd-action { border-width:1px; font:inherit; }
 .eo-review-card__form { display:flex; flex-direction:column; gap:10px; margin-top:12px; }
 .eo-review-card__form input[type="text"] { padding:10px 12px; border:1px solid #d7ded9; border-radius:8px; font:inherit; font-size:13.5px; }
 .eo-review-card__form label { font-size:12px; font-weight:600; color:#69766c; }
+
+/* ── Timetable & Invigilation Schedule (Examinations area) ──
+   Legacy reference: templates/portal/exams/timetable.php ("Timetable")
+   and templates/portal/exams/invigilation.php ("Invigilation Schedule").
+   Same sd-/eo- table + panel language as the rest of the Examinations
+   area — a callout panel with a coloured left edge for "nothing built
+   yet" / "drifted" states, an access-code chip matching the plugin's
+   monospace green pill, and a native <details> toggle for the
+   reschedule row so the table stays scannable until someone needs it. */
+.sd-panel--accent { border-left:4px solid #173c26; }
+.sd-panel--warn { border-left:4px solid #b45309; }
+.sd-panel--accent > div, .sd-panel--warn > div { padding:20px 22px; }
+.sd-panel--accent h2, .sd-panel--warn h2 { font-size:15.5px; margin:0 0 6px; }
+
+.eo-code { font-size:13px; font-weight:700; letter-spacing:1px; background:#f0fdf4; padding:2px 8px; border-radius:4px; color:#166534; white-space:nowrap; }
+
+.eo-toggle > summary { cursor:pointer; list-style:none; display:inline-flex; align-items:center; gap:6px; padding:4px 10px; border:1px solid var(--line); border-radius:7px; background:#fff; color:#16211c; font-size:12.5px; font-weight:550; }
+.eo-toggle > summary::-webkit-details-marker { display:none; }
+.eo-toggle > summary:hover { border-color:#14532d; color:#14532d; }
+.eo-toggle[open] > summary { background:#f8faf8; }
+.eo-slot-detail { background:#fcfdfc; border-top:1px solid #eef1ed; padding:18px 22px; display:flex; gap:28px; flex-wrap:wrap; }
+.eo-slot-detail__group { display:flex; flex-direction:column; gap:8px; min-width:220px; }
+.eo-slot-detail__group h4 { margin:0; font-size:11px; text-transform:uppercase; letter-spacing:.04em; color:#748178; font-weight:650; }
+.eo-slot-detail form { display:flex; gap:8px; flex-wrap:wrap; align-items:flex-end; }
+.eo-slot-detail label { display:flex; flex-direction:column; gap:4px; font-size:11.5px; font-weight:600; color:#69766c; }
+.eo-slot-detail input, .eo-slot-detail select { padding:7px 9px; border:1px solid #d7ded9; border-radius:7px; font:inherit; font-size:13px; background:#fff; color:#173c26; }
+
+.eo-status-bar { display:flex; align-items:center; gap:14px; flex-wrap:wrap; padding:16px 22px; }
+.eo-status-bar strong { font-size:15px; }
+@media (max-width:640px) { .eo-slot-detail { padding:14px; gap:18px; } .eo-status-bar { padding:14px; } }

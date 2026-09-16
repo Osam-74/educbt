@@ -7,6 +7,11 @@
  * load, keeping a teacher away from their own subject), can swap anyone at
  * any time until the last paper is written, and is told when the timetable
  * has drifted underneath the schedule. A teacher sees only their own duties.
+ *
+ * Visual parity with the plugin's own page: a picker panel, a callout with a
+ * coloured left edge for "nothing built yet" / "drifted" (matching the
+ * plugin's border-left notice), a compact status bar for "N of M covered",
+ * and the same sd-table used across the Examinations area.
  */
 
 import { notFound, redirect } from 'next/navigation';
@@ -24,6 +29,7 @@ import {
   releaseAccessCode,
 } from '@/lib/exam/timetable';
 import { fmtDay, fmtTime } from '../exams/labels';
+import { PortalIcon } from '../PortalShell';
 
 export const dynamic = 'force-dynamic';
 
@@ -106,65 +112,90 @@ export default async function InvigilationPage({
   }
 
   return (
-    <>
-      <h1 className="page-title">{manage ? 'Invigilation schedule' : 'My invigilation duties'}</h1>
+    <div className="school-dashboard">
+      <div className="sd-heading">
+        <div>
+          <p className="sd-eyebrow">Examination office</p>
+          <h1>{manage ? 'Invigilation Schedule' : 'My Invigilation Duties'}</h1>
+          <p>
+            {manage
+              ? 'Build the duty roster from the timetable, spread the load, and keep a teacher away from their own subject.'
+              : 'Every duty assigned to you for this examination.'}
+          </p>
+        </div>
+      </div>
 
       {query.error ? <p className="error">{query.error}</p> : null}
       {query.ok ? <p className="ok">{query.ok}</p> : null}
 
       {seriesList.length === 0 ? (
-        <p className="muted">No examination has been created yet. The schedule is built from an examination&apos;s timetable.</p>
+        <section className="sd-panel sd-panel--wide">
+          <div style={{ padding: 20 }}>
+            <p className="muted">No examination has been created yet. The schedule is built from an examination&apos;s timetable.</p>
+          </div>
+        </section>
       ) : (
         <>
-          <form method="get" style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end', maxWidth: 420 }}>
-            <div style={{ flex: 1 }}>
-              <label htmlFor="series">Examination</label>
-              <select id="series" name="series" defaultValue={String(seriesId)}>
-                {seriesList.map((s) => (
-                  <option key={s.id} value={s.id}>{s.title}</option>
-                ))}
-              </select>
-            </div>
-            <button type="submit" className="btn-small">Show</button>
-          </form>
+          <section className="sd-panel sd-panel--wide" style={{ marginBottom: 22 }}>
+            <header><h2><PortalIcon name="invigilation" />Choose examination</h2></header>
+            <form method="get" className="eo-filters">
+              <label htmlFor="series">
+                <span>Examination</span>
+                <select id="series" name="series" defaultValue={String(seriesId)}>
+                  {seriesList.map((s) => (
+                    <option key={s.id} value={s.id}>{s.title}</option>
+                  ))}
+                </select>
+              </label>
+              <button type="submit" className="sd-action sd-action--ghost">Show</button>
+            </form>
+          </section>
 
           {papers.length === 0 ? (
-            <p className="muted" style={{ marginTop: 20 }}>
-              {manage
-                ? 'This examination has no papers scheduled, so there is nothing to invigilate yet. '
-                : 'You have no invigilation duties for this examination.'}
-              {manage ? (
-                <>
-                  Schedule papers from the{' '}
-                  <Link href={`/portal/exams/${seriesId}`}>exam office</Link> first.
-                </>
-              ) : null}
-            </p>
+            <section className="sd-panel sd-panel--wide">
+              <div style={{ padding: 20 }}>
+                <p className="muted">
+                  {manage
+                    ? 'This examination has no papers scheduled, so there is nothing to invigilate yet. '
+                    : 'You have no invigilation duties for this examination.'}
+                  {manage ? (
+                    <>
+                      Schedule papers from the{' '}
+                      <Link href={`/portal/exams/${seriesId}`}>exam office</Link> first.
+                    </>
+                  ) : null}
+                </p>
+              </div>
+            </section>
           ) : (
             <>
               {manage ? (
                 assigned === 0 ? (
-                  <section style={{ marginTop: 24, borderLeft: '4px solid var(--forest)', paddingLeft: 16 }}>
-                    <h2 className="sub-head">No invigilation schedule yet</h2>
-                    <p className="muted" style={{ marginTop: -4 }}>
-                      {papers.length} paper(s) are scheduled and none has an invigilator. Building
-                      one assigns everybody automatically, spreading the load and keeping a teacher
-                      away from their own subject. You can change any of it afterwards.
-                    </p>
-                    <form action={build}>
-                      <button type="submit">Create invigilation schedule</button>
-                    </form>
+                  <section className="sd-panel sd-panel--wide sd-panel--accent" style={{ marginBottom: 22 }}>
+                    <div>
+                      <h2>No invigilation schedule yet</h2>
+                      <p className="muted" style={{ margin: '0 0 14px' }}>
+                        {papers.length} paper(s) are scheduled and none has an invigilator. Building
+                        one assigns everybody automatically, spreading the load and keeping a teacher
+                        away from their own subject. You can change any of it afterwards.
+                      </p>
+                      <form action={build}>
+                        <button type="submit" className="sd-action">Create invigilation schedule</button>
+                      </form>
+                    </div>
                   </section>
                 ) : (
-                  <p style={{ margin: '20px 0 10px' }}>
-                    <strong>{assigned}</strong> of {papers.length} papers covered.
-                    <form action={build} style={{ display: 'inline', marginLeft: 14 }}>
-                      <button type="submit" className="btn-small">Fill any gaps automatically</button>
-                    </form>
-                  </p>
+                  <section className="sd-panel sd-panel--wide" style={{ marginBottom: 22 }}>
+                    <div className="eo-status-bar">
+                      <span><strong>{assigned}</strong> of {papers.length} papers covered.</span>
+                      <form action={build} style={{ marginLeft: 'auto' }}>
+                        <button type="submit" className="sd-action sd-action--ghost">Fill any gaps automatically</button>
+                      </form>
+                    </div>
+                  </section>
                 )
               ) : (
-                <p className="muted" style={{ marginTop: 20 }}>
+                <p className="muted" style={{ margin: '0 0 18px' }}>
                   Change anyone at any time until the last paper is written — see the exam office
                   if a duty is impossible. A swap is refused if the person teaches that subject or
                   is already in another hall at the same time.
@@ -172,107 +203,114 @@ export default async function InvigilationPage({
               )}
 
               {manage && drift.length > 0 ? (
-                <section style={{ marginTop: 24, borderLeft: '4px solid #b45309', paddingLeft: 16 }}>
-                  <h2 className="sub-head">The schedule no longer matches the timetable</h2>
-                  <p className="muted" style={{ marginTop: -4 }}>
-                    Papers have moved since this was built. None of these announce themselves on
-                    the day, so they are worth settling now.
-                  </p>
-                  <ul className="muted" style={{ margin: '10px 0' }}>
-                    {drift.map((issue, i) => <li key={i}>{issue}</li>)}
-                  </ul>
-                  <form action={build}>
-                    <button type="submit">Apply the timetable changes</button>
-                  </form>
+                <section className="sd-panel sd-panel--wide sd-panel--warn" style={{ marginBottom: 22 }}>
+                  <div>
+                    <h2>The schedule no longer matches the timetable</h2>
+                    <p className="muted" style={{ margin: '0 0 10px' }}>
+                      Papers have moved since this was built. None of these announce themselves on
+                      the day, so they are worth settling now.
+                    </p>
+                    <ul className="muted" style={{ margin: '0 0 14px', paddingLeft: 18 }}>
+                      {drift.map((issue, i) => <li key={i}>{issue}</li>)}
+                    </ul>
+                    <form action={build}>
+                      <button type="submit" className="sd-action">Apply the timetable changes</button>
+                    </form>
+                  </div>
                 </section>
               ) : null}
 
-              <table className="tbl" style={{ marginTop: 20 }}>
-                <thead>
-                  <tr>
-                    <th>Date &amp; time</th><th>Subject</th><th>Class</th>
-                    <th>Duration</th><th>Access code</th>
-                    {manage ? <th>Invigilator</th> : <th>Hall</th>}
-                  </tr>
-                </thead>
-                <tbody>
-                  {papers.map((p) => (
-                    <tr key={p.id}>
-                      <td style={{ whiteSpace: 'nowrap' }}>
-                        {fmtDay(p.scheduledAt)}<br />
-                        <span className="muted">{fmtTime(p.scheduledAt)}</span>
-                      </td>
-                      <td><strong>{p.subjectName}</strong></td>
-                      <td>{p.className ?? p.levelName ?? '—'}</td>
-                      <td>{p.durationMinutes} min</td>
-                      <td style={{ whiteSpace: 'nowrap' }}>
-                        {p.requiresAccessCode && p.accessCode ? (
-                          <>
-                            <strong style={{ letterSpacing: 1 }}>{p.accessCode}</strong>
-                            {p.codeReleasedAt
-                              ? <span className="pill pill--published" style={{ marginLeft: 6 }}>released</span>
-                              : (
-                                <form action={code} style={{ display: 'inline', marginLeft: 4 }}>
-                                  <input type="hidden" name="paperId" value={p.id} />
-                                  <input type="hidden" name="kind" value="release" />
-                                  <button type="submit" className="btn-small">Release</button>
-                                </form>
-                              )}
-                            {manage ? (
-                              <form action={code} style={{ display: 'inline', marginLeft: 4 }}>
+              <section className="sd-panel sd-panel--wide">
+                <header><h2><PortalIcon name="invigilation" />Schedule</h2></header>
+                <div className="sd-table-wrap">
+                  <table className="tbl">
+                    <thead>
+                      <tr>
+                        <th>Date &amp; time</th><th>Subject</th><th>Class</th>
+                        <th>Duration</th><th>Access Code</th>
+                        {manage ? <th>Invigilator</th> : <th>Hall</th>}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {papers.map((p) => (
+                        <tr key={p.id}>
+                          <td style={{ whiteSpace: 'nowrap' }}>
+                            {fmtDay(p.scheduledAt)}<br />
+                            <span className="muted">{fmtTime(p.scheduledAt)}</span>
+                          </td>
+                          <td><strong>{p.subjectName}</strong></td>
+                          <td>{p.className ?? p.levelName ?? '—'}</td>
+                          <td>{p.durationMinutes} min</td>
+                          <td style={{ whiteSpace: 'nowrap' }}>
+                            {p.requiresAccessCode && p.accessCode ? (
+                              <>
+                                <span className="eo-code">{p.accessCode}</span>
+                                {p.codeReleasedAt
+                                  ? <span className="pill pill--published" style={{ marginLeft: 6 }}>released</span>
+                                  : (
+                                    <form action={code} style={{ display: 'inline', marginLeft: 4 }}>
+                                      <input type="hidden" name="paperId" value={p.id} />
+                                      <input type="hidden" name="kind" value="release" />
+                                      <button type="submit" className="btn-small">Release</button>
+                                    </form>
+                                  )}
+                                {manage ? (
+                                  <form action={code} style={{ display: 'inline', marginLeft: 4 }}>
+                                    <input type="hidden" name="paperId" value={p.id} />
+                                    <input type="hidden" name="kind" value="regenerate" />
+                                    <button type="submit" className="btn-small" title="The old code stops working immediately">↻</button>
+                                  </form>
+                                ) : null}
+                              </>
+                            ) : manage ? (
+                              <form action={code} style={{ display: 'inline' }}>
                                 <input type="hidden" name="paperId" value={p.id} />
                                 <input type="hidden" name="kind" value="regenerate" />
-                                <button type="submit" className="btn-small" title="The old code stops working immediately">↻</button>
+                                <button type="submit" className="btn-small">Generate</button>
                               </form>
-                            ) : null}
-                          </>
-                        ) : manage ? (
-                          <form action={code} style={{ display: 'inline' }}>
-                            <input type="hidden" name="paperId" value={p.id} />
-                            <input type="hidden" name="kind" value="regenerate" />
-                            <button type="submit" className="btn-small">Generate</button>
-                          </form>
-                        ) : (
-                          <span className="muted">—</span>
-                        )}
-                      </td>
-                      {manage ? (
-                        <td style={{ minWidth: 200 }}>
-                          <form action={invigilator} style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                            <input type="hidden" name="paperId" value={p.id} />
-                            <select name="staffId" defaultValue={String(p.invigilatorStaffId ?? 0)}>
-                              <option value="0">— nobody —</option>
-                              {data!.staff.map((s) => (
-                                <option key={s.id} value={s.id}>{s.name}</option>
-                              ))}
-                            </select>
-                            <button type="submit" className="btn-small">Set</button>
-                            <button type="submit" name="force" value="1" className="btn-small"
-                                    title="Assign anyway — for a CBT hall where one invigilator watches two papers from one room">
-                              Anyway
-                            </button>
-                          </form>
-                        </td>
-                      ) : (
-                        <td>{p.venue || '—'}</td>
-                      )}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+                            ) : (
+                              <span className="muted">—</span>
+                            )}
+                          </td>
+                          {manage ? (
+                            <td style={{ minWidth: 200 }}>
+                              <form action={invigilator} style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                                <input type="hidden" name="paperId" value={p.id} />
+                                <select name="staffId" defaultValue={String(p.invigilatorStaffId ?? 0)}>
+                                  <option value="0">— nobody —</option>
+                                  {data!.staff.map((s) => (
+                                    <option key={s.id} value={s.id}>{s.name}</option>
+                                  ))}
+                                </select>
+                                <button type="submit" className="btn-small">Set</button>
+                                <button type="submit" name="force" value="1" className="btn-small"
+                                        title="Assign anyway — for a CBT hall where one invigilator watches two papers from one room">
+                                  Anyway
+                                </button>
+                              </form>
+                            </td>
+                          ) : (
+                            <td>{p.venue || '—'}</td>
+                          )}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
 
-              {manage ? (
-                <p className="muted" style={{ marginTop: 12 }}>
-                  Change anyone at any time until the last paper is written. A swap is refused if
-                  the person teaches that subject or is already in another hall at the same time.
-                  For CBT exams where a teacher can invigilate from one room, you can override a
-                  clash with &quot;Anyway&quot;.
-                </p>
-              ) : null}
+                {manage ? (
+                  <p className="sd-footnote">
+                    Change anyone at any time until the last paper is written. A swap is refused if
+                    the person teaches that subject or is already in another hall at the same time.
+                    For CBT exams where a teacher can invigilate from one room, you can override a
+                    clash with &quot;Anyway&quot;.
+                  </p>
+                ) : null}
+              </section>
             </>
           )}
         </>
       )}
-    </>
+    </div>
   );
 }
