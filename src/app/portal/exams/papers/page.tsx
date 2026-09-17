@@ -1,8 +1,11 @@
+import Link from 'next/link';
 import { redirect } from 'next/navigation';
-import { and, asc, eq } from 'drizzle-orm';
+import { and, asc, eq, inArray, sql } from 'drizzle-orm';
 import { requireSchoolSession, requireRole, SCHOOL_WIDE } from '@/lib/session';
 import { listSeries, createSeries, publishSeries, deleteSeries, composeSeries, questionAvailability } from '@/lib/exam/compose';
 import { collectionView, saveCollection } from '@/lib/exam/collection';
+import { reviewSet } from '@/lib/exam/sets';
+import { snapshotSet } from '@/lib/exam/vault';
 import { caComponents } from '@/lib/ca/validation';
 import { forSchool, schema } from '@/db';
 import { PortalIcon } from '../../PortalShell';
@@ -14,26 +17,25 @@ export const dynamic = 'force-dynamic';
 /**
  * Exam Papers (legacy templates/portal/exams/papers.php, $educbt_title = 'Exam Papers').
  *
- * The plugin puts everything on one page: the create-examination form sits
- * right above the list it feeds, so the office never leaves this page to
- * start one. This mirrors that — "Create examination" is an in-page form,
- * not a separate route, using the same createSeries() action as before.
- *
- * This is a partial pass toward full plugin parity — see
- * docs/examination-area-parity-todo.md for the question-bank window
- * controller, CA-tests live-status table and submitted-papers review queue
- * that still need to be built.
- * Done so far: a "Practice exams" notice panel above the create form
- * (practice papers are never scheduled or published, so they get their own
- * small always-available panel instead of living inside the table logic),
- * the examinations table matches the plugin's column set in full —
- * Session/Term, Q-Bank open/close window, Sitting window, Status, and row
- * actions (Build timetable / Publish / Delete) — and the question bank
- * controller (which collection teachers may submit questions into) is
- * surfaced here, reusing the exact same saveCollection()/configureCollection
- * machinery the Question Bank page already runs on, not a parallel copy.
- * Still to build: the CA-tests live-status table and submitted-papers
- * review queue.
+ * The plugin puts everything on one scrollable page, in this order — see
+ * docs/examination-area-parity-todo.md for the full section-by-section
+ * breakdown this page was built against:
+ *   1. Practice exams notice (practice papers are never scheduled/reviewed —
+ *      always available once at least one paper exists).
+ *   2. Question bank controller (which single collection teachers may
+ *      currently submit into — reuses saveCollection()/collectionView()
+ *      from the Question Bank page, not a parallel copy).
+ *   3. Continuous assessment tests (live status table — reuses
+ *      questionAvailability() from the examination's own page).
+ *   4. Open a new assessment window (CA) — createSeries() with
+ *      seriesType 'ca_test' and a caComponentKey slot reference.
+ *   5. Create examination — createSeries() inline, moved from the old
+ *      /portal/exams/new route.
+ *   6. All examinations table — every series with Build timetable /
+ *      Publish / Delete actions.
+ *   7. Submitted papers, pending review — every set awaiting a decision,
+ *      with a quick no-comment Approve; sending a set back with a reason
+ *      still happens on /portal/exams/approvals, which owns that form.
  */
 export default async function ExamPapersPage({
   searchParams,
@@ -47,6 +49,35 @@ export default async function ExamPapersPage({
   const query = await searchParams;
   const series = await listSeries(actor);
   const bank = await collectionView(actor);
+
+  // Section 7 — "Submitted papers, pending review": every teacher submission
+  // still awaiting a decision, whichever collection window it came from.
+  // Same shape as /portal/exams/approvals, minus its filters and the
+  // full inline review form — this is the "at a glance, then go read it"
+  // view; the office opens /portal/exams/approvals to actually read the
+  // questions or send a set back with a reason.
+  const pendingReview = await forSchool(actor.schoolId, async (tx) =>
+    tx
+      .select({
+        id: schema.questionSets.id,
+        submittedAt: schema.questionSets.submittedAt,
+        subjectName: schema.subjects.name,
+        levelName: schema.classLevels.name,
+        seriesType: schema.examSeries.seriesType,
+        questionCount: sql<number>`(
+          SELECT count(*) FROM ${schema.questions} q
+          WHERE q.question_set_id = ${schema.questionSets.id} AND q.status = 'active'
+        )`.mapWith(Number),
+      })
+      .from(schema.questionSets)
+      .innerJoin(schema.subjects, eq(schema.subjects.id, schema.questionSets.subjectId))
+      .innerJoin(schema.classLevels, eq(schema.classLevels.id, schema.questionSets.levelId))
+      .leftJoin(schema.examSeries, eq(schema.examSeries.id, schema.questionSets.seriesId))
+      .where(and(
+        eq(schema.questionSets.schoolId, actor.schoolId),
+        inArray(schema.questionSets.status, ['submitted', 'under_review']),
+      ))
+      .orderBy(asc(schema.questionSets.submittedAt)));
 
   const { sessions, terms, caSlots } = await forSchool(actor.schoolId, async (tx) => {
     const [school] = await tx.select({ settings: schema.schools.settings })
@@ -228,6 +259,31 @@ export default async function ExamPapersPage({
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Could not compose that assessment.';
       destination = `/portal/exams/papers?error=${encodeURIComponent(message)}`;
+    }
+
+    // Outside the try/catch — see create() above for why.
+    redirect(destination);
+  }
+
+  async function quickApprove(formData: FormData) {
+    'use server';
+
+    const inner = await requireSchoolSession();
+    requireRole(inner, SCHOOL_WIDE);
+    const setId = Number(formData.get('setId'));
+
+    let destination: string;
+
+    try {
+      await reviewSet(inner, setId, 'approve', '');
+      // Snapshot on approval, same as /portal/exams/approvals: this is the
+      // version that will actually be sat, so it has to be captured the
+      // moment the office signs off on it, not whenever someone next opens it.
+      await snapshotSet(inner.schoolId, setId, 'approved');
+      destination = '/portal/exams/papers?ok=' + encodeURIComponent('Set approved.');
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Could not approve this set.';
+      destination = '/portal/exams/papers?error=' + encodeURIComponent(message);
     }
 
     // Outside the try/catch — see create() above for why.
@@ -594,6 +650,52 @@ export default async function ExamPapersPage({
                             <DeleteSeriesButton title={s.title} />
                           </form>
                         ) : null}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      </section>
+
+      <section className="sd-panel sd-panel--wide" style={{ marginTop: 22 }}>
+        <header><h2><PortalIcon name="approvals" />Submitted papers, pending review</h2></header>
+        <div style={{ padding: '0 22px 20px' }}>
+          <p className="muted" style={{ margin: '10px 0 0' }}>
+            Every submission still waiting on a decision, across every CA test and
+            examination. Approve here for a quick sign-off with no comment, or open{' '}
+            <Link href="/portal/exams/approvals">Approve Questions</Link> to read the
+            questions first or send a set back with a reason.
+          </p>
+          {pendingReview.length === 0 ? (
+            <p className="muted" style={{ margin: '18px 0' }}>Nothing is waiting on a review right now.</p>
+          ) : (
+            <div className="sd-table-wrap">
+              <table className="tbl">
+                <thead>
+                  <tr>
+                    <th>Subject</th><th>Class</th><th>Type</th><th>Date submitted</th>
+                    <th>Questions in pool</th><th />
+                  </tr>
+                </thead>
+                <tbody>
+                  {pendingReview.map((s) => (
+                    <tr key={s.id}>
+                      <td>{s.subjectName}</td>
+                      <td className="muted">{s.levelName}</td>
+                      <td>{TYPE_LABEL[s.seriesType ?? 'examination'] ?? 'Examination'}</td>
+                      <td className="muted">{s.submittedAt ? fmtDay(s.submittedAt) : '—'}</td>
+                      <td>{s.questionCount}</td>
+                      <td style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+                        <Link href={`/portal/exams/approvals`}>Review</Link>
+                        <form action={quickApprove} style={{ display: 'inline' }}>
+                          <input type="hidden" name="setId" value={s.id} />
+                          <button type="submit" className="sd-action sd-action--ghost" style={{ padding: '3px 10px', fontSize: 12.5 }}>
+                            Approve
+                          </button>
+                        </form>
                       </td>
                     </tr>
                   ))}
