@@ -6,14 +6,13 @@
 .review-table { border-collapse: collapse; width: 100%; min-width: 760px; }
 .review-table th, .review-table td {
   padding: 10px 12px; text-align: left; border-bottom: 1px solid var(--line);
-  border-right: 1px solid var(--line);
+  border-right: 1px solid var(--line); vertical-align: top;
 }
 .review-table thead { background: var(--wash); }
 .review-table th.review-subject, .review-table thead th:last-child { text-align: center; font-size: 13px; }
 .review-subject-name { display: block; font-size: 10px; font-weight: 400; color: var(--muted); margin-top: 2px; }
 .review-sticky { position: sticky; left: 0; z-index: 2; background: var(--card, #fff); white-space: nowrap; }
 .review-admission { display: block; font-size: 12px; }
-.review-cell { vertical-align: top; }
 .review-components { display: flex; flex-direction: column; gap: 5px; min-width: 100px; }
 .review-comp { display: flex; align-items: center; gap: 4px; font-size: 12px; }
 .review-comp-label { width: 28px; font-weight: 600; color: var(--muted); }

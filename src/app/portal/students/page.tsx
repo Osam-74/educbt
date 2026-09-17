@@ -74,9 +74,9 @@ export default async function StudentsPage({
               <option value="expelled">Expelled</option>
               <option value="all">All</option>
             </AutoSubmitSelect>
-            <button type="submit" className="sa-btn sa-btn--small sa-btn--primary">Search</button>
-            {params.q && <a className="sa-btn sa-btn--small" href="/portal/students">Clear</a>}
-            <noscript><button type="submit" className="sa-btn sa-btn--small">Filter</button></noscript>
+            <button type="submit" className="sa-btn sa-btn--primary">Search</button>
+            {params.q && <a className="sa-btn" href="/portal/students">Clear</a>}
+            <noscript><button type="submit" className="sa-btn">Filter</button></noscript>
           </form>
 
           {rows.length === 0 ? (

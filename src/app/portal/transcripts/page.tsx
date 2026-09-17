@@ -75,7 +75,7 @@ export default async function TranscriptsPage({
                     </>) : <span className="muted">Not issued</span>}
                   </td>
                   <td>
-                    <form action={issue} style={{ display: 'flex', gap: 8 }}>
+                    <form action={issue} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                       <input type="hidden" name="studentId" value={s.id} />
                       <input type="hidden" name="q" value={search} />
                       <label className="sr-only" htmlFor={'purpose-' + s.id}>Purpose</label>

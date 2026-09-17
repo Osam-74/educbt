@@ -78,8 +78,8 @@ export default async function ActivityPage({ searchParams }: {
           <option value="">All users</option>
           {filters.actors.map(u => <option key={u.id} value={u.id!}>{u.label}</option>)}
         </select>}
-        <button type="submit" id="activity-filter-submit-btn" className="sa-btn sa-btn--small sa-btn--primary">Filter</button>
-        {filtered && <Link href="/portal/activity" id="activity-reset-filter-btn" className="sa-btn sa-btn--small">Clear</Link>}
+        <button type="submit" id="activity-filter-submit-btn" className="sa-btn sa-btn--primary">Filter</button>
+        {filtered && <Link href="/portal/activity" id="activity-reset-filter-btn" className="sa-btn">Clear</Link>}
       </form>
       <p className="muted" style={{ fontSize: 12.5, margin: '10px 0 18px' }}>
         Showing <strong>{data.total}</strong> log entr{data.total === 1 ? 'y' : 'ies'}{filtered ? ' for this filter' : ''}
