@@ -648,6 +648,8 @@ export async function listSeries(actor: Actor) {
       seriesType: schema.examSeries.seriesType,
       status: schema.examSeries.status,
       createdAt: schema.examSeries.createdAt,
+      sessionId: schema.examSeries.sessionId,
+      termId: schema.examSeries.termId,
       questionsOpenFrom: schema.examSeries.questionsOpenFrom,
       questionsOpenTo: schema.examSeries.questionsOpenTo,
       sittingOpensAt: schema.examSeries.sittingOpensAt,

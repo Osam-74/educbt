@@ -21,10 +21,12 @@ export const dynamic = 'force-dynamic';
  * docs/examination-area-parity-todo.md for the question-bank window
  * controller, CA-tests live-status table and submitted-papers review queue
  * that still need to be built.
- * Done so far: real row actions (Build timetable / Publish / Delete) on the
- * examinations table, and a "Practice exams" notice panel above the create
- * form — practice papers are never scheduled or published, so they get their
- * own small always-available panel instead of living inside the table logic.
+ * Done so far: a "Practice exams" notice panel above the create form
+ * (practice papers are never scheduled or published, so they get their own
+ * small always-available panel instead of living inside the table logic),
+ * and the examinations table now matches the plugin's column set in full —
+ * Session/Term, Q-Bank open/close window, Sitting window, Status, and row
+ * actions (Build timetable / Publish / Delete).
  */
 export default async function ExamPapersPage({
   searchParams,
@@ -122,6 +124,8 @@ export default async function ExamPapersPage({
   const defaultSession = sessions.find((s) => s.isCurrent) ?? sessions[0];
   const defaultTerm = terms.find((t) => t.isCurrent && t.sessionId === defaultSession?.id) ?? terms[0];
   const practiceSeries = series.filter((s) => s.seriesType === 'practice' && s.paperCount > 0);
+  const sessionTitleById = new Map(sessions.map((s) => [s.id, s.title]));
+  const termTitleById = new Map(terms.map((t) => [t.id, t.title]));
 
   return (
     <div className="school-dashboard">
@@ -243,8 +247,8 @@ export default async function ExamPapersPage({
               <table className="tbl">
                 <thead>
                   <tr>
-                    <th>Name</th><th>Type</th><th>Papers</th>
-                    <th>Sitting window</th><th>Status</th><th />
+                    <th>Name</th><th>Type</th><th>Session/Term</th><th>Papers</th>
+                    <th>Q-Bank window</th><th>Sitting window</th><th>Status</th><th />
                   </tr>
                 </thead>
                 <tbody>
@@ -252,11 +256,21 @@ export default async function ExamPapersPage({
                     <tr key={s.id}>
                       <td>{s.title}</td>
                       <td>{TYPE_LABEL[s.seriesType] ?? s.seriesType}</td>
+                      <td className="muted">
+                        {(s.sessionId ? sessionTitleById.get(s.sessionId) : null) ?? '—'}
+                        {' / '}
+                        {(s.termId ? termTitleById.get(s.termId) : null) ?? '—'}
+                      </td>
                       <td>
                         {s.paperCount}
                         {s.paperCount > 0 && s.unscheduledCount > 0 && s.seriesType !== 'practice' ? (
                           <span className="tag">{' '}{s.unscheduledCount} unscheduled</span>
                         ) : null}
+                      </td>
+                      <td className="muted">
+                        {s.questionsOpenFrom && s.questionsOpenTo
+                          ? `${fmtDay(s.questionsOpenFrom)} – ${fmtDay(s.questionsOpenTo)}`
+                          : 'Not set'}
                       </td>
                       <td>
                         {s.seriesType === 'practice' ? (
