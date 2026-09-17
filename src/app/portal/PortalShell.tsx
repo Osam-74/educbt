@@ -23,10 +23,11 @@ export function portalAreas(role: string, teaching: boolean, classTeacher: boole
   // Test/Exam Sessions, Marking Status — same order, names and icon keys as
   // the plugin. Overview / Approve Questions / Exam Papers stay wide-only,
   // matching the existing route guards (requireRole(actor, SCHOOL_WIDE)).
-  // "Test/Exam Sessions" routes to the live-sessions board for now — the
-  // plugin folds its own live board into that same page (its `invigilate`
-  // section is "Hidden from nav — merged into Test/Exam Sessions"); the
-  // full session-log page is a later batch.
+  // "Test/Exam Sessions" is the session-history search + reattempt page —
+  // the plugin folds its own live board into that same page (its
+  // `invigilate` section is "Hidden from nav — merged into Test/Exam
+  // Sessions"). An in-progress result links straight to the live watch
+  // page (/invigilate/[paperId]).
   if (wide || role === 'teacher') areas.push({ label: 'Examinations', items: [
     ...(wide ? [item('/exams', 'Overview', 'grid')] : []),
     item('/questions', 'Question Bank', 'questions'),
