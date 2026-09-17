@@ -7,20 +7,21 @@
 .ps-brand span:not(.ps-brand-mark) { display:block; font-size:11px; color:#a5b8a8; letter-spacing:.08em; text-transform:uppercase; }
 .ps-school { padding:0 24px 20px; border-bottom:1px solid #284535; }
 .ps-school strong,.ps-school span { display:block; }
-.ps-school strong { color:white; font-size:13px; margin-bottom:5px; }
-.ps-school span { color:#a8c19f; font-size:12px; line-height:1.5; overflow-wrap:anywhere; }
+.ps-school strong { color:white; font-size:15.5px; font-weight:700; margin-bottom:5px; }
+.ps-school span { color:#a8c19f; font-size:12.5px; line-height:1.5; overflow-wrap:anywhere; }
 .ps-scroll { flex:1; overflow-y:auto; padding:8px 14px 20px; }
-.ps-label { text-transform:uppercase; font-size:10px; letter-spacing:.12em; font-weight:750; color:#98b18c; margin:18px 12px 8px; }
-.ps-scroll a,.ps-areas button { position:relative; display:flex; align-items:center; gap:12px; width:100%; min-height:44px; padding:11px 13px; text-decoration:none; color:#d5e8c2; border:0; border-radius:9px; background:none; font:inherit; font-size:13px; text-align:left; cursor:pointer; margin:3px 0; }
+.ps-label { text-transform:uppercase; font-size:10.5px; letter-spacing:.1em; font-weight:700; color:#98b18c; margin:18px 12px 8px; }
+.ps-scroll a,.ps-areas button { position:relative; display:flex; align-items:center; gap:12px; width:100%; min-height:44px; padding:11px 13px; text-decoration:none; color:#d5e8c2; border:0; border-radius:9px; background:none; font:inherit; font-size:14.5px; font-weight:500; text-align:left; cursor:pointer; margin:3px 0; }
+.ps-areas button { font-weight:600; }
 .ps-scroll svg { flex-shrink:0; color:#adc68f; width:18px; height:18px; }
 .ps-scroll a:hover,.ps-areas button:hover { background:#193d2b; }
 .ps-scroll a[aria-current=page],.ps-areas button[aria-pressed=true] { background:#1c5335; color:#f4ffe8; font-weight:650; }
 .ps-scroll a[aria-current=page]::after,.ps-areas button[aria-pressed=true]::after { content:''; position:absolute; right:0; top:10px; bottom:10px; width:3px; border-radius:3px; background:#6bdb80; }
 .ps-profile { padding:17px 22px; border-top:1px solid #284535; }
 .ps-profile a { display:flex; gap:10px; align-items:center; color:var(--ps-lime); text-decoration:none; font-size:12px; }
-.ps-profile strong { display:block; overflow-wrap:anywhere; }.ps-profile small { display:block; margin-top:4px; font-size:11px; color:#a7be9b; }
+.ps-profile strong { display:block; overflow-wrap:anywhere; font-size:13.5px; font-weight:600; }.ps-profile small { display:block; margin-top:4px; font-size:11px; color:#a7be9b; }
 .ps-avatar { width:36px; height:36px; display:grid; place-items:center; border-radius:50%; background:#24593a; color:#efffe6; flex-shrink:0; }
-.ps-profile button[type=submit] { background:none; width:auto; padding:14px 0 0; color:#abc59b; font-size:12px; font-weight:400; }
+.ps-profile button[type=submit] { background:none; width:auto; padding:14px 0 0; color:#abc59b; font-size:13px; font-weight:400; }
 .ps-workspace { margin-left:264px; min-width:0; }
 .ps-topbar { display:flex; align-items:center; gap:16px; min-height:72px; padding:16px 36px; color:var(--ps-lime); background:var(--ps-forest); }
 .ps-topbar strong { font-size:14px; }.ps-context { margin-left:auto; display:flex; gap:8px; justify-content:flex-end; align-items:center; flex-wrap:wrap; }
