@@ -464,6 +464,46 @@ async function main() {
   }
   });
 
+  // ── Build and send: generate/regenerate + notify class teachers ──────────
+  await check('generateSchedule composes and reschedules a series', async () => {
+    const startsOn = new Date(Date.now() + 24 * 3600 * 1000).toISOString().slice(0, 10);
+    const endsOn = new Date(Date.now() + 5 * 24 * 3600 * 1000).toISOString().slice(0, 10);
+
+    const result = await timetable.generateSchedule(office, Number(F.series.id), startsOn, endsOn);
+    assert.ok(result.ok, 'generate succeeds for the exam office');
+    if (result.ok) {
+      assert.ok(result.scheduled >= 2, 'both existing papers are laid out across the window');
+    }
+
+    const denied = await timetable.generateSchedule(teacherA, Number(F.series.id), startsOn, endsOn);
+    assert.ok(!denied.ok, 'a teacher cannot generate a schedule');
+
+    const view = await timetable.timetableForSeries(office, Number(F.series.id));
+    assert.ok(view!.papers.every((p) => p.scheduledAt && p.scheduledAt >= new Date(startsOn)),
+      'every paper now sits inside the requested sitting window');
+  });
+
+  await check('notifyClassTeachers notifies each class teacher once', async () => {
+    // Give SS3 A a class teacher so there is somebody to notify.
+    await db.insert(schema.staffAssignments).values({
+      schoolId: F.schoolId, staffId: F.staffD!.id, classId: F.klass!.id,
+      assignmentType: 'class_teacher', status: 'active',
+    });
+
+    const result = await timetable.notifyClassTeachers(office, Number(F.series.id));
+    assert.ok(result.ok && result.notified === 1, 'exactly one class teacher (SS3 A) is notified once');
+
+    const teacherDRow = await db.select({ userId: schema.staff.userId }).from(schema.staff)
+      .where(eq(schema.staff.id, F.staffD!.id)).limit(1);
+    const inbox = await db.select().from(schema.notifications)
+      .where(eq(schema.notifications.userId, teacherDRow[0]!.userId!));
+    assert.ok(inbox.some((n) => n.type === 'exam_scheduled' && n.title.includes(F.series.title)),
+      'the class teacher receives an exam_scheduled notification naming the examination');
+
+    const denied = await timetable.notifyClassTeachers(teacherA, Number(F.series.id));
+    assert.ok(!denied.ok, 'a teacher cannot trigger the notification fan-out');
+  });
+
   console.log(`\n${count} passed`);
   for (const id of schoolIds) {
     await db.delete(schema.schools).where(eq(schema.schools.id, id));

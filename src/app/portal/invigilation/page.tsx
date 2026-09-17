@@ -30,6 +30,8 @@ import {
 } from '@/lib/exam/timetable';
 import { fmtDay, fmtTime } from '../exams/labels';
 import { PortalIcon } from '../PortalShell';
+import { PrintTrigger } from './PrintTrigger';
+import '../../print.css';
 
 export const dynamic = 'force-dynamic';
 
@@ -136,7 +138,7 @@ export default async function InvigilationPage({
         </section>
       ) : (
         <>
-          <section className="sd-panel sd-panel--wide" style={{ marginBottom: 22 }}>
+          <section className="sd-panel sd-panel--wide no-print" style={{ marginBottom: 22 }}>
             <header><h2><PortalIcon name="invigilation" />Choose examination</h2></header>
             <form method="get" className="eo-filters">
               <label htmlFor="series">
@@ -148,6 +150,7 @@ export default async function InvigilationPage({
                 </select>
               </label>
               <button type="submit" className="sd-action sd-action--ghost">Show</button>
+              {papers.length > 0 ? <PrintTrigger /> : null}
             </form>
           </section>
 
@@ -185,7 +188,7 @@ export default async function InvigilationPage({
                     </div>
                   </section>
                 ) : (
-                  <section className="sd-panel sd-panel--wide" style={{ marginBottom: 22 }}>
+                  <section className="sd-panel sd-panel--wide no-print" style={{ marginBottom: 22 }}>
                     <div className="eo-status-bar">
                       <span><strong>{assigned}</strong> of {papers.length} papers covered.</span>
                       <form action={build} style={{ marginLeft: 'auto' }}>

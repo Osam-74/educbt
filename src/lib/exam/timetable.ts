@@ -23,6 +23,8 @@ import { and, asc, eq, ne, isNotNull, gt, lt, inArray } from 'drizzle-orm';
 import { forSchool, schema, Tx } from '@/db';
 import type { Actor } from '@/lib/session';
 import { SCHOOL_WIDE } from '@/lib/session';
+import { composeSeries, scheduleSeries } from './compose';
+import { notifyMany } from '@/lib/comms/notifications';
 
 export type TimetablePaper = {
   id: number;
@@ -736,4 +738,104 @@ export async function upcomingForStudent(
     durationMinutes: Math.round(r.durationSeconds / 60),
     venue: r.venue,
   }));
+}
+
+// ── Build and send (legacy timetable.php "Build and send" panel) ───────────
+
+export type GenerateScheduleResult =
+  | { ok: true; composed: number; short: string[]; scheduled: number; unplaced: string[] }
+  | { ok: false; error: string };
+
+/**
+ * "Generate schedule" / "Regenerate schedule". The plugin frames this as one
+ * button, but it is really two existing steps run back to back: compose any
+ * newly-approved question sets into papers (composeSeries — idempotent, never
+ * touches a paper that already exists), then lay every paper in the series
+ * out across the sitting window (scheduleSeries — this is the "regenerate"
+ * part: it overwrites every paper's date/time, exactly like the legacy
+ * generator warns before a rebuild).
+ */
+export async function generateSchedule(
+  actor: Actor,
+  seriesId: number,
+  startsOn: string,
+  endsOn: string | null,
+): Promise<GenerateScheduleResult> {
+  if (!canManageTimetable(actor)) {
+    return { ok: false, error: 'You do not have permission to schedule examinations.' };
+  }
+
+  try {
+    const compose = await composeSeries(actor, seriesId);
+    const schedule = await scheduleSeries(actor, seriesId, startsOn, endsOn);
+    return {
+      ok: true,
+      composed: compose.created,
+      short: compose.short,
+      scheduled: schedule.scheduled,
+      unplaced: schedule.unplaced,
+    };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : 'Could not generate the schedule.' };
+  }
+}
+
+/**
+ * "Notify class teachers" — one in-app notification per class teacher whose
+ * class has at least one paper in this series (legacy
+ * educbt_notify_class_teachers admin-post action). A class with no assigned
+ * teacher, or a teacher with no login, is silently skipped rather than
+ * failing the whole batch.
+ */
+export async function notifyClassTeachers(
+  actor: Actor,
+  seriesId: number,
+): Promise<{ ok: true; notified: number } | { ok: false; error: string }> {
+  if (!canManageTimetable(actor)) return { ok: false, error: 'not_found' };
+
+  return forSchool(actor.schoolId, async (tx) => {
+    const [series] = await tx.select({ id: schema.examSeries.id, title: schema.examSeries.title })
+      .from(schema.examSeries)
+      .where(and(
+        eq(schema.examSeries.id, seriesId),
+        eq(schema.examSeries.schoolId, actor.schoolId),
+      ))
+      .limit(1);
+
+    if (!series) return { ok: false, error: 'not_found' } as const;
+
+    const rows = await tx.select({
+      teacherUserId: schema.staff.userId,
+    })
+      .from(schema.examPapers)
+      .innerJoin(schema.staffAssignments, and(
+        eq(schema.staffAssignments.classId, schema.examPapers.classId),
+        eq(schema.staffAssignments.assignmentType, 'class_teacher'),
+        eq(schema.staffAssignments.status, 'active'),
+      ))
+      .innerJoin(schema.staff, eq(schema.staff.id, schema.staffAssignments.staffId))
+      .where(and(
+        eq(schema.examPapers.schoolId, actor.schoolId),
+        eq(schema.examPapers.seriesId, seriesId),
+        ne(schema.examPapers.status, 'cancelled'),
+        isNotNull(schema.staff.userId),
+      ));
+
+    const seen = new Set<number>();
+    const inputs: { userId: number; type: 'exam_scheduled'; title: string; body: string }[] = [];
+    for (const r of rows) {
+      const uid = Number(r.teacherUserId);
+      if (!uid || seen.has(uid)) continue;
+      seen.add(uid);
+      inputs.push({
+        userId: uid,
+        type: 'exam_scheduled',
+        title: `Timetable ready: ${series.title}`,
+        body: `The timetable for ${series.title} has been generated. Open it to see your class's papers.`,
+      });
+    }
+
+    const notified = await notifyMany(tx, actor.schoolId, inputs);
+    return { ok: true, notified } as const;
+  });
 }

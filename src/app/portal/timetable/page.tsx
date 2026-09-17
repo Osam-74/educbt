@@ -28,10 +28,14 @@ import {
   releaseAccessCode,
   canManageTimetable,
   upcomingForStudent,
+  generateSchedule,
+  notifyClassTeachers,
 } from '@/lib/exam/timetable';
 import { guardianChildren } from '@/lib/results/family';
 import { fmtDay, fmtTime } from '../exams/labels';
 import { PortalIcon } from '../PortalShell';
+import { PrintTrigger } from './PrintTrigger';
+import '../../print.css';
 
 export const dynamic = 'force-dynamic';
 
@@ -117,6 +121,17 @@ export default async function TimetablePage({
       .where(and(eq(schema.staff.schoolId, actor.schoolId), eq(schema.staff.status, 'active'))))
     : [];
 
+  // Letterhead for the printed document — every school's timetable carries
+  // its own crest and name, matching every other printed sheet in the app.
+  const [branding] = await forSchool(actor.schoolId, async (tx) =>
+    tx.select({
+      name: schema.schools.name,
+      address: schema.schools.address,
+      logoUrl: schema.schools.logoUrl,
+    })
+      .from(schema.schools)
+      .where(eq(schema.schools.id, actor.schoolId)));
+
   // ── Server actions (office only) ─────────────────────────────────────────
   async function reschedule(formData: FormData) {
     'use server';
@@ -183,114 +198,208 @@ export default async function TimetablePage({
       : `${back}&error=${encodeURIComponent('Could not generate a code.')}`);
   }
 
+  async function generate(formData: FormData) {
+    'use server';
+    const inner = await requireSchoolSession();
+    const back = `/portal/timetable?series=${seriesId}`;
+    const startsOn = String(formData.get('startsOn') ?? '');
+    const endsOn = String(formData.get('endsOn') ?? '') || null;
+
+    if (!startsOn) {
+      redirect(`${back}&error=${encodeURIComponent('Set the first day of sitting.')}`);
+    }
+
+    const result = await generateSchedule(inner, seriesId, startsOn, endsOn);
+    if (!result.ok) {
+      redirect(`${back}&error=${encodeURIComponent(result.error)}`);
+    }
+
+    const parts: string[] = [];
+    if (result.composed > 0) parts.push(`composed ${result.composed} new paper(s)`);
+    if (result.short.length > 0) parts.push(`${result.short.length} subject(s) short of questions and skipped (${result.short.join('; ')})`);
+    parts.push(`scheduled ${result.scheduled} paper(s) across the sitting window`);
+    if (result.unplaced.length > 0) parts.push(`could not place: ${result.unplaced.join('; ')}`);
+
+    redirect(`${back}&ok=${encodeURIComponent(parts.join('. ') + '.')}`);
+  }
+
+  async function notifyTeachers() {
+    'use server';
+    const inner = await requireSchoolSession();
+    const back = `/portal/timetable?series=${seriesId}`;
+    const result = await notifyClassTeachers(inner, seriesId);
+    redirect(result.ok
+      ? `${back}&ok=${encodeURIComponent(result.notified > 0
+          ? `Notified ${result.notified} class teacher(s).`
+          : 'No class teacher is assigned yet for any class in this examination.')}`
+      : `${back}&error=${encodeURIComponent('Could not send notifications.')}`);
+  }
+
   const papers = data?.papers ?? [];
 
   return (
     <div className="school-dashboard">
-      <div className="sd-heading">
-        <div>
-          <p className="sd-eyebrow">Examination office</p>
-          <h1>Timetable</h1>
-          <p>
-            Papers grouped by date for one examination. Move a slot, assign an
-            invigilator, or manage its access code — all from the same row.
-          </p>
+      <div className="no-print">
+        <div className="sd-heading">
+          <div>
+            <p className="sd-eyebrow">Examination office</p>
+            <h1>Timetable</h1>
+            <p>
+              Papers grouped by date for one examination. Move a slot, assign an
+              invigilator, or manage its access code — all from the same row.
+            </p>
+          </div>
         </div>
+
+        {query.error ? <p className="error">{query.error}</p> : null}
+        {query.ok ? <p className="ok">{query.ok}</p> : null}
+
+        {seriesList.length === 0 ? (
+          <section className="sd-panel sd-panel--wide">
+            <div style={{ padding: 20 }}><p className="muted">No examination has been created yet.</p></div>
+          </section>
+        ) : (
+          <>
+            <section className="sd-panel sd-panel--wide" style={{ marginBottom: 22 }}>
+              <header><h2><PortalIcon name="timetable" />Choose examination</h2></header>
+              <form method="get" className="eo-filters">
+                <label htmlFor="series">
+                  <span>Examination or assessment</span>
+                  <select id="series" name="series" defaultValue={String(seriesId)}>
+                    {seriesList.map((s) => (
+                      <option key={s.id} value={s.id}>{s.title}</option>
+                    ))}
+                  </select>
+                </label>
+                <button type="submit" className="sd-action sd-action--ghost">Show</button>
+              </form>
+            </section>
+
+            {manage && seriesId ? (
+              <section className="sd-panel sd-panel--wide" style={{ marginBottom: 22 }}>
+                <header><h2><PortalIcon name="timetable" />Build and send</h2></header>
+                <div style={{ padding: '0 22px 20px', display: 'flex', gap: 24, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+                  <form action={generate} className="eo-filters" style={{ margin: 0 }}>
+                    <input type="hidden" name="series" value={seriesId} />
+                    <label htmlFor="startsOn">
+                      <span>First day of sitting</span>
+                      <input id="startsOn" name="startsOn" type="date" required />
+                    </label>
+                    <label htmlFor="endsOn">
+                      <span>Last day of sitting</span>
+                      <input id="endsOn" name="endsOn" type="date" />
+                    </label>
+                    <button type="submit" className="sd-action">
+                      {papers.length > 0 ? 'Regenerate schedule' : 'Generate schedule'}
+                    </button>
+                  </form>
+
+                  {papers.length > 0 ? (
+                    <form action={notifyTeachers} style={{ margin: 0 }}>
+                      <button type="submit" className="sd-action sd-action--ghost">Notify class teachers</button>
+                    </form>
+                  ) : null}
+
+                  {papers.length > 0 ? <PrintTrigger /> : null}
+                </div>
+                <p className="muted" style={{ padding: '0 22px 18px', margin: 0 }}>
+                  Papers are created from the question sets already approved for this
+                  examination&apos;s session and term. Re-running adds anything newly approved
+                  and lays every paper out across the sitting window again — any slot you
+                  have moved by hand is reset, so adjust the timetable after regenerating,
+                  not before.
+                </p>
+              </section>
+            ) : null}
+
+            {!data || (!data.series.released && !manage) ? (
+              <section className="sd-panel sd-panel--wide">
+                <div style={{ padding: 20 }}>
+                  <p className="muted">The examination timetable has not been released yet. You will be notified when it is.</p>
+                </div>
+              </section>
+            ) : papers.length === 0 ? (
+              <section className="sd-panel sd-panel--wide">
+                <div style={{ padding: 20 }}>
+                  <p className="muted">
+                    {manage
+                      ? 'No papers scheduled for this examination yet — generate the schedule above.'
+                      : 'No papers scheduled yet.'}
+                  </p>
+                </div>
+              </section>
+            ) : null}
+          </>
+        )}
       </div>
 
-      {query.error ? <p className="error">{query.error}</p> : null}
-      {query.ok ? <p className="ok">{query.ok}</p> : null}
+      {data && papers.length > 0 && (data.series.released || manage) ? (
+        <div className="doc">
+          <div className="doc__sheet">
+            <div className="doc__head">
+              {branding?.logoUrl ? <img className="doc__crest" src={branding.logoUrl} alt="" /> : null}
+              <p className="doc__school">{branding?.name ?? ''}</p>
+              <p className="doc__title">Examination Timetable</p>
+              <p className="muted doc__meta-line">
+                {data.series.title}
+                {branding?.address ? ` · ${branding.address}` : ''}
+              </p>
+            </div>
 
-      {seriesList.length === 0 ? (
-        <section className="sd-panel sd-panel--wide">
-          <div style={{ padding: 20 }}><p className="muted">No examination has been created yet.</p></div>
-        </section>
-      ) : (
-        <>
-          <section className="sd-panel sd-panel--wide" style={{ marginBottom: 22 }}>
-            <header><h2><PortalIcon name="timetable" />Choose examination</h2></header>
-            <form method="get" className="eo-filters">
-              <label htmlFor="series">
-                <span>Examination or assessment</span>
-                <select id="series" name="series" defaultValue={String(seriesId)}>
-                  {seriesList.map((s) => (
-                    <option key={s.id} value={s.id}>{s.title}</option>
+            <div className="no-print" style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '0 0 12px' }}>
+              {data.series.released
+                ? <span className="pill pill--published">Released</span>
+                : <span className="pill pill--draft">Draft — not released</span>}
+            </div>
+
+            <div className="sd-table-wrap">
+              <table className="tbl">
+                <thead>
+                  <tr>
+                    <th>Date</th><th>Day</th><th>Time</th><th>Subject</th><th>Class</th>
+                    <th>Duration</th><th>Access Code</th><th>Invigilator</th>
+                    {manage ? <th className="no-print" /> : null}
+                  </tr>
+                </thead>
+                <tbody>
+                  {papers.map((p) => (
+                    manage ? (
+                      <PaperRow key={p.id} p={p} staffPool={staffPool}
+                                reschedule={reschedule} invigilator={invigilator} code={code} />
+                    ) : (
+                      <tr key={p.id}>
+                        <td>{fmtDay(p.scheduledAt)}</td>
+                        <td>{p.scheduledAt
+                          ? new Intl.DateTimeFormat('en-GB', { timeZone: 'Africa/Lagos', weekday: 'long' }).format(p.scheduledAt)
+                          : '—'}</td>
+                        <td>{fmtTime(p.scheduledAt)}{p.closesAt ? ` – ${fmtTime(p.closesAt)}` : ''}</td>
+                        <td><strong>{p.subjectName}</strong></td>
+                        <td>{p.className ?? p.levelName ?? '—'}</td>
+                        <td>{p.durationMinutes} min</td>
+                        <td>—</td>
+                        <td>{p.venue ? `${p.invigilatorName ?? '—'} · ${p.venue}` : (p.invigilatorName ?? '—')}</td>
+                      </tr>
+                    )
                   ))}
-                </select>
-              </label>
-              <button type="submit" className="sd-action sd-action--ghost">Show</button>
-            </form>
-          </section>
+                </tbody>
+              </table>
+            </div>
 
-          {!data || (!data.series.released && !manage) ? (
-            <section className="sd-panel sd-panel--wide">
-              <div style={{ padding: 20 }}>
-                <p className="muted">The examination timetable has not been released yet. You will be notified when it is.</p>
-              </div>
-            </section>
-          ) : papers.length === 0 ? (
-            <section className="sd-panel sd-panel--wide">
-              <div style={{ padding: 20 }}>
-                <p className="muted">
-                  {manage
-                    ? 'No papers scheduled for this examination yet — schedule them from the exam office first.'
-                    : 'No papers scheduled yet.'}
-                </p>
-              </div>
-            </section>
-          ) : (
-            <section className="sd-panel sd-panel--wide">
-              <header>
-                <h2><PortalIcon name="timetable" />{data.series.title}</h2>
-                {data.series.released
-                  ? <span className="pill pill--published">Released</span>
-                  : <span className="pill pill--draft">Draft — not released</span>}
-              </header>
+            <div className="doc__footer">
+              <span>Signed: ______________________________</span>
+              <span>Printed {new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Africa/Lagos' }).format(new Date())}</span>
+            </div>
 
-              <div className="sd-table-wrap">
-                <table className="tbl">
-                  <thead>
-                    <tr>
-                      <th>Date</th><th>Day</th><th>Time</th><th>Subject</th><th>Class</th>
-                      <th>Duration</th><th>Access Code</th><th>Invigilator</th>
-                      {manage ? <th /> : null}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {papers.map((p) => (
-                      manage ? (
-                        <PaperRow key={p.id} p={p} staffPool={staffPool}
-                                  reschedule={reschedule} invigilator={invigilator} code={code} />
-                      ) : (
-                        <tr key={p.id}>
-                          <td>{fmtDay(p.scheduledAt)}</td>
-                          <td>{p.scheduledAt
-                            ? new Intl.DateTimeFormat('en-GB', { timeZone: 'Africa/Lagos', weekday: 'long' }).format(p.scheduledAt)
-                            : '—'}</td>
-                          <td>{fmtTime(p.scheduledAt)}{p.closesAt ? ` – ${fmtTime(p.closesAt)}` : ''}</td>
-                          <td><strong>{p.subjectName}</strong></td>
-                          <td>{p.className ?? p.levelName ?? '—'}</td>
-                          <td>{p.durationMinutes} min</td>
-                          <td>—</td>
-                          <td>{p.venue ? `${p.invigilatorName ?? '—'} · ${p.venue}` : (p.invigilatorName ?? '—')}</td>
-                        </tr>
-                      )
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-
-              {manage && !data.series.released ? (
-                <p className="sd-footnote">
-                  This timetable is a working draft. Publish the examination from the{' '}
-                  <Link href={`/portal/exams/${seriesId}`}>exam office</Link> to release it to
-                  teachers and set the sitting window the system enforces.
-                </p>
-              ) : null}
-            </section>
-          )}
-        </>
-      )}
+            {manage && !data.series.released ? (
+              <p className="sd-footnote no-print">
+                This timetable is a working draft. Publish the examination from the{' '}
+                <Link href={`/portal/exams/${seriesId}`}>exam office</Link> to release it to
+                teachers and set the sitting window the system enforces.
+              </p>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -350,9 +459,9 @@ function PaperRow({
           )}
         </td>
         <td>{p.invigilatorName ?? '—'}</td>
-        <td style={{ whiteSpace: 'nowrap' }} />
+        <td className="no-print" style={{ whiteSpace: 'nowrap' }} />
       </tr>
-      <tr>
+      <tr className="no-print">
         <td colSpan={9} style={{ padding: 0, border: 0 }}>
           <details className="eo-toggle">
             <summary><PortalIcon name="edit" />Reschedule</summary>

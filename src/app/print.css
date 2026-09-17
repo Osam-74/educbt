@@ -202,6 +202,17 @@
   letter-spacing: 2px;
 }
 
+/* A plain signed/printed-on line — the Timetable and Invigilation Schedule's
+   own footer, simpler than the report card's dual signature-box (no drawn
+   signature belongs on a working schedule, just a blank to sign by hand). */
+.doc__footer {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 8mm;
+  font-size: 9.5pt;
+  color: #555;
+}
+
 /* ── Student identity block ───────────────────────────────────────────────────
    Legacy "bio" rows: dotted underlines, labels sized to content (a percentage
    label column wrapped "Admission No.:" onto a second line while the value
