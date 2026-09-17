@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation';
 import { asc, eq } from 'drizzle-orm';
 import { requireSchoolSession, requireRole, SCHOOL_WIDE } from '@/lib/session';
 import { listSeries, createSeries, publishSeries, deleteSeries } from '@/lib/exam/compose';
+import { collectionView, saveCollection } from '@/lib/exam/collection';
 import { forSchool, schema } from '@/db';
 import { PortalIcon } from '../../PortalShell';
 import { TYPE_LABEL, STATUS_LABEL, fmtDay } from '../labels';
@@ -24,9 +25,14 @@ export const dynamic = 'force-dynamic';
  * Done so far: a "Practice exams" notice panel above the create form
  * (practice papers are never scheduled or published, so they get their own
  * small always-available panel instead of living inside the table logic),
- * and the examinations table now matches the plugin's column set in full —
+ * the examinations table matches the plugin's column set in full —
  * Session/Term, Q-Bank open/close window, Sitting window, Status, and row
- * actions (Build timetable / Publish / Delete).
+ * actions (Build timetable / Publish / Delete) — and the question bank
+ * controller (which collection teachers may submit questions into) is
+ * surfaced here, reusing the exact same saveCollection()/configureCollection
+ * machinery the Question Bank page already runs on, not a parallel copy.
+ * Still to build: the CA-tests live-status table and submitted-papers
+ * review queue.
  */
 export default async function ExamPapersPage({
   searchParams,
@@ -39,6 +45,7 @@ export default async function ExamPapersPage({
 
   const query = await searchParams;
   const series = await listSeries(actor);
+  const bank = await collectionView(actor);
 
   const { sessions, terms } = await forSchool(actor.schoolId, async (tx) => ({
     sessions: await tx
@@ -105,6 +112,32 @@ export default async function ExamPapersPage({
     }
   }
 
+  async function openBankFor(formData: FormData) {
+    'use server';
+
+    const inner = await requireSchoolSession();
+    requireRole(inner, SCHOOL_WIDE);
+
+    let destination: string;
+
+    try {
+      const current = await collectionView(inner);
+      await saveCollection(inner, {
+        seriesId: formData.get('seriesId') || null,
+        objective: current.config.objective,
+        theory: current.config.theory,
+      });
+      destination = '/portal/exams/papers?ok=' + encodeURIComponent('Question bank updated.');
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Could not update the question bank.';
+      destination = '/portal/exams/papers?error=' + encodeURIComponent(message);
+    }
+
+    // Outside the try/catch: redirect() throws, and catching it would turn the
+    // success path into the error page (see create() above — the same footgun).
+    redirect(destination);
+  }
+
   async function remove(formData: FormData) {
     'use server';
 
@@ -126,6 +159,8 @@ export default async function ExamPapersPage({
   const practiceSeries = series.filter((s) => s.seriesType === 'practice' && s.paperCount > 0);
   const sessionTitleById = new Map(sessions.map((s) => [s.id, s.title]));
   const termTitleById = new Map(terms.map((t) => [t.id, t.title]));
+  const bankOpenFor = bank.series.find((s) => s.id === bank.config.seriesId);
+  const bankCandidates = bank.series.filter((s) => s.seriesType !== 'practice' && ['draft', 'open'].includes(s.status));
 
   return (
     <div className="school-dashboard">
@@ -167,6 +202,36 @@ export default async function ExamPapersPage({
               ))}
             </ul>
           )}
+        </div>
+      </section>
+
+      <section className="sd-panel sd-panel--wide" style={{ marginBottom: 22 }}>
+        <header><h2><PortalIcon name="questions" />Question bank controller</h2></header>
+        <div style={{ padding: '0 22px 20px' }}>
+          <p className="muted" style={{ margin: '10px 0 0' }}>
+            The school-wide question bank must not be open for setting at all
+            times. Choose which CA test or examination teachers may currently
+            submit questions into — closing it never touches questions already
+            submitted, it only stops new ones. Practice always stays open in
+            its own collection and never needs this control.
+          </p>
+          <p style={{ margin: '10px 0 0' }}>
+            Currently open: {bankOpenFor
+              ? <strong>{bankOpenFor.title}</strong>
+              : <span className="muted">Nothing — the bank is closed</span>}
+          </p>
+          <form action={openBankFor} className="eo-mini-form" style={{ marginTop: 10 }}>
+            <label style={{ flex: 1, minWidth: 220 }}>
+              Open for
+              <select name="seriesId" defaultValue={bank.config.seriesId ?? ''}>
+                <option value="">Close the bank</option>
+                {bankCandidates.map((s) => (
+                  <option key={s.id} value={s.id}>{s.title}</option>
+                ))}
+              </select>
+            </label>
+            <button type="submit" className="sd-action sd-action--ghost">Apply</button>
+          </form>
         </div>
       </section>
 
