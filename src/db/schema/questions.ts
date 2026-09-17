@@ -76,8 +76,11 @@ export const examSeries = pgTable('exam_series', {
   title: varchar('title', { length: 191 }).notNull(),
   seriesType: seriesType('series_type').default('examination').notNull(),
 
-  // Which assessment column a CA test's marks land in.
-  componentId: bigint('component_id', { mode: 'number' }),
+  // Which CA slot (schools.settings.assessmentComponents[].key, e.g. 'ca1')
+  // a CA test's marks count towards — set at "Open assessment window", read
+  // by the Exam Papers office UI to label the row; unrelated to the actual
+  // score entry path (lib/exam/results.ts enterScore), which is manual.
+  caComponentKey: varchar('ca_component_key', { length: 64 }),
 
   /**
    * The window in which TEACHERS SUBMIT QUESTIONS — not the sitting dates.

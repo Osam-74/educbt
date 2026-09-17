@@ -149,6 +149,14 @@
       "tag": "0020_class_capacity",
       "hash": "4043bb68647921fcdee3153499850f1a3cdea5e3ff475bc3b5fa95442d015cb4",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1789737600000,
+      "tag": "0021_ca_component_key",
+      "hash": "4cf98fee5d44776a650f475f6a54074c2f2d428923247d36d2f60b444e8c7c2c",
+      "breakpoints": true
     }
   ]
 }

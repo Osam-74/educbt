@@ -23,6 +23,7 @@ import { and, eq, sql, asc } from 'drizzle-orm';
 import { z } from 'zod';
 import { forSchool, schema, type Tx } from '@/db';
 import type { Actor } from '@/lib/session';
+import { caComponents } from '@/lib/ca/validation';
 
 export type ComposeResult = {
   created: number;
@@ -51,6 +52,10 @@ export const createSeriesInput = z.object({
   // The window in which TEACHERS submit questions. Not the sitting dates.
   questionsOpenFrom: z.string().regex(ISO_DATE).optional().nullable(),
   questionsOpenTo: z.string().regex(ISO_DATE).optional().nullable(),
+  // Which CA slot (schools.settings.assessmentComponents[].key) this test
+  // counts towards — meaningful only for seriesType 'ca_test'. Validated
+  // against the school's own configured slots below, not trusted as-is.
+  caComponentKey: z.string().trim().min(1).max(64).optional().nullable(),
 }).refine(
   (v) => !v.questionsOpenFrom || !v.questionsOpenTo
     || new Date(v.questionsOpenFrom) < new Date(v.questionsOpenTo),
@@ -92,12 +97,30 @@ export async function createSeries(actor: Actor, input: unknown) {
 
     if (!term) throw new Error('That term does not exist in this school.');
 
+    // A CA slot only makes sense on a CA test, and only one of the school's
+    // own configured slots — never a value invented by the client.
+    let caComponentKey: string | null = null;
+    if (data.caComponentKey) {
+      if (data.seriesType !== 'ca_test') {
+        throw new Error('A CA slot only applies to a CA test.');
+      }
+      const [school] = await tx.select({ settings: schema.schools.settings })
+        .from(schema.schools)
+        .where(eq(schema.schools.id, actor.schoolId)).limit(1);
+      const slots = caComponents((school?.settings ?? {}) as Record<string, unknown>);
+      if (!slots.some((c) => c.key === data.caComponentKey)) {
+        throw new Error('That CA slot is not configured in School Settings.');
+      }
+      caComponentKey = data.caComponentKey;
+    }
+
     const [series] = await tx.insert(schema.examSeries).values({
       schoolId: actor.schoolId,
       sessionId: data.sessionId,
       termId: data.termId,
       title: data.title,
       seriesType: data.seriesType,
+      caComponentKey,
       questionsPerStudent: data.questionsPerStudent,
       durationMinutes: data.durationMinutes,
       questionsOpenFrom: asDate(data.questionsOpenFrom ?? null),
@@ -116,6 +139,7 @@ export async function createSeries(actor: Actor, input: unknown) {
       after: {
         title: data.title,
         seriesType: data.seriesType,
+        caComponentKey,
         questionsPerStudent: data.questionsPerStudent,
         durationMinutes: data.durationMinutes,
       },
@@ -646,6 +670,7 @@ export async function listSeries(actor: Actor) {
       id: schema.examSeries.id,
       title: schema.examSeries.title,
       seriesType: schema.examSeries.seriesType,
+      caComponentKey: schema.examSeries.caComponentKey,
       status: schema.examSeries.status,
       createdAt: schema.examSeries.createdAt,
       sessionId: schema.examSeries.sessionId,
