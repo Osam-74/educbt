@@ -1,99 +1,136 @@
 import Link from 'next/link';
+import { eq, and } from 'drizzle-orm';
 import { notFound } from 'next/navigation';
 import { requireSchoolSession } from '@/lib/session';
-import { listSets } from '@/lib/exam/sets';
 import { isSchoolWide } from '@/lib/queries';
+import { forSchool, schema } from '@/db';
 import { collectionView } from '@/lib/exam/collection';
-import { collectionIsOpen } from '@/lib/exam/authoring-validation';
-import { configureCollection, startSet } from './actions';
+import { setWithQuestions } from '@/lib/exam/sets';
+import { caComponents } from '@/lib/ca/validation';
+import { openSet } from './actions';
+import BankFields from './BankFields';
+import ManualEntry from './ManualEntry';
+import BulkImport from './BulkImport';
+import WrittenIntent from './WrittenIntent';
 import './questions.css';
 
 export const dynamic = 'force-dynamic';
 
-const STATUS_LABEL: Record<string, string> = {
-  draft: 'In progress',
-  submitted: 'Submitted',
-  under_review: 'Under review',
-  returned: 'Sent back',
-  approved: 'Approved',
-  published: 'Published',
+type Query = {
+  subjectId?: string; levelId?: string; departmentId?: string;
+  examType?: string; delivery?: string; marks?: string; method?: string; waecMode?: string;
+  setId?: string; error?: string; ok?: string;
 };
 
-export default async function QuestionSetsPage({ searchParams }: { searchParams: Promise<{ error?: string; ok?: string }> }) {
+export default async function QuestionBankPage({ searchParams }: { searchParams: Promise<Query> }) {
   const actor = await requireSchoolSession();
   if (!isSchoolWide(actor.role) && actor.role !== 'teacher') notFound();
-  const sets = await listSets(actor);
+
+  const q = await searchParams;
   const data = await collectionView(actor);
-  const query = await searchParams;
-  const current = data.series.find(s => s.id === data.config.seriesId);
-  const available = data.series.filter(s => collectionIsOpen(s) && (s.seriesType === 'practice' || s.id === data.config.seriesId));
+  const current = data.series.find((s) => s.id === data.config.seriesId);
+
+  const subjectId = Number(q.subjectId) || 0;
+  const levelId = Number(q.levelId) || 0;
+  const departmentId = q.departmentId ? Number(q.departmentId) : null;
+  const examType = q.examType === 'theory' ? 'theory' : 'objective';
+  const delivery = q.delivery === 'written' ? 'written' : 'cbt';
+  const marks = Number(q.marks) || 1;
+  const method = (['manual', 'paste', 'csv'] as const).includes(q.method as never) ? (q.method as 'manual' | 'paste' | 'csv') : 'manual';
+  const waecMode = q.waecMode === '1';
+  const setId = Number(q.setId) || 0;
+
+  const theoryAllowed = current?.seriesType === 'examination';
+  const componentLabel = current?.caComponentKey
+    ? caComponents(data.settings as Record<string, unknown>).find((c) => c.key === current.caComponentKey)?.label ?? current.caComponentKey
+    : '';
+
+  const subject = data.scopes.find((s) => s.subjectId === subjectId)?.subject ?? '';
+  const level = data.scopes.find((s) => s.levelId === levelId)?.level ?? '';
+
+  const returnParams = new URLSearchParams({
+    subjectId: subjectId ? String(subjectId) : '', levelId: levelId ? String(levelId) : '',
+    departmentId: departmentId ? String(departmentId) : '', examType, delivery, marks: String(marks), method,
+    waecMode: waecMode ? '1' : '', setId: setId ? String(setId) : '',
+  }).toString();
+
+  const loaded = setId ? await setWithQuestions(actor, setId) : null;
+  const periodTitle = current ? await forSchool(actor.schoolId, async (tx) => {
+    const [session] = await tx.select({ title: schema.academicSessions.title }).from(schema.academicSessions)
+      .where(and(eq(schema.academicSessions.id, current.sessionId), eq(schema.academicSessions.schoolId, actor.schoolId)));
+    const [term] = current.termId ? await tx.select({ title: schema.terms.title }).from(schema.terms)
+      .where(and(eq(schema.terms.id, current.termId), eq(schema.terms.schoolId, actor.schoolId))) : [];
+    return [session?.title, term?.title].filter(Boolean).join(' · ');
+  }) : '';
 
   return (
     <div className="question-bank">
-      <h1 className="page-title">Question bank</h1>
-      {query.error ? <p role="alert">{query.error}</p> : null}
-      {query.ok ? <p role="status">{query.ok}</p> : null}
-      <p>{current ? `Collection: ${current.title} — ${collectionIsOpen(current) ? 'Open' : 'Outside submission dates'}` : 'Formal question collection is closed.'} Practice remains available in its own collection.</p>
-      {isSchoolWide(actor.role) ? <details><summary>Collection window & authoring quotas</summary>
-        <form action={configureCollection} className="form-grid">
-          <label>Formal collection<select aria-label="Formal collection" name="seriesId" defaultValue={data.config.seriesId ?? ''}><option value="">Close collection</option>
-            {data.series.filter(s => s.seriesType !== 'practice' && ['draft', 'open'].includes(s.status)).map(s => <option key={s.id} value={s.id}>{s.title}</option>)}</select></label>
-          <label>Objective target<input name="objective" type="number" min="1" max="500" required defaultValue={data.config.objective} /></label>
-          <label>Theory target<input name="theory" type="number" min="1" max="100" required defaultValue={data.config.theory} /></label>
-          <p className="muted">Set submission dates in <Link href="/portal/exams/new">Exam Office</Link>. Targets apply to new sets; existing requirements are preserved.</p>
-          <button type="submit">Save collection</button>
-        </form></details> : null}
-      <section aria-label="Start a question set"><h2>Start or continue a set</h2>
-        {available.length && data.scopes.length ? <form action={startSet} className="form-grid">
-          <label>Collection<select aria-label="Collection" name="seriesId" required>{available.map(s => <option key={s.id} value={s.id}>{s.title}</option>)}</select></label>
-          <label>Subject & level<select aria-label="Subject & level" name="scope" required>{data.scopes.map(s => <option key={`${s.subjectId}:${s.levelId}:${s.departmentId}`} value={`${s.subjectId}:${s.levelId}:${s.departmentId ?? ''}`}>{s.subject} · {s.level}{s.department ? ` · ${s.department}` : ''}</option>)}</select></label>
-          <label>Question type<select aria-label="Question type" name="examType"><option value="objective">Objective</option><option value="theory">Theory (examination only)</option></select></label>
-          <button type="submit">Open question set</button>
-        </form> : <p className="muted">An open collection and an assigned subject/level are required to start a set.</p>}
+      <h1 className="page-title">Question Bank</h1>
+      {q.error ? <p role="alert" className="error">{q.error}</p> : null}
+      {q.ok ? <p role="status" className="ok">{q.ok}</p> : null}
+
+      <section className="qs-banner" aria-label="Writing for">
+        {!current ? (
+          <div className="qs-banner__closed">
+            <h2>Closed</h2>
+            <p className="muted">You&rsquo;ll be notified when it&rsquo;s open.</p>
+          </div>
+        ) : (
+          <>
+            <strong>Writing for: {current.title}</strong>
+            <span className="qs-banner__detail">
+              {current.seriesType === 'examination' ? (
+                'Terminal examination. Objective and theory are submitted together as one paper, and go to the examination officer for review.'
+              ) : current.seriesType === 'practice' ? (
+                'Practice questions. No approval, no timetable — they are available to students as soon as you save them, and the marks do not count towards results.'
+              ) : (
+                <>
+                  Objective questions only.
+                  {current.questionsPerStudent ? ` Each student answers ${current.questionsPerStudent} in ${current.durationMinutes} minutes.` : ''}
+                  {current.questionsOpenTo ? ` Closes ${new Date(current.questionsOpenTo).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}.` : ''}
+                  {componentLabel ? ` Marks count towards ${componentLabel}.` : ''}
+                  {' '}These questions stay in the bank and can be reused in the terminal paper.
+                </>
+              )}
+            </span>
+          </>
+        )}
       </section>
 
-      {sets.length === 0 ? (
-        <p className="muted">
-          No question sets yet. Use the collection form above to start one.
-        </p>
-      ) : (
-        <div className="question-table"><table className="tbl">
-          <thead>
-            <tr>
-              <th>Subject</th><th>Level</th><th>Type</th>
-              <th>Questions</th><th>Status</th><th />
-            </tr>
-          </thead>
-          <tbody>
-            {sets.map((s) => {
-              const short = s.questionCount < s.minRequired;
+      {current ? (
+        <section className="qs-scope card">
+          <div className="qs-session-row">
+            <span className="qs-label">Session / Term</span>
+            <span>{periodTitle || 'No session set'}</span>
+          </div>
+          <BankFields
+            scopes={data.scopes.filter((s): s is typeof s & { subjectId: number } => s.subjectId !== null)}
+            subjectId={subjectId} levelId={levelId} departmentId={departmentId}
+            examType={examType} delivery={delivery} marks={marks} method={method} waecMode={waecMode}
+            theoryAllowed={!!theoryAllowed} action={openSet}
+          />
 
-              return (
-                <tr key={s.id}>
-                  <td>
-                    {s.subjectName} <span className="muted mono">{s.subjectCode}</span>
-                    {/* Which bank this is. Without it a practice set and the
-                        terminal paper for one subject look identical. */}
-                    {s.seriesId > 0 ? <span className="tag">assessment</span> : null}
-                    {s.waecMode ? <span className="tag">WAEC</span> : null}
-                  </td>
-                  <td>{s.levelName}{s.departmentName ? ` ${s.departmentName}` : ''}</td>
-                  <td>{s.examType === 'objective' ? 'Objective' : 'Theory'}</td>
-                  <td className={short ? 'short' : ''}>
-                    {s.questionCount} / {s.minRequired}
-                  </td>
-                  <td><span className={`pill pill--${s.status}`}>{STATUS_LABEL[s.status] ?? s.status}</span></td>
-                  <td><Link href={`/portal/questions/${s.id}`}>Open</Link></td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table></div>
-      )}
+          {!subjectId || !levelId ? (
+            <p className="muted" style={{ marginTop: 18 }}>Choose a subject and class level to begin.</p>
+          ) : delivery === 'written' ? (
+            loaded ? (
+              <WrittenIntent subject={subject} level={level} setId={loaded.set.id} returnParams={returnParams}
+                already={loaded.set.status !== 'draft'} />
+            ) : <p className="muted">Opening…</p>
+          ) : loaded ? (
+            method === 'manual' ? (
+              <ManualEntry set={loaded.set as never} questions={loaded.questions as never} returnParams={returnParams} />
+            ) : (
+              <BulkImport mode={method} examType={examType} defaultMarks={Number(loaded.set.defaultMarks) || marks} setId={loaded.set.id} />
+            )
+          ) : <p className="muted">Opening…</p>}
+        </section>
+      ) : null}
 
       {isSchoolWide(actor.role) ? (
         <p className="muted" style={{ marginTop: 18 }}>
-          You are seeing every set in the school. A teacher sees only their own.
+          You are seeing your own scopes only above. Every teacher&rsquo;s submissions are reviewed from{' '}
+          <Link href="/portal/exams/approvals">Approve Questions</Link>.
         </p>
       ) : null}
     </div>

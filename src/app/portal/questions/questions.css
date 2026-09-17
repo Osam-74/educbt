@@ -1,9 +1,65 @@
-.question-bank section,.question-bank details { background:#fff;border:1px solid #dbe5df;border-radius:12px;padding:20px;margin:20px 0; }
-.question-bank summary { cursor:pointer;font-weight:650;color:#195337; }
-.question-bank .form-grid { display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;margin-top:16px; }
-.question-bank label { display:flex;flex-direction:column;gap:8px;min-width:0; }
-.question-bank input,.question-bank select { width:100%;min-width:0;padding:10px;border:1px solid #bccfc2;border-radius:6px;background:#fff;color:#183528;font:inherit;box-sizing:border-box; }
-.question-bank button { align-self:end;padding:12px;border:0;border-radius:6px;background:#195337;color:#fff;font:inherit;cursor:pointer; }
-.question-bank [role=alert] { padding:12px;background:#fff0eb;color:#822c19;border-radius:6px;overflow-wrap:anywhere; }
-.question-bank .question-table { overflow-x:auto;max-width:100%; }
-@media(max-width:600px) { .question-bank .form-grid { grid-template-columns:minmax(0,1fr); } .question-bank section,.question-bank details { padding:14px; } }
+/* Question Bank — legacy parity for templates/portal/exams/questions.php
+   (Region A scope selector, Manual/Paste/CSV entry, Written intent). Reuses
+   the app's own card/pill/tag/sd-action vocabulary rather than the plugin's
+   colours, so this page matches every other portal page already shipped. */
+
+.question-bank .card,
+.question-bank .qs-scope { background:#fff; border:1px solid var(--line); border-radius:12px; padding:20px 22px; margin:20px 0; }
+.question-bank .page-title { margin-bottom: 4px; }
+
+.qs-banner { background:#0F2818; color:#CBEB6E; border-radius:12px; padding:16px 20px; margin:14px 0; display:flex; flex-direction:column; gap:4px; }
+.qs-banner strong { font-size: 15px; }
+.qs-banner__detail { font-size:13.5px; color:rgba(203,235,110,.85); line-height:1.5; }
+.qs-banner__closed h2 { margin:0 0 4px; color:#CBEB6E; }
+.qs-banner__closed p { margin:0; color:rgba(203,235,110,.75); }
+
+.qs-session-row { display:flex; align-items:baseline; gap:10px; margin-bottom:16px; padding-bottom:14px; border-bottom:1px solid var(--line); font-size:14px; }
+.qs-session-row .qs-label { margin:0; }
+
+.qs-label { display:block; font-size:11.5px; font-weight:650; text-transform:uppercase; letter-spacing:.03em; color:var(--muted); margin-bottom:5px; }
+.qs-row { display:flex; flex-wrap:wrap; gap:14px; align-items:flex-end; margin-bottom:16px; }
+.qs-row--context { margin-bottom: 18px; }
+.qs-field { display:flex; flex-direction:column; min-width:150px; }
+.qs-field--grow { flex:1 1 200px; }
+.qs-field--narrow { min-width:100px; max-width:120px; }
+.qs-field--waec { justify-content:flex-end; padding-bottom:2px; }
+.qs-field select, .qs-field input[type=number] { padding:10px 11px; border:1px solid #bccfc2; border-radius:7px; font:inherit; font-size:13.5px; background:#fff; color:#183528; }
+.qs-field label { display:flex; align-items:center; gap:6px; font-size:13.5px; font-weight:600; cursor:pointer; }
+.qs-hint { display:block; font-size:11px; color:var(--muted); margin-left:22px; }
+
+.qs-toggle { display:inline-flex; border:1px solid #bccfc2; border-radius:8px; overflow:hidden; }
+.qs-toggle button { padding:9px 16px; border:0; background:transparent; color:#183528; font:inherit; font-size:13.5px; font-weight:600; cursor:pointer; }
+.qs-toggle button + button { border-left:1px solid #bccfc2; }
+.qs-toggle button.is-active { background:#173c26; color:#fff; }
+.qs-toggle button:disabled { color:#a3ada0; cursor:not-allowed; }
+
+.qs-manual-form { display:flex; flex-direction:column; gap:12px; max-width:560px; margin:16px 0; }
+.qs-manual-form label { font-size:12.5px; font-weight:650; color:var(--muted); }
+.qs-manual-form input[type=text], .qs-manual-form textarea, .qs-manual-form input[type=number] {
+  padding:10px 11px; border:1px solid #bccfc2; border-radius:7px; font:inherit; font-size:14px; }
+.qs-manual-form .opt-row { display:flex; align-items:center; gap:8px; }
+.qs-manual-form .opt-key { width:20px; font-weight:700; color:#173c26; }
+.qs-manual-form button[type=submit] { align-self:flex-start; }
+
+.qs-question-list { margin:20px 0; }
+.qs-question-list h3 { font-size:14px; margin:0 0 10px; }
+.qlist { padding-left: 20px; display:flex; flex-direction:column; gap:10px; }
+.qlist li { line-height:1.5; }
+
+.qs-written-panel { border-left:4px solid #b45309; background:#fcfdfc; border-radius:10px; padding:18px 20px; margin-top:18px; }
+.qs-written-panel h3 { margin:0 0 8px; }
+
+.qs-import h3 { font-size:15px; margin:16px 0 8px; }
+.qs-guide { margin-bottom:10px; font-size:13px; }
+.qs-guide summary { cursor:pointer; color:var(--muted); }
+.qs-guide pre { background:var(--wash); border-radius:8px; padding:10px; font-size:12.5px; white-space:pre-wrap; margin-top:6px; }
+.qs-import textarea.qs-mono { width:100%; font-family:ui-monospace, SFMono-Regular, Menlo, monospace; font-size:13px; }
+.qs-actions { display:flex; gap:8px; margin-top:10px; flex-wrap:wrap; }
+.qs-staging { margin-top:16px; }
+.qs-row--error { background: #fff0eb; }
+
+@media(max-width:640px) {
+  .question-bank .card, .question-bank .qs-scope { padding:14px; }
+  .qs-row { flex-direction:column; align-items:stretch; }
+  .qs-field { min-width:0; }
+}

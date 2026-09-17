@@ -106,32 +106,28 @@ async function main() {
         const page = await context.newPage(); const errors: string[] = [];
         page.on('pageerror', (error: Error) => errors.push(error.message));
         await mkdir('baseline-logs', { recursive: true });
+        // Practice is the open window here (see below) — objective only, so
+        // Theory must render disabled rather than merely erroring on submit.
+        await db.update(schema.schools).set({ settings: { questionBank: { objective: 1, theory: 1, seriesId: practice!.id } } }).where(eq(schema.schools.id, a.schoolId));
         await page.goto(new URL('/portal/questions', base).href, { waitUntil: 'networkidle' });
         await check('desktop bank controls render without overflow', async () => {
-          await page.getByRole('heading', { name: 'Question bank', exact: true }).waitFor();
-          await page.getByText('Collection window & authoring quotas', { exact: true }).click();
+          await page.getByRole('heading', { name: 'Question Bank', exact: true }).waitFor();
           assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
           await page.screenshot({ path: 'baseline-logs/question-bank-desktop.png', fullPage: true });
         });
-        await check('collection save works through server action', async () => {
-          await page.getByLabel('Objective target', { exact: true }).fill('25');
-          await page.getByRole('button', { name: 'Save collection', exact: true }).click();
-          await page.getByRole('status').filter({ hasText: 'Collection saved' }).waitFor();
+        await check('theory is disabled outside a terminal examination', async () => {
+          await page.locator('#qs-subject').selectOption({ label: /English/ });
+          await page.locator('#qs-class').selectOption({ index: 1 });
+          await page.waitForURL(/setId=/);
+          assert(await page.getByRole('button', { name: 'Theory', exact: true }).isDisabled());
         });
-        await check('invalid collection/type shows actionable error', async () => {
-          await page.getByLabel('Collection', { exact: true }).selectOption(String(practice!.id));
-          await page.getByLabel('Question type', { exact: true }).selectOption('theory');
-          await page.getByRole('button', { name: 'Open question set', exact: true }).click();
-          await page.getByRole('alert').filter({ hasText: 'objective questions only' }).waitFor();
-          await page.screenshot({ path: 'baseline-logs/question-bank-validation.png', fullPage: true });
-        });
-        await check('start-set form reaches authoring route', async () => {
-          await page.getByLabel('Collection', { exact: true }).selectOption(String(practice!.id));
-          await page.getByLabel('Question type', { exact: true }).selectOption('objective');
-          await page.getByRole('button', { name: 'Open question set', exact: true }).click();
-          await page.getByRole('heading', { name: 'Add a question', exact: true }).waitFor();
-          assert(/\/portal\/questions\/\d+$/.test(page.url()));
-          await page.goto(new URL('/portal/questions', base).href, { waitUntil: 'networkidle' });
+        await check('manual entry opens inline with no navigation away from /portal/questions', async () => {
+          await page.getByLabel('Question', { exact: true }).fill('Which number is even?');
+          await page.locator('input[name="opt_a"]').fill('Two');
+          await page.locator('input[name="opt_b"]').fill('Three');
+          await page.getByRole('button', { name: 'Save question', exact: true }).click();
+          await page.getByText('Questions (1)', { exact: true }).waitFor();
+          assert(page.url().includes('/portal/questions?'));
         });
         await page.setViewportSize({ width: 390, height: 844 });
         await check('mobile bank remains within viewport', async () => {

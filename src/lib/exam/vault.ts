@@ -180,3 +180,49 @@ export async function vaultInventory(schoolId: number) {
       .orderBy(questionVault.takenAt),
   );
 }
+
+/**
+ * Back up every set in the school right now — the office's "Back up question
+ * bank now" button. Snapshots only take a complete copy (see snapshotSet); a
+ * set with nothing in it, or an objective set missing an answer key, is
+ * skipped rather than counted as a failure, since there is nothing wrong to
+ * report about it.
+ */
+export async function backupSchool(schoolId: number) {
+  const setIds = await forSchool(schoolId, (tx) =>
+    tx.select({ id: schema.questionSets.id }).from(schema.questionSets)
+      .where(eq(schema.questionSets.schoolId, schoolId)));
+
+  let stored = 0;
+  let skipped = 0;
+
+  for (const { id } of setIds) {
+    const result = await snapshotSet(schoolId, Number(id), 'manual');
+    if (result.stored) stored++; else skipped++;
+  }
+
+  return { setsBackedUp: stored, setsSkipped: skipped, totalSets: setIds.length };
+}
+
+/**
+ * Restore every set that has a snapshot but is currently missing its
+ * questions — the office's "Restore missing questions" button. A set with
+ * questions already present is left alone; see restoreSet for why.
+ */
+export async function restoreSchool(schoolId: number) {
+  const inventory = await vaultInventory(schoolId);
+  const setIds = [...new Set(inventory.map((v) => Number(v.setId)))];
+
+  let restoredQuestions = 0;
+  let touchedSets = 0;
+
+  for (const setId of setIds) {
+    const result = await restoreSet(schoolId, setId);
+    if (result.restored > 0) {
+      restoredQuestions += result.restored;
+      touchedSets++;
+    }
+  }
+
+  return { restoredQuestions, touchedSets, setsChecked: setIds.length };
+}

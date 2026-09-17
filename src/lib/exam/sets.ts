@@ -34,6 +34,12 @@ export type SetScope = {
   examType: 'objective' | 'theory';
   seriesId: number;
   waecMode: boolean;
+  // Both optional: the scope key (unique index) does not include either, so
+  // they are properties OF whichever row the scope resolves to, not part of
+  // what makes two sets distinct. A teacher may flip CBT/Written or adjust the
+  // per-question default without starting a new paper.
+  deliveryMode?: 'cbt' | 'written';
+  defaultMarks?: number | string;
 };
 
 /**
@@ -65,7 +71,20 @@ export async function findOrCreateSet(actor: Actor, scope: SetScope) {
 
     if (existing) {
       if (!isSchoolWide(actor.role) && existing.teacherId !== actor.staffId) throw new Error('This set belongs to another teacher.');
-      return existing;
+
+      // Delivery mode and the default mark are adjustable right up until the set
+      // is handed in — after that they describe work already submitted, so
+      // leave them alone rather than silently rewriting a paper in review.
+      const patch: Partial<typeof schema.questionSets.$inferInsert> = {};
+      if (isEditable(existing.status)) {
+        if (scope.deliveryMode && scope.deliveryMode !== existing.deliveryMode) patch.deliveryMode = scope.deliveryMode;
+        const nextMarks = scope.defaultMarks !== undefined ? Number(scope.defaultMarks) : undefined;
+        if (nextMarks && Number(existing.defaultMarks) !== nextMarks) patch.defaultMarks = String(nextMarks);
+      }
+      if (Object.keys(patch).length === 0) return existing;
+      const [updated] = await tx.update(schema.questionSets).set(patch)
+        .where(eq(schema.questionSets.id, existing.id)).returning();
+      return updated!;
     }
 
     const [created] = await tx.insert(schema.questionSets).values({
@@ -78,6 +97,8 @@ export async function findOrCreateSet(actor: Actor, scope: SetScope) {
       examType: scope.examType,
       seriesId: scope.seriesId,
       waecMode: scope.waecMode,
+      deliveryMode: scope.deliveryMode ?? 'cbt',
+      defaultMarks: String(scope.defaultMarks ?? 1),
       teacherId: actor.staffId,
       minRequired: quotas[scope.examType],
     }).returning();
@@ -218,6 +239,18 @@ export async function submitSet(actor: Actor, setId: number) {
     if (!set) throw new Error('Question set not found.');
     await editableSetAccess(tx, actor, set);
     if (!isEditable(set.status)) throw new Error('This set has already been submitted.');
+
+    // Written delivery means the school prints and marks the paper on paper —
+    // there is no bank of typed questions to hold to a quota. The "submission"
+    // is the intent itself, so it always clears, alone, with nothing to review.
+    if (set.deliveryMode === 'written') {
+      await tx.update(schema.questionSets)
+        .set({ status: 'approved', submittedAt: new Date(), submittedBy: actor.userId, reviewedAt: new Date(), reviewedBy: actor.userId })
+        .where(eq(schema.questionSets.id, setId));
+      await tx.insert(schema.auditLog).values({ schoolId: actor.schoolId, actorUserId: actor.userId, actorRole: actor.role,
+        action: 'question_set.written_intent', entityType: 'question_sets', entityId: setId });
+      return { success: true as const, autoApproved: true };
+    }
 
     const paired = set.seriesId === 0;
 
@@ -418,5 +451,174 @@ export async function listSets(actor: Actor) {
       .where(and(...conditions))
       .orderBy(asc(schema.subjects.name))
       .limit(200);
+  });
+}
+
+/**
+ * Add several questions in one call — the shared landing point for Paste and
+ * CSV import. Runs the exact same validation and duplicate/passage checks as
+ * addQuestion, one row at a time, so a bulk import can never create a
+ * question a manual entry would have refused. A row that fails is reported
+ * back with its index and reason; earlier successful rows are NOT rolled
+ * back, matching the legacy importer (a partial import is progress, not
+ * nothing — the teacher pastes the same block again and only the failures
+ * repeat, because the successes are now duplicates).
+ */
+export async function addQuestionsBulk(
+  actor: Actor,
+  setId: number,
+  items: Array<{
+    text: string;
+    marks: number;
+    section?: string;
+    instructions?: string | null;
+    markingGuide?: string | null;
+    options?: Array<{ text: string; isCorrect: boolean }>;
+  }>,
+) {
+  const added: number[] = [];
+  const failed: Array<{ index: number; text: string; reason: string }> = [];
+
+  for (let i = 0; i < items.length; i++) {
+    const item = items[i]!;
+    try {
+      const q = await addQuestion(actor, setId, item);
+      added.push(Number(q.id));
+    } catch (e) {
+      failed.push({ index: i, text: item.text.slice(0, 60), reason: e instanceof Error ? e.message : 'Could not save this question.' });
+    }
+  }
+
+  return { added: added.length, failed };
+}
+
+/**
+ * Every submission the exam office has ever received, for the safekeeping
+ * ledger — not just the pending queue (that is what /portal/exams/approvals'
+ * review cards already show). Grouped into one row per paper (objective +
+ * theory together), because that is how a teacher hands work in and how the
+ * office thinks about "is this subject done yet".
+ */
+export async function listAllSubmissions(actor: Actor) {
+  if (!isSchoolWide(actor.role)) throw new Error('Only the exam office can see every submission.');
+
+  return forSchool(actor.schoolId, async (tx) => {
+    const rows = await tx
+      .select({
+        id: schema.questionSets.id,
+        examType: schema.questionSets.examType,
+        deliveryMode: schema.questionSets.deliveryMode,
+        waecMode: schema.questionSets.waecMode,
+        status: schema.questionSets.status,
+        minRequired: schema.questionSets.minRequired,
+        submittedAt: schema.questionSets.submittedAt,
+        subjectId: schema.questionSets.subjectId,
+        levelId: schema.questionSets.levelId,
+        departmentId: schema.questionSets.departmentId,
+        seriesId: schema.questionSets.seriesId,
+        subjectName: schema.subjects.name,
+        levelName: schema.classLevels.name,
+        teacherFirst: schema.staff.firstName,
+        teacherLast: schema.staff.lastName,
+        seriesTitle: schema.examSeries.title,
+        seriesType: schema.examSeries.seriesType,
+        questionCount: sql<number>`(
+          SELECT count(*) FROM ${schema.questions} q
+          WHERE q.question_set_id = ${schema.questionSets.id} AND q.status = 'active'
+        )`.mapWith(Number),
+      })
+      .from(schema.questionSets)
+      .innerJoin(schema.subjects, eq(schema.subjects.id, schema.questionSets.subjectId))
+      .innerJoin(schema.classLevels, eq(schema.classLevels.id, schema.questionSets.levelId))
+      .leftJoin(schema.staff, eq(schema.staff.id, schema.questionSets.teacherId))
+      .leftJoin(schema.examSeries, eq(schema.examSeries.id, schema.questionSets.seriesId))
+      .where(eq(schema.questionSets.schoolId, actor.schoolId))
+      .orderBy(sql`${schema.questionSets.submittedAt} desc nulls last`);
+
+    // One row per paper: objective and theory of the same scope belong
+    // together, the way the teacher who wrote them and the office reviewing
+    // them both think of a single subject's submission.
+    const byScope = new Map<string, {
+      key: string; subjectName: string; levelName: string; teacherFirst: string | null; teacherLast: string | null;
+      deliveryMode: string; waecMode: boolean; seriesType: string; seriesTitle: string; submittedAt: Date | null;
+      objective: { setId: number; count: number; min: number; status: string } | null;
+      theory: { setId: number; count: number; min: number; status: string } | null;
+    }>();
+
+    for (const r of rows) {
+      const seriesType = r.seriesId === 0 ? 'examination' : (r.seriesType ?? 'ca_test');
+      const key = `${r.subjectId}:${r.levelId}:${r.departmentId ?? ''}:${r.seriesId}:${r.waecMode}`;
+      let entry = byScope.get(key);
+
+      if (!entry) {
+        entry = {
+          key, subjectName: r.subjectName, levelName: r.levelName,
+          teacherFirst: r.teacherFirst, teacherLast: r.teacherLast,
+          deliveryMode: r.deliveryMode, waecMode: r.waecMode, seriesType,
+          seriesTitle: r.seriesId === 0 ? 'Terminal examination' : (r.seriesTitle ?? 'Deleted collection'),
+          submittedAt: r.submittedAt, objective: null, theory: null,
+        };
+        byScope.set(key, entry);
+      }
+
+      const half = { setId: Number(r.id), count: r.questionCount, min: r.minRequired, status: r.status };
+      if (r.examType === 'objective') entry.objective = half; else entry.theory = half;
+      if (r.submittedAt && (!entry.submittedAt || r.submittedAt > entry.submittedAt)) entry.submittedAt = r.submittedAt;
+      // Prefer whichever teacher submitted the paper over whoever merely opened it first.
+      if (r.status !== 'draft') { entry.teacherFirst = r.teacherFirst; entry.teacherLast = r.teacherLast; }
+    }
+
+    return [...byScope.values()].sort((a, b) => {
+      const at = a.submittedAt?.getTime() ?? 0;
+      const bt = b.submittedAt?.getTime() ?? 0;
+      return bt - at;
+    });
+  });
+}
+
+/**
+ * Delete a question set outright — the office's cleanup action for a
+ * duplicate or abandoned submission. The vault snapshot (if any) is left in
+ * place; it is keyed to the set id and harmless once orphaned, and restoring
+ * a deleted set back into existence is exactly what "Restore missing
+ * questions" is for if this turns out to be a mistake.
+ */
+export async function deleteSet(actor: Actor, setId: number) {
+  if (!isSchoolWide(actor.role)) throw new Error('Only the exam office can delete a submission.');
+
+  return forSchool(actor.schoolId, async (tx) => {
+    const [set] = await tx.select({ id: schema.questionSets.id, status: schema.questionSets.status })
+      .from(schema.questionSets)
+      .where(and(eq(schema.questionSets.id, setId), eq(schema.questionSets.schoolId, actor.schoolId)));
+
+    if (!set) throw new Error('Question set not found.');
+
+    await tx.delete(schema.questionSets).where(eq(schema.questionSets.id, setId));
+
+    await tx.insert(schema.auditLog).values({
+      schoolId: actor.schoolId, actorUserId: actor.userId, actorRole: actor.role,
+      action: 'question_set.deleted', entityType: 'question_sets', entityId: setId,
+      before: { status: set.status },
+    });
+  });
+}
+
+/** One set with its active questions, for the inline entry area on /portal/questions. */
+export async function setWithQuestions(actor: Actor, setId: number) {
+  return forSchool(actor.schoolId, async (tx) => {
+    const [set] = await tx.select().from(schema.questionSets)
+      .where(and(eq(schema.questionSets.id, setId), eq(schema.questionSets.schoolId, actor.schoolId))).limit(1);
+    if (!set) return null;
+    if (!isSchoolWide(actor.role) && (!actor.staffId || set.teacherId !== actor.staffId)) return null;
+
+    const questions = await tx.select({
+      id: schema.questions.id, text: schema.questions.questionText, marks: schema.questions.marks,
+      sequence: schema.questions.sequence, approvalStatus: schema.questions.approvalStatus,
+      reviewerComment: schema.questions.reviewerComment,
+    }).from(schema.questions)
+      .where(and(eq(schema.questions.questionSetId, setId), eq(schema.questions.status, 'active')))
+      .orderBy(asc(schema.questions.sequence));
+
+    return { set, questions };
   });
 }

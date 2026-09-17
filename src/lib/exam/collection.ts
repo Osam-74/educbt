@@ -19,7 +19,7 @@ export async function collectionView(actor: Actor) {
       .where(and(eq(schema.staffAssignments.schoolId, actor.schoolId), eq(schema.staffAssignments.status, 'active'),
         eq(schema.staffAssignments.assignmentType, 'subject_teacher'),
         isSchoolWide(actor.role) ? undefined : eq(schema.staffAssignments.staffId, actor.staffId!)));
-    return { config: authoringConfig(school.settings), scopes: [...new Map(scopes.map(s => [`${s.subjectId}:${s.levelId}:${s.departmentId ?? ''}`, s])).values()],
+    return { config: authoringConfig(school.settings), settings: school.settings, scopes: [...new Map(scopes.map(s => [`${s.subjectId}:${s.levelId}:${s.departmentId ?? ''}`, s])).values()],
       series: await tx.select().from(schema.examSeries).where(eq(schema.examSeries.schoolId, actor.schoolId)).orderBy(asc(schema.examSeries.title)) };
   });
 }
