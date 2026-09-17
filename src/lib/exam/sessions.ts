@@ -72,15 +72,18 @@ export async function sessionFilterOptions(actor: Actor): Promise<SessionFilterO
 }
 
 /**
- * Only searches when the caller gave us something to search on — a student's
- * whole attempt history, unfiltered, is not a list anyone should be able to
- * dump by opening the page. A subject teacher sees only their own subjects;
- * a wide role sees the whole school.
+ * With no filter at all, this is the live board the page's header promises:
+ * whoever is writing right now, school-wide (or, for a subject teacher,
+ * their own subjects) — a small, bounded, real-time list, not a dump. A
+ * student's whole attempt HISTORY is a different matter: that only comes
+ * back once the caller gives us something to search on (a name, admission
+ * number, subject, class, session or term) — nobody should be able to pull
+ * a full history dump just by opening the page with no query at all.
  */
 export async function searchSessions(actor: Actor, filters: SessionFilters): Promise<SessionRow[]> {
   const hasFilter = Boolean(filters.q?.trim() || filters.subjectId || filters.status
     || filters.seriesType || filters.classId || filters.sessionId || filters.termId);
-  if (!hasFilter) return [];
+  if (!hasFilter) filters = { ...filters, status: 'in_progress' };
 
   const wide = isWide(actor);
 

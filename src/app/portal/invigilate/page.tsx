@@ -66,6 +66,9 @@ export default async function TestExamSessionsPage({
     termId: query.termId ? Number(query.termId) : undefined,
   };
 
+  const hasFilter = Boolean(filters.q?.trim() || filters.subjectId || filters.status
+    || filters.seriesType || filters.classId || filters.sessionId || filters.termId);
+
   const [options, rows] = await Promise.all([
     sessionFilterOptions(actor),
     searchSessions(actor, filters),
@@ -146,7 +149,11 @@ export default async function TestExamSessionsPage({
 
         {rows.length === 0 ? (
           <div style={{ padding: '10px 22px 22px' }}>
-            <p className="muted">No sessions found. Try searching for a student by name or admission number.</p>
+            <p className="muted">
+              {hasFilter
+                ? 'No sessions found. Try a different name, admission number, or filter.'
+                : 'Nobody is currently sitting a test or exam. Search above for a student to see their session history.'}
+            </p>
           </div>
         ) : (
           <div className="sd-table-wrap">
