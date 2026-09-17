@@ -1,18 +1,18 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
-import { and, asc, eq, inArray, sql } from 'drizzle-orm';
+import { and, asc, eq, sql } from 'drizzle-orm';
 import { requireSchoolSession, requireRole, SCHOOL_WIDE } from '@/lib/session';
-import { listSeries, createSeries, publishSeries, deleteSeries, composeSeries, questionAvailability } from '@/lib/exam/compose';
+import { listSeries, createSeries, publishSeries, deleteSeries, composeSeries, questionAvailability, paperOverview, deletePaper } from '@/lib/exam/compose';
 import { collectionView, saveCollection } from '@/lib/exam/collection';
-import { reviewSet } from '@/lib/exam/sets';
-import { snapshotSet } from '@/lib/exam/vault';
 import { caComponents } from '@/lib/ca/validation';
 import { forSchool, schema } from '@/db';
 import { PortalIcon } from '../../PortalShell';
-import { TYPE_LABEL, STATUS_LABEL, fmtDay } from '../labels';
+import { TYPE_LABEL, STATUS_LABEL, fmtDay, fmtTime, addMinutes } from '../labels';
 import DeleteSeriesButton from './DeleteSeriesButton';
 
 export const dynamic = 'force-dynamic';
+
+const DELIVERY_LABEL: Record<string, string> = { cbt: 'CBT', written: 'Written' };
 
 /**
  * Exam Papers (legacy templates/portal/exams/papers.php, $educbt_title = 'Exam Papers').
@@ -50,34 +50,11 @@ export default async function ExamPapersPage({
   const series = await listSeries(actor);
   const bank = await collectionView(actor);
 
-  // Section 7 — "Submitted papers, pending review": every teacher submission
-  // still awaiting a decision, whichever collection window it came from.
-  // Same shape as /portal/exams/approvals, minus its filters and the
-  // full inline review form — this is the "at a glance, then go read it"
-  // view; the office opens /portal/exams/approvals to actually read the
-  // questions or send a set back with a reason.
-  const pendingReview = await forSchool(actor.schoolId, async (tx) =>
-    tx
-      .select({
-        id: schema.questionSets.id,
-        submittedAt: schema.questionSets.submittedAt,
-        subjectName: schema.subjects.name,
-        levelName: schema.classLevels.name,
-        seriesType: schema.examSeries.seriesType,
-        questionCount: sql<number>`(
-          SELECT count(*) FROM ${schema.questions} q
-          WHERE q.question_set_id = ${schema.questionSets.id} AND q.status = 'active'
-        )`.mapWith(Number),
-      })
-      .from(schema.questionSets)
-      .innerJoin(schema.subjects, eq(schema.subjects.id, schema.questionSets.subjectId))
-      .innerJoin(schema.classLevels, eq(schema.classLevels.id, schema.questionSets.levelId))
-      .leftJoin(schema.examSeries, eq(schema.examSeries.id, schema.questionSets.seriesId))
-      .where(and(
-        eq(schema.questionSets.schoolId, actor.schoolId),
-        inArray(schema.questionSets.status, ['submitted', 'under_review']),
-      ))
-      .orderBy(asc(schema.questionSets.submittedAt)));
+  // Section 7 — "Papers": every subject/class paper across every formal
+  // examination and CA test, whether composed yet or not (legacy parity:
+  // templates/portal/exams/papers.php's own papers table — built from the
+  // timetable, composed to pull in the questions, then published or deleted).
+  const papers = await paperOverview(actor);
 
   const { sessions, terms, caSlots } = await forSchool(actor.schoolId, async (tx) => {
     const [school] = await tx.select({ settings: schema.schools.settings })
@@ -265,28 +242,65 @@ export default async function ExamPapersPage({
     redirect(destination);
   }
 
-  async function quickApprove(formData: FormData) {
+  async function composePapers(formData: FormData) {
     'use server';
 
     const inner = await requireSchoolSession();
     requireRole(inner, SCHOOL_WIDE);
-    const setId = Number(formData.get('setId'));
+    const seriesId = Number(formData.get('seriesId'));
 
     let destination: string;
 
     try {
-      await reviewSet(inner, setId, 'approve', '');
-      // Snapshot on approval, same as /portal/exams/approvals: this is the
-      // version that will actually be sat, so it has to be captured the
-      // moment the office signs off on it, not whenever someone next opens it.
-      await snapshotSet(inner.schoolId, setId, 'approved');
-      destination = '/portal/exams/papers?ok=' + encodeURIComponent('Set approved.');
+      const result = await composeSeries(inner, seriesId);
+      destination = result.short.length > 0
+        ? `/portal/exams/papers?error=${encodeURIComponent(`Composed ${result.created} paper(s). Still short of questions: ${result.short.join('; ')}.`)}`
+        : `/portal/exams/papers?ok=${encodeURIComponent(`Composed ${result.created} paper(s).`)}`;
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Could not approve this set.';
-      destination = '/portal/exams/papers?error=' + encodeURIComponent(message);
+      const message = err instanceof Error ? err.message : 'Could not compose this paper.';
+      destination = `/portal/exams/papers?error=${encodeURIComponent(message)}`;
     }
 
-    // Outside the try/catch — see create() above for why.
+    redirect(destination);
+  }
+
+  async function publishPapers(formData: FormData) {
+    'use server';
+
+    const inner = await requireSchoolSession();
+    requireRole(inner, SCHOOL_WIDE);
+    const seriesId = Number(formData.get('seriesId'));
+
+    let destination: string;
+
+    try {
+      const count = await publishSeries(inner, seriesId);
+      destination = `/portal/exams/papers?ok=${encodeURIComponent(`Published ${count} paper(s). Ready for CBT.`)}`;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Could not publish this paper.';
+      destination = `/portal/exams/papers?error=${encodeURIComponent(message)}`;
+    }
+
+    redirect(destination);
+  }
+
+  async function removePaper(formData: FormData) {
+    'use server';
+
+    const inner = await requireSchoolSession();
+    requireRole(inner, SCHOOL_WIDE);
+    const paperId = Number(formData.get('paperId'));
+
+    let destination: string;
+
+    try {
+      await deletePaper(inner, paperId);
+      destination = `/portal/exams/papers?ok=${encodeURIComponent('Paper deleted.')}`;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Could not delete this paper.';
+      destination = `/portal/exams/papers?error=${encodeURIComponent(message)}`;
+    }
+
     redirect(destination);
   }
 
@@ -661,41 +675,73 @@ export default async function ExamPapersPage({
       </section>
 
       <section className="sd-panel sd-panel--wide" style={{ marginTop: 22 }}>
-        <header><h2><PortalIcon name="approvals" />Submitted papers, pending review</h2></header>
+        <header><h2><PortalIcon name="papers" />Papers ({papers.length})</h2></header>
         <div style={{ padding: '0 22px 20px' }}>
           <p className="muted" style={{ margin: '10px 0 0' }}>
-            Every submission still waiting on a decision, across every CA test and
-            examination. Approve here for a quick sign-off with no comment, or open{' '}
-            <Link href="/portal/exams/approvals">Approve Questions</Link> to read the
-            questions first or send a set back with a reason.
+            Papers are created when you build the timetable. Compose pulls all approved
+            questions into the exam, ready for CBT examination; once composed, publish it
+            or delete it. A written paper needs no composition — it has nothing to type.
           </p>
-          {pendingReview.length === 0 ? (
-            <p className="muted" style={{ margin: '18px 0' }}>Nothing is waiting on a review right now.</p>
+          {papers.length === 0 ? (
+            <p className="muted" style={{ margin: '18px 0' }}>
+              No papers yet. Build the timetable for an examination or CA test above to
+              create them.
+            </p>
           ) : (
             <div className="sd-table-wrap">
               <table className="tbl">
                 <thead>
                   <tr>
-                    <th>Subject</th><th>Class</th><th>Type</th><th>Date submitted</th>
-                    <th>Questions in pool</th><th />
+                    <th>Subject</th><th>Class</th><th>Type</th><th>When</th>
+                    <th>Questions</th><th>Invigilator</th><th>Status</th><th />
                   </tr>
                 </thead>
                 <tbody>
-                  {pendingReview.map((s) => (
-                    <tr key={s.id}>
-                      <td>{s.subjectName}</td>
-                      <td className="muted">{s.levelName}</td>
-                      <td>{TYPE_LABEL[s.seriesType ?? 'examination'] ?? 'Examination'}</td>
-                      <td className="muted">{s.submittedAt ? fmtDay(s.submittedAt) : '—'}</td>
-                      <td>{s.questionCount}</td>
-                      <td style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-                        <Link href={`/portal/exams/approvals`}>Review</Link>
-                        <form action={quickApprove} style={{ display: 'inline' }}>
-                          <input type="hidden" name="setId" value={s.id} />
-                          <button type="submit" className="sd-action sd-action--ghost" style={{ padding: '3px 10px', fontSize: 12.5 }}>
-                            Approve
-                          </button>
-                        </form>
+                  {papers.map((p) => (
+                    <tr key={p.key}>
+                      <td>{p.subjectName}</td>
+                      <td className="muted">{p.levelName ?? '—'}</td>
+                      <td>{DELIVERY_LABEL[p.deliveryMode] ?? p.deliveryMode}</td>
+                      <td className="muted">
+                        {p.scheduledAt
+                          ? `${fmtDay(p.scheduledAt)}, ${fmtTime(p.scheduledAt)}–${fmtTime(addMinutes(p.scheduledAt, (p.durationSeconds ?? 3600) / 60))}`
+                          : 'Not on the timetable yet'}
+                      </td>
+                      <td>{p.status === 'not_composed' ? 'Not composed' : p.questionCount}</td>
+                      <td className="muted">{p.invigilatorName ?? 'Not assigned'}</td>
+                      <td>
+                        {p.status === 'published' ? <span className="pill pill--published">Published</span>
+                          : p.status === 'draft' ? <span className="pill pill--approved">Ready</span>
+                            : <span className="pill pill--draft">Draft</span>}
+                      </td>
+                      <td style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+                        {p.status === 'not_composed' ? (
+                          <form action={composePapers} style={{ display: 'inline' }}>
+                            <input type="hidden" name="seriesId" value={p.seriesId} />
+                            <button type="submit" className="sd-action sd-action--ghost" style={{ padding: '3px 10px', fontSize: 12.5 }}>
+                              Compose
+                            </button>
+                          </form>
+                        ) : null}
+                        {p.status === 'draft' ? (
+                          <>
+                            <form action={publishPapers} style={{ display: 'inline' }}>
+                              <input type="hidden" name="seriesId" value={p.seriesId} />
+                              <button type="submit" className="sd-action sd-action--ghost" style={{ padding: '3px 10px', fontSize: 12.5 }}>
+                                Publish
+                              </button>
+                            </form>
+                            <form action={removePaper} style={{ display: 'inline' }}>
+                              <input type="hidden" name="paperId" value={p.paperId ?? ''} />
+                              <button type="submit" className="sd-action sd-action--ghost" style={{ padding: '3px 10px', fontSize: 12.5 }}>
+                                Delete
+                              </button>
+                            </form>
+                          </>
+                        ) : null}
+                        {p.status === 'published' ? (
+                          <Link href={`/portal/exams/${p.seriesId}`}>View</Link>
+                        ) : null}
                       </td>
                     </tr>
                   ))}

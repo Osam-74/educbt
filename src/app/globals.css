@@ -54,6 +54,12 @@ input[type='text'], input[type='password'] {
 }
 
 input:focus { outline: 2px solid var(--forest); outline-offset: 1px; border-color: var(--forest); }
+/* Same treatment for <select> — previously only overridden in School Area
+   (.sa-*), so every plain select elsewhere (exam pages, filters, dashboards)
+   fell back to the browser's native (blue) focus ring. One global rule
+   keeps every unstyled select consistent with inputs; anything with a more
+   specific override (e.g. .sa-card select:focus) still wins as before. */
+select:focus { outline: 2px solid var(--forest); outline-offset: 1px; border-color: var(--forest); }
 
 /* :not(.primary):not(.sd-action) — same specificity bug as the .sa-btn
    exclusion below: a plain <button type="submit"> that opted into the

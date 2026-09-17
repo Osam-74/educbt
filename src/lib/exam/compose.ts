@@ -159,6 +159,7 @@ type PoolCandidate = {
   subjectName: string;
   levelName: string;
   available: number;
+  deliveryMode: string;
 };
 
 /**
@@ -180,6 +181,7 @@ async function poolCandidates(
       departmentId: schema.questionSets.departmentId,
       subjectName: schema.subjects.name,
       levelName: schema.classLevels.name,
+      deliveryMode: schema.questionSets.deliveryMode,
       available: sql<number>`(
         SELECT count(*) FROM ${schema.questions} q
         WHERE q.question_set_id = ${schema.questionSets.id}
@@ -658,6 +660,152 @@ export async function deleteSeries(actor: Actor, seriesId: number): Promise<void
       entityType: 'exam_series',
       entityId: seriesId,
       before: { title: series.title, seriesType: series.seriesType },
+    });
+  });
+}
+
+// ── Per-paper overview ───────────────────────────────────────────────────────
+
+export type PaperOverviewRow = {
+  key: string;
+  seriesId: number;
+  seriesTitle: string;
+  seriesType: string;
+  paperId: number | null;
+  subjectName: string;
+  levelName: string | null;
+  deliveryMode: string;
+  scheduledAt: Date | null;
+  durationSeconds: number | null;
+  questionCount: number;
+  invigilatorName: string | null;
+  status: 'not_composed' | 'draft' | 'published';
+};
+
+/**
+ * Every paper the office needs to see in one flat list — across every formal
+ * examination and CA test (practice is excluded; it has no timetable and is
+ * always available once published). One row per subject/class combination:
+ * already composed (with its schedule, invigilator and status) or still a
+ * candidate waiting to be composed. This is what "Papers" on the Exam Papers
+ * page shows — the plugin's own view (templates/portal/exams/papers.php):
+ * papers come from the timetable, and from here the office composes, publishes,
+ * or deletes one.
+ */
+export async function paperOverview(actor: Actor): Promise<PaperOverviewRow[]> {
+  return forSchool(actor.schoolId, async (tx) => {
+    const seriesRows = await tx.select().from(schema.examSeries)
+      .where(and(
+        eq(schema.examSeries.schoolId, actor.schoolId),
+        sql`${schema.examSeries.seriesType} <> 'practice'`,
+      ))
+      .orderBy(asc(schema.examSeries.id));
+
+    const out: PaperOverviewRow[] = [];
+
+    for (const series of seriesRows) {
+      const candidates = await poolCandidates(
+        tx, actor.schoolId, series.seriesType as 'examination' | 'ca_test', series.id,
+      );
+
+      const papers = await tx.select({
+        id: schema.examPapers.id,
+        subjectId: schema.examPapers.subjectId,
+        levelId: schema.examPapers.levelId,
+        subjectName: schema.subjects.name,
+        levelName: schema.classLevels.name,
+        scheduledAt: schema.examPapers.scheduledAt,
+        durationSeconds: schema.examPapers.durationSeconds,
+        questionCount: schema.examPapers.questionCount,
+        status: schema.examPapers.status,
+        invigilatorFirst: schema.staff.firstName,
+        invigilatorLast: schema.staff.lastName,
+      })
+        .from(schema.examPapers)
+        .innerJoin(schema.subjects, eq(schema.subjects.id, schema.examPapers.subjectId))
+        .leftJoin(schema.classLevels, eq(schema.classLevels.id, schema.examPapers.levelId))
+        .leftJoin(schema.staff, eq(schema.staff.id, schema.examPapers.invigilatorStaffId))
+        .where(and(
+          eq(schema.examPapers.seriesId, series.id),
+          eq(schema.examPapers.schoolId, actor.schoolId),
+        ))
+        .orderBy(asc(schema.examPapers.scheduledAt), asc(schema.subjects.name));
+
+      const composedKeys = new Set(papers.map((p) => `${p.subjectId}#${p.levelId}`));
+
+      for (const p of papers) {
+        const cand = candidates.find((c) => c.subjectId === p.subjectId && c.levelId === p.levelId);
+        out.push({
+          key: `paper-${p.id}`,
+          seriesId: series.id,
+          seriesTitle: series.title,
+          seriesType: series.seriesType,
+          paperId: Number(p.id),
+          subjectName: p.subjectName,
+          levelName: p.levelName,
+          deliveryMode: cand?.deliveryMode ?? 'cbt',
+          scheduledAt: p.scheduledAt,
+          durationSeconds: p.durationSeconds,
+          questionCount: p.questionCount,
+          invigilatorName: p.invigilatorFirst ? `${p.invigilatorFirst} ${p.invigilatorLast ?? ''}`.trim() : null,
+          status: p.status === 'published' ? 'published' : 'draft',
+        });
+      }
+
+      for (const c of candidates) {
+        if (composedKeys.has(`${c.subjectId}#${c.levelId}`)) continue;
+        out.push({
+          key: `candidate-${series.id}-${c.setId}`,
+          seriesId: series.id,
+          seriesTitle: series.title,
+          seriesType: series.seriesType,
+          paperId: null,
+          subjectName: c.subjectName,
+          levelName: c.levelName,
+          deliveryMode: c.deliveryMode,
+          scheduledAt: null,
+          durationSeconds: null,
+          questionCount: 0,
+          invigilatorName: null,
+          status: 'not_composed',
+        });
+      }
+    }
+
+    return out;
+  });
+}
+
+/**
+ * Delete a single paper — the office composed the wrong thing, or a subject
+ * was dropped after the fact. Only a paper still in draft (never published)
+ * can go; once published a candidate may already be relying on it, and that
+ * is undone by unpublishing the examination, not by deleting the paper out
+ * from under a live schedule.
+ */
+export async function deletePaper(actor: Actor, paperId: number): Promise<void> {
+  return forSchool(actor.schoolId, async (tx) => {
+    const [paper] = await tx.select().from(schema.examPapers)
+      .where(and(
+        eq(schema.examPapers.id, paperId),
+        eq(schema.examPapers.schoolId, actor.schoolId),
+      )).limit(1);
+
+    if (!paper) throw new Error('Paper not found.');
+    if (paper.status !== 'draft') {
+      throw new Error('Only a draft paper can be deleted. A published paper is removed by unpublishing the examination first.');
+    }
+
+    await tx.delete(schema.examPapers).where(eq(schema.examPapers.id, paperId));
+
+    await tx.insert(schema.auditLog).values({
+      schoolId: actor.schoolId,
+      actorUserId: actor.userId,
+      actorRole: actor.role,
+      action: 'exam_paper.deleted',
+      entityType: 'exam_paper',
+      entityId: paperId,
+      before: { subjectId: paper.subjectId, levelId: paper.levelId, seriesId: paper.seriesId },
     });
   });
 }
