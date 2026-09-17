@@ -600,6 +600,44 @@ export async function publishSeries(actor: Actor, seriesId: number): Promise<num
   });
 }
 
+/**
+ * Delete a series that never went anywhere — the office started the wrong
+ * thing, or a practice/CA test nobody ended up using.
+ *
+ * Deliberately narrow: only a DRAFT series (never composed, never published)
+ * can go. Once papers are composed a candidate could plausibly have already
+ * relied on the question submission window it opened, and once published
+ * there may be scores or attempts against it — deleting either silently
+ * destroys data the office cannot see is at risk. Those series are closed or
+ * cancelled through their own lifecycle, never deleted.
+ */
+export async function deleteSeries(actor: Actor, seriesId: number): Promise<void> {
+  return forSchool(actor.schoolId, async (tx) => {
+    const [series] = await tx.select().from(schema.examSeries)
+      .where(and(
+        eq(schema.examSeries.id, seriesId),
+        eq(schema.examSeries.schoolId, actor.schoolId),
+      )).limit(1);
+
+    if (!series) throw new Error('Examination not found.');
+    if (series.status !== 'draft') {
+      throw new Error('Only an examination still being prepared (no papers composed yet) can be deleted.');
+    }
+
+    await tx.delete(schema.examSeries).where(eq(schema.examSeries.id, seriesId));
+
+    await tx.insert(schema.auditLog).values({
+      schoolId: actor.schoolId,
+      actorUserId: actor.userId,
+      actorRole: actor.role,
+      action: 'exam_series.deleted',
+      entityType: 'exam_series',
+      entityId: seriesId,
+      before: { title: series.title, seriesType: series.seriesType },
+    });
+  });
+}
+
 // ── Listing ──────────────────────────────────────────────────────────────────
 
 export async function listSeries(actor: Actor) {

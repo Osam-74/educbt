@@ -1,10 +1,11 @@
 import { redirect } from 'next/navigation';
 import { asc, eq } from 'drizzle-orm';
 import { requireSchoolSession, requireRole, SCHOOL_WIDE } from '@/lib/session';
-import { listSeries, createSeries, publishSeries } from '@/lib/exam/compose';
+import { listSeries, createSeries, publishSeries, deleteSeries } from '@/lib/exam/compose';
 import { forSchool, schema } from '@/db';
 import { PortalIcon } from '../../PortalShell';
 import { TYPE_LABEL, STATUS_LABEL, fmtDay } from '../labels';
+import DeleteSeriesButton from './DeleteSeriesButton';
 
 export const dynamic = 'force-dynamic';
 
@@ -17,11 +18,13 @@ export const dynamic = 'force-dynamic';
  * not a separate route, using the same createSeries() action as before.
  *
  * This is a partial pass toward full plugin parity — see
- * docs/examination-area-parity-todo.md for the practice-exam notice,
- * question-bank window controller, CA-tests table, open-assessment-window
- * form, and submitted-papers review queue that still need to be built.
- * This pass adds real row actions (Build timetable / Publish) to the
- * examinations table, using the existing publishSeries() action.
+ * docs/examination-area-parity-todo.md for the question-bank window
+ * controller, CA-tests live-status table and submitted-papers review queue
+ * that still need to be built.
+ * Done so far: real row actions (Build timetable / Publish / Delete) on the
+ * examinations table, and a "Practice exams" notice panel above the create
+ * form — practice papers are never scheduled or published, so they get their
+ * own small always-available panel instead of living inside the table logic.
  */
 export default async function ExamPapersPage({
   searchParams,
@@ -100,8 +103,25 @@ export default async function ExamPapersPage({
     }
   }
 
+  async function remove(formData: FormData) {
+    'use server';
+
+    const inner = await requireSchoolSession();
+    requireRole(inner, SCHOOL_WIDE);
+    const seriesId = Number(formData.get('seriesId'));
+
+    try {
+      await deleteSeries(inner, seriesId);
+      redirect(`/portal/exams/papers?ok=${encodeURIComponent('Examination deleted.')}`);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Could not delete this examination.';
+      redirect(`/portal/exams/papers?error=${encodeURIComponent(message)}`);
+    }
+  }
+
   const defaultSession = sessions.find((s) => s.isCurrent) ?? sessions[0];
   const defaultTerm = terms.find((t) => t.isCurrent && t.sessionId === defaultSession?.id) ?? terms[0];
+  const practiceSeries = series.filter((s) => s.seriesType === 'practice' && s.paperCount > 0);
 
   return (
     <div className="school-dashboard">
@@ -118,6 +138,33 @@ export default async function ExamPapersPage({
 
       {query.error ? <p className="error" style={{ marginBottom: 16 }}>{query.error}</p> : null}
       {query.ok ? <p className="ok" style={{ marginBottom: 16 }}>{query.ok}</p> : null}
+
+      <section className="sd-panel sd-panel--wide" style={{ marginBottom: 22 }}>
+        <header><h2><PortalIcon name="tests" />Practice exams</h2></header>
+        <div style={{ padding: '0 22px 20px' }}>
+          <p className="muted" style={{ margin: '10px 0 0' }}>
+            Practice papers are not scheduled or reviewed like a CA test or examination —
+            teachers can set questions into them at any time, and once at least one paper
+            exists students can take it whenever they like. There is nothing to compose to a
+            timetable and nothing to publish.
+          </p>
+          {practiceSeries.length === 0 ? (
+            <p className="muted" style={{ margin: '10px 0 0' }}>
+              No practice papers yet. Choose "Practice" as the type below to start one.
+            </p>
+          ) : (
+            <ul style={{ margin: '10px 0 0', paddingLeft: 20 }}>
+              {practiceSeries.map((p) => (
+                <li key={p.id}>
+                  <a href={`/portal/exams/${p.id}`}>{p.title}</a>
+                  {' — '}
+                  {p.paperCount} paper{p.paperCount === 1 ? '' : 's'}, always available
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </section>
 
       <section className="sd-panel sd-panel--wide" style={{ marginBottom: 22 }}>
         <header><h2><PortalIcon name="exam" />Create examination</h2></header>
@@ -227,7 +274,7 @@ export default async function ExamPapersPage({
                           {STATUS_LABEL[s.status] ?? s.status}
                         </span>
                       </td>
-                      <td style={{ display: 'flex', gap: 10, alignItems: 'center', whiteSpace: 'nowrap' }}>
+                      <td style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
                         <a href={`/portal/exams/${s.id}`}>Open</a>
                         {s.paperCount > 0 ? (
                           <a href={`/portal/timetable?series=${s.id}`}>Build timetable</a>
@@ -238,6 +285,12 @@ export default async function ExamPapersPage({
                             <button type="submit" className="sd-action sd-action--ghost" style={{ padding: '3px 10px', fontSize: 12.5 }}>
                               Publish
                             </button>
+                          </form>
+                        ) : null}
+                        {s.status === 'draft' ? (
+                          <form action={remove} style={{ display: 'inline' }}>
+                            <input type="hidden" name="seriesId" value={s.id} />
+                            <DeleteSeriesButton title={s.title} />
                           </form>
                         ) : null}
                       </td>

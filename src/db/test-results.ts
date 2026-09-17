@@ -15,7 +15,7 @@ import * as res from './schema/results';
 import { gradeFor, rank, DEFAULT_RANKING } from '@/domain/academic';
 import { canTransition } from '@/domain/academic';
 import {
-  createSeries, questionAvailability, composeSeries, scheduleSeries, publishSeries,
+  createSeries, questionAvailability, composeSeries, scheduleSeries, publishSeries, deleteSeries,
 } from '@/lib/exam/compose';
 import type { Actor } from '@/lib/session';
 
@@ -305,6 +305,23 @@ async function main() {
       await publishSeries(officer, Number(officeSeries.id));
     } catch { republishBlocked = true; }
     check('publishing an already-published examination is refused', republishBlocked);
+
+    // ── Deletion: only while still a draft ──────────────────────────────────
+    let deletePublishedBlocked = false;
+    try {
+      await deleteSeries(officer, Number(officeSeries.id));
+    } catch { deletePublishedBlocked = true; }
+    check('deleting a published examination is refused', deletePublishedBlocked);
+
+    const throwaway = await createSeries(officer, {
+      title: 'Throwaway CA test', seriesType: 'ca_test',
+      sessionId: Number(officeSession!.id), termId: Number(officeTerm!.id),
+      questionsPerStudent: 2, durationMinutes: 30,
+    });
+    await deleteSeries(officer, Number(throwaway.id));
+    const [afterDelete] = await db.select().from(qb.examSeries)
+      .where(eq(qb.examSeries.id, Number(throwaway.id))).limit(1);
+    check('deleting a draft examination removes it entirely', !afterDelete);
 
     // ── Practice: no timetable, always available ──────────────────────────────
     const practice = await createSeries(officer, {
