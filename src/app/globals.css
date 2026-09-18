@@ -1,5 +1,5 @@
 :root {
-  --forest: #0f2818;
+  --forest: #14532d;
   --lime: #cbeb6e;
   --ink: #16241b;
   --muted: #6e7a70;
@@ -53,13 +53,13 @@ input[type='text'], input[type='password'] {
   color: var(--ink);
 }
 
-input:focus { outline: 2px solid var(--forest); outline-offset: 1px; border-color: var(--forest); }
+input:focus { outline: none; border-color: var(--forest); box-shadow: 0 0 0 3px rgba(20, 83, 45, .12); }
 /* Same treatment for <select> — previously only overridden in School Area
    (.sa-*), so every plain select elsewhere (exam pages, filters, dashboards)
    fell back to the browser's native (blue) focus ring. One global rule
    keeps every unstyled select consistent with inputs; anything with a more
    specific override (e.g. .sa-card select:focus) still wins as before. */
-select:focus { outline: 2px solid var(--forest); outline-offset: 1px; border-color: var(--forest); }
+select:focus { outline: none; border-color: var(--forest); box-shadow: 0 0 0 3px rgba(20, 83, 45, .12); }
 
 /* :not(.primary):not(.sd-action) — same specificity bug as the .sa-btn
    exclusion below: a plain <button type="submit"> that opted into the
@@ -142,14 +142,21 @@ button[type='submit']:not(.sa-btn):not(.primary):not(.sd-action):disabled { opac
    forest-green header band in white text, 14px cells, hairline row rules.
    Every .tbl (Transcripts, Activity log, Promotion, Exams, Timetable, ...)
    picks this up from one place instead of drifting per page. */
-.tbl { width: 100%; border-collapse: collapse; background: var(--white);
+/* .tbl.tbl (class doubled, not a typo) — bumps specificity from (0,1,1) to
+   (0,2,1) so this canonical look always wins over the older generic
+   `.sd-panel th`/`.sd-panel td` rule in portal-shell.css. Both are (0,1,1)
+   and portal-shell.css loads after this file, so on a tie it silently won —
+   every .tbl table sitting inside an .sd-panel card (Exam Papers, Approvals,
+   Timetable, Invigilation, Marking, ...) rendered with sd-panel's plain grey
+   header instead of the green one, even though .tbl's own rule was correct. */
+.tbl.tbl { width: 100%; border-collapse: collapse; background: var(--white);
        border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; }
-.tbl th, .tbl td { text-align: left; padding: 12px 14px; font-size: 14px;
+.tbl.tbl th, .tbl.tbl td { text-align: left; padding: 12px 14px; font-size: 14px;
                    border-bottom: 1px solid var(--line); }
-.tbl th { background: #14532d; font-size: 12px; font-weight: 650; color: var(--white); }
-.tbl tbody tr:hover { background: var(--wash); }
-.tbl tr:last-child td { border-bottom: 0; }
-.tbl a { color: var(--forest); }
+.tbl.tbl th { background: #14532d; font-size: 12px; font-weight: 650; color: var(--white); }
+.tbl.tbl tbody tr:hover { background: var(--wash); }
+.tbl.tbl tr:last-child td { border-bottom: 0; }
+.tbl.tbl a { color: var(--forest); }
 .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; }
 .table-wrap { overflow-x: auto; margin-top: 16px; }
 /* Newer/Older pager (legacy activity.php) */
@@ -356,7 +363,7 @@ button[type='submit']:not(.sa-btn):not(.primary):not(.sd-action):disabled { opac
    column alongside the real inputs — span the full row above them. */
 .form-grid > h2, .form-grid > h3, .form-grid > p { grid-column: 1 / -1; }
 .form-grid label { display: grid; gap: 6px; font-size: 13.5px; color: var(--muted); }
-.form-grid input, .form-grid select { width: 100%; padding: 8px 10px; border: 1px solid var(--line); border-radius: 7px; font: inherit; color: var(--ink); background: var(--white); }
+.form-grid input, .form-grid select { width: 100%; padding: 9px 12px; border: 1px solid var(--line); border-radius: 9px; font: inherit; font-size: 14px; color: var(--ink); background: var(--white); }
 
 fieldset > legend { font-size: 13px; font-weight: 600; color: var(--muted); margin-bottom: 8px; }
 
@@ -397,7 +404,7 @@ fieldset > legend { font-size: 13px; font-weight: 600; color: var(--muted); marg
 /* Wide lists scroll within their card on phones instead of stretching the
    page — every .tbl in the portal inherits this at once. */
 @media (max-width: 720px) {
-  .tbl { display: block; overflow-x: auto; }
+  .tbl.tbl { display: block; overflow-x: auto; }
   /* A fieldset cannot shrink below its min-content width, so the register
      forms stay one column on phones instead of stretching the page. */
   .form-grid { grid-template-columns: 1fr; }

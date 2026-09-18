@@ -23,7 +23,7 @@
 .qs-field--grow { flex:1 1 200px; }
 .qs-field--narrow { min-width:100px; max-width:120px; }
 .qs-field--waec { justify-content:flex-end; padding-bottom:2px; }
-.qs-field select, .qs-field input[type=number] { padding:10px 11px; border:1px solid #bccfc2; border-radius:7px; font:inherit; font-size:13.5px; background:#fff; color:#183528; }
+.qs-field select, .qs-field input[type=number] { padding:9px 12px; border:1px solid #bccfc2; border-radius:9px; font:inherit; font-size:14px; background:#fff; color:#183528; }
 .qs-field label { display:flex; align-items:center; gap:6px; font-size:13.5px; font-weight:600; cursor:pointer; }
 .qs-hint { display:block; font-size:11px; color:var(--muted); margin-left:22px; }
 
