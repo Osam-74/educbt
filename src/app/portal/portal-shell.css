@@ -33,7 +33,7 @@
 .ps-drawer::backdrop { background:#07190fb3; }.ps-drawer-inner { min-height:100%; height:100%; display:flex; flex-direction:column; }
 .ps-close { align-self:flex-end; padding:14px 18px; background:none; border:0; color:#e0efcf; font:inherit; font-size:12px; cursor:pointer; }
 .sd-heading { display:flex; justify-content:space-between; align-items:center; gap:20px; margin-bottom:34px; }.sd-heading h1 { margin:0; font-size:30px; letter-spacing:-1px; line-height:1.25; }.sd-heading p { color:#627187; margin:10px 0 0; font-size:14px; }.sd-heading .sd-eyebrow { margin:0 0 9px; color:#427453; text-transform:uppercase; font-size:10px; letter-spacing:.15em; font-weight:700; }
-.sd-action { display:flex; gap:9px; align-items:center; flex-shrink:0; background:#14532d; border:1px solid #14532d; padding:11px 15px; border-radius:9px; font-size:13px; text-decoration:none; color:#fff; font-weight:600; }
+.sd-action { display:flex; gap:9px; align-items:center; flex-shrink:0; background:#14532d; border:1px solid #14532d; padding:9px 15px; border-radius:9px; font-size:13px; text-decoration:none; color:#fff; font-weight:600; }
 .sd-action:hover { background:#1a6b3a; border-color:#1a6b3a; }
 .sd-heading-actions { display:flex; flex-wrap:wrap; gap:10px; align-items:center; }
 .sd-action svg { width:15px; height:15px; flex-shrink:0; }
@@ -81,8 +81,8 @@ a.sd-stat:hover { border-color:#96bc9e; }.sd-icon { width:42px; height:42px; dis
    their natural width — exactly the platform schools-page arrangement. */
 .filter-form { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .filter-input-wrap { position: relative; flex: 1 1 200px; min-width: 0; }
-.filter-input-wrap svg { position: absolute; left: 13px; top: 50%; transform: translateY(-50%); color: var(--muted); pointer-events: none; }
-.filter-input-wrap input { width: 100%; padding: 9px 12px 9px 36px; border: 1.5px solid var(--line); border-radius: 10px; background: var(--white); color: var(--ink); font: inherit; font-size: 13.5px; }
+.filter-input-wrap svg { position: absolute; right: 13px; top: 50%; transform: translateY(-50%); color: var(--muted); pointer-events: none; }
+.filter-input-wrap input { width: 100%; padding: 9px 36px 9px 12px; border: 1.5px solid var(--line); border-radius: 10px; background: var(--white); color: var(--ink); font: inherit; font-size: 13.5px; }
 .filter-input-wrap input:focus { outline: none; border-color: var(--forest); box-shadow: 0 0 0 3px rgba(15, 40, 24, 0.12); }
 .filter-select { padding: 8px 12px; border: 1.5px solid var(--line); border-radius: 10px; background: var(--white); color: var(--ink); font: inherit; font-size: 13.5px; min-width: 128px; flex: 0 1 160px; }
 .filter-select:focus { outline: none; border-color: var(--forest); box-shadow: 0 0 0 3px rgba(15, 40, 24, 0.12); }
@@ -150,9 +150,11 @@ button.sd-action { border-width:1px; font:inherit; }
 
 .eo-filters { display:flex; flex-wrap:wrap; align-items:flex-end; gap:14px; padding:0 22px 18px; margin:0 -22px; }
 .eo-filters label { display:flex; flex-direction:column; gap:5px; font-size:12px; font-weight:600; color:#69766c; text-transform:uppercase; letter-spacing:.03em; }
-.eo-filters select { padding:9px 12px; border:1px solid #d7ded9; border-radius:9px; background:#fff; color:#173c26; font:inherit; font-size:14px; min-width:150px; }
+.eo-filters select { padding:9px 12px; border:1px solid #d7ded9; border-radius:9px; background:#fff; color:#173c26; font:inherit; font-size:14px; min-width:150px; max-width:100%; box-sizing:border-box; }
+.eo-filters input { padding:9px 12px; border:1px solid #d7ded9; border-radius:9px; background:#fff; color:#173c26; font:inherit; font-size:14px; box-sizing:border-box; }
+.eo-filters select:focus, .eo-filters input:focus { outline:none; border-color:#14532d; box-shadow:0 0 0 3px rgba(20,83,45,.12); }
 .eo-filters__reset { align-self:center; font-size:12.5px; font-weight:650; color:#8a4b12; text-decoration:none; padding-bottom:2px; }
-@media (max-width:640px) { .eo-filters { flex-direction:column; align-items:stretch; padding:0 14px 16px; margin:0 -14px; } .eo-filters select { min-width:0; } }
+@media (max-width:640px) { .eo-filters { flex-direction:column; align-items:stretch; padding:0 14px 16px; margin:0 -14px; } .eo-filters select, .eo-filters input { min-width:0; width:100%; } }
 
 .eo-review-card { border:1px solid #e0e6e4; border-radius:14px; padding:18px 20px; margin:0 0 16px; background:#fcfdfc; }
 .eo-review-card:last-child { margin-bottom:0; }

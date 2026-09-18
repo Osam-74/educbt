@@ -100,7 +100,12 @@ export function PortalIcon({ name }: { name: string }) {
 export default function PortalShell({ children, school, displayName, role, sessionTitle, termTitle, teaching, classTeacher, signOut, unread = 0 }: { children: React.ReactNode; school: string; displayName: string; role: string; sessionTitle: string; termTitle: string; teaching: boolean; classTeacher: boolean; signOut: () => Promise<void>; unread?: number }) {
   const pathname = usePathname();
   const areas = portalAreas(role, teaching, classTeacher);
-  const matches = (href: string) => pathname === href || (href !== '/portal' && pathname.startsWith(href + '/'));
+  const allItems = areas.flatMap(a => a.items);
+  const activeHref = allItems
+    .map(i => i.href)
+    .filter(href => pathname === href || (href !== '/portal' && pathname.startsWith(href + '/')))
+    .sort((a, b) => b.length - a.length)[0];
+  const matches = (href: string) => href === activeHref;
   const automatic = areas.find(a => a.items.some(i => matches(i.href)))?.label ?? areas[0]!.label;
   const [selected, setSelected] = useState<string | null>(null);
   const area = areas.find(a => a.label === selected) ?? areas.find(a => a.label === automatic)!;
@@ -115,7 +120,7 @@ export default function PortalShell({ children, school, displayName, role, sessi
     return () => { document.body.style.overflow = previous; };
   }, [open]);
   useEffect(() => { const media = window.matchMedia('(min-width: 901px)'); const change = () => { if (media.matches) setOpen(false); }; media.addEventListener('change', change); return () => media.removeEventListener('change', change); }, []);
-  const title = pathname === '/portal' ? (role === 'principal' ? "Principal’s Dashboard" : `${roleLabels[role] ?? 'Your'} Dashboard`) : areas.flatMap(a => a.items).find(i => matches(i.href))?.label ?? 'My account';
+  const title = pathname === '/portal' ? (role === 'principal' ? "Principal’s Dashboard" : `${roleLabels[role] ?? 'Your'} Dashboard`) : allItems.find(i => i.href === activeHref)?.label ?? 'My account';
   const initials = displayName.trim().split(/\s+/).slice(0, 2).map(n => n[0]).join('').toUpperCase();
   const navigation = () => <>
     <div className="ps-brand"><span className="ps-brand-mark"><PortalIcon name="school"/></span><div><strong>EduCBT</strong><span>School portal</span></div></div>

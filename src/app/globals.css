@@ -209,7 +209,7 @@ button[type='submit']:not(.sa-btn):not(.primary):not(.sd-action):disabled { opac
 .facts dd { margin: 0; font-weight: 500; }
 
 /* ── Question authoring ─────────────────────────────────────────────────── */
-.card textarea, .card input[type='text'], .card input[type='number'] {
+.card textarea, .card input[type='text'], .card input[type='number'], .card select {
   width: 100%; padding: 10px 12px; border: 1.5px solid var(--line);
   border-radius: 9px; font-size: 14.5px; margin-bottom: 14px;
   font-family: inherit; background: var(--white); color: var(--ink);
@@ -523,6 +523,7 @@ table.kv td { padding: 4px 0; }
 .primary--small { padding: 3px 10px; font-size: 12.5px; }
 .card form { margin: 0; }
 .search-row { display: flex; gap: 10px; align-items: flex-end; margin: 10px 0 4px; }
+.search-row > label { display: flex; flex-direction: column; gap: 6px; }
 /* input[type=text] carries a 16px trailing margin for stacked form fields — inside
    this flex row it pushed the input's visible bottom edge 16px above the button's,
    which flex-end aligns with no margin of its own. Zero it here so both bottoms meet. */

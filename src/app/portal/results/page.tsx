@@ -130,6 +130,7 @@ export default async function ResultsPage() {
                       stage={c.stage}
                       principal={principal}
                       configured={Boolean(data.config)}
+                      enrolled={c.enrolled}
                     />
                   </td>
                 </tr>

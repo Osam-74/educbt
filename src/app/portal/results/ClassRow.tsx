@@ -12,8 +12,8 @@ import type { ResultScope } from '@/lib/results/config';
  * available to the principal behind the row's "Correction" toggle, with
  * the audited written reason the lifecycle requires.
  */
-export function ClassRow({ scope, stage, principal, configured }: {
-  scope: ResultScope; stage: string; principal: boolean; configured: boolean;
+export function ClassRow({ scope, stage, principal, configured, enrolled }: {
+  scope: ResultScope; stage: string; principal: boolean; configured: boolean; enrolled: number;
 }) {
   const [state, action, pending] = useActionState(resultAction, { ok: false, message: '' });
 
@@ -35,7 +35,8 @@ export function ClassRow({ scope, stage, principal, configured }: {
       <input type="hidden" name="termId" value={scope.termId} />
 
       {(stage === '' || stage === 'draft' || stage === 'mixed') && (
-        <button type="submit" name="operation" value="compile" disabled={!configured || pending}>
+        <button type="submit" name="operation" value="compile" disabled={!configured || pending || enrolled === 0}
+          title={enrolled === 0 ? 'No students enrolled in this class yet.' : undefined}>
           {stage === '' ? 'Compile' : 'Recompile'}
         </button>
       )}

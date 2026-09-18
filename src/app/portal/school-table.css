@@ -142,6 +142,7 @@
 }
 .sa-grid label { display: block; margin-bottom: 5px; font-weight: 550; font-size: 13.5px; color: #16211c; }
 .sa-grid input[type='text'], .sa-grid input[type='email'], .sa-grid input[type='tel'],
+.sa-grid input[type='date'],
 .sa-grid select {
   width: 100%; padding: 9px 12px; border: 1px solid #d7dedb; border-radius: 9px;
   font: inherit; font-size: 14px; background: var(--white); color: #16211c; line-height: 1.4;
@@ -149,7 +150,7 @@
 .sa-grid input:focus, .sa-grid select:focus {
   outline: none; border-color: #14532d; box-shadow: 0 0 0 3px rgba(20, 83, 45, .12);
 }
-.sa-grid input[type='file'] {
+.sa-card input[type='file'], .sa-grid input[type='file'] {
   width: 100%; padding: 10px 12px; border: 1px dashed #c8d4ce; border-radius: 9px;
   background: #f8faf9; font-size: 14px; cursor: pointer;
 }

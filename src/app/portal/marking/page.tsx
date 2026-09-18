@@ -142,7 +142,7 @@ export default async function MarkingPage({
             <p className="muted">No written answers are waiting to be marked.</p>
           ) : (
             <div className="sd-table-wrap">
-              <table>
+              <table className="tbl">
                 <thead><tr><th>Teacher</th><th>Subject</th><th>Waiting</th></tr></thead>
                 <tbody>
                   {status.rows.map((r) => (
@@ -199,7 +199,7 @@ export default async function MarkingPage({
           </div>
         ) : (
           <div className="sd-table-wrap">
-            <table>
+            <table className="tbl">
               <thead>
                 <tr>
                   <th>Teacher</th><th>Subject</th><th>Class</th><th>Components recorded</th>
@@ -244,7 +244,7 @@ export default async function MarkingPage({
             <p className="muted">No exams have been sat yet.</p>
           ) : (
             <div className="sd-table-wrap">
-              <table>
+              <table className="tbl">
                 <thead><tr><th>Subject</th><th>Class</th><th>Theory marked</th></tr></thead>
                 <tbody>
                   {completed.map((c) => (
