@@ -7,7 +7,7 @@ import { forSchool, schema } from '@/db';
 import { eq, and } from 'drizzle-orm';
 import {
   EditStudentForm, StandingForm, GuardianForm, SubjectRegistrationForm,
-  GuardianResetForm,
+  GuardianResetForm, StudentPasswordResetForm,
 } from '../StudentForms';
 import { subjectRegistrationView } from '@/lib/people/students';
 
@@ -124,6 +124,11 @@ export default async function StudentProfile({
             <StandingForm studentId={studentId} status={student.status} />
           </section>
         )}
+
+        <section className="card">
+          <h2>Password</h2>
+          <StudentPasswordResetForm studentId={studentId} />
+        </section>
 
         <section className="card">
           <h2>Guardians ({guardians.length})</h2>

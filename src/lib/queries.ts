@@ -228,7 +228,13 @@ export async function pendingApprovalCount(actor: Actor): Promise<number> {
 }
 
 export async function getStudent(actor: Actor, studentId: number) {
-  const reachable = await reachableClassIds(actor);
+  // Legacy templates/portal/teacher/students.php only lets a teacher open a
+  // profile for a student in a class they hold as CLASS TEACHER specifically
+  // - a subject teacher who merely teaches that class a subject cannot reach
+  // this page at all. reachableClassIds() (used by /portal/classes and the
+  // Teaching dashboard) is deliberately broader - it includes every class a
+  // teacher is assigned to for ANY reason - so it must not be reused here.
+  const reachable = isSchoolWide(actor.role) ? 'all' as const : await headedClassIds(actor);
 
   return forSchool(actor.schoolId, async (tx) => {
     const [student] = await tx

@@ -450,6 +450,33 @@ export function StandingForm({ studentId, status }: { studentId: number; status:
   );
 }
 
+/**
+ * Resets a student's password to their surname (legacy
+ * educbt_reset_student_password). Available to the school office AND to the
+ * student's class teacher specifically - actions.ts's 'reset' operation
+ * enforces the same class-teacher scoping as the profile page itself
+ * (assertCanTouchStudent), so anyone who can see this button is allowed to
+ * use it.
+ */
+export function StudentPasswordResetForm({ studentId }: { studentId: number }) {
+  const [state, action, pending] = useActionState(studentAction, EMPTY);
+
+  return (
+    <form action={action} className="inline-form">
+      <input type="hidden" name="operation" value="reset" />
+      <input type="hidden" name="studentId" value={studentId} />
+      <p className="muted" style={{ fontSize: '.85rem' }}>
+        Resets this student&apos;s password to their surname. They will be asked to change it at next sign-in; old sessions are signed out.
+      </p>
+      <button type="submit" disabled={pending} className="sa-btn sa-btn--danger" onClick={(e) => { if (!confirm('Reset this student\'s password to their surname?')) e.preventDefault(); }}>
+        {pending ? 'Resetting…' : 'Reset password'}
+      </button>
+      {state.message && <p role={state.ok ? 'status' : 'alert'} className={state.ok ? 'note' : 'error'}>{state.message}</p>}
+      {state.ok && state.credentials && <p role="status" className="credentials">{state.credentials}</p>}
+    </form>
+  );
+}
+
 /** Office-only: hand a locked-out guardian a one-time temporary password. */
 export function GuardianResetForm({ guardianId, guardianName }: { guardianId: number; guardianName: string }) {
   const [state, action, pending] = useActionState(studentAction, EMPTY);
