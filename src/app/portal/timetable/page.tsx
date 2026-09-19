@@ -262,7 +262,7 @@ export default async function TimetablePage({
           <>
             <section className="sd-panel sd-panel--wide" style={{ marginBottom: 22 }}>
               <header><h2><PortalIcon name="timetable" />Choose examination</h2></header>
-              <form method="get" className="eo-filters">
+              <form method="get" className="eo-filters" style={{ margin: 0 }}>
                 <label htmlFor="series">
                   <span>Examination or assessment</span>
                   <select id="series" name="series" defaultValue={String(seriesId)}>

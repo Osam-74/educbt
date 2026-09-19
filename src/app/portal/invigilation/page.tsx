@@ -140,7 +140,7 @@ export default async function InvigilationPage({
         <>
           <section className="sd-panel sd-panel--wide no-print" style={{ marginBottom: 22 }}>
             <header><h2><PortalIcon name="invigilation" />Choose examination</h2></header>
-            <form method="get" className="eo-filters">
+            <form method="get" className="eo-filters" style={{ margin: 0 }}>
               <label htmlFor="series">
                 <span>Examination</span>
                 <select id="series" name="series" defaultValue={String(seriesId)}>
