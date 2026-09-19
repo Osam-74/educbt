@@ -38,7 +38,9 @@ async function main() {
     const schoolId = school!.id; schoolIds.push(schoolId);
     const sessions = await db.insert(schema.academicSessions).values([{ schoolId, title: '2026' }, { schoolId, title: '2027' }]).returning();
     const terms = await db.insert(schema.terms).values([
-      { schoolId, sessionId: sessions[0]!.id, title: 'First', position: 1 },
+      // isCurrent marks the term the full CA sheet resolves server-side —
+      // exactly the term `input.termId` (terms[0]) points at.
+      { schoolId, sessionId: sessions[0]!.id, title: 'First', position: 1, isCurrent: true },
       { schoolId, sessionId: sessions[0]!.id, title: 'Second', position: 2 },
       { schoolId, sessionId: sessions[1]!.id, title: 'First', position: 1 },
     ]).returning();
@@ -201,12 +203,15 @@ async function main() {
       await check('HTTP score sheet renders the selected context', async () => {
         const response = await fetch(url, { headers: { cookie } });
         assert.equal(response.status, 200);
-        const html = await response.text(); assert(html.includes('CA score entry')); assert(html.includes('CA One'));
+        const html = await response.text(); assert(html.includes('Record Scores')); assert(html.includes('CA One'));
         assert(html.includes('Maths')); assert(!html.includes('Unregistered'));
       });
       await check('HTTP closed result renders read only', async () => {
         const html = await (await fetch(url, { headers: { cookie } })).text();
-        assert(html.includes('read only')); assert(html.includes('Save score'));
+        // This student's own cell is locked (no editable input rendered for it)...
+        assert(!html.includes(`score[${input.studentId}][${input.componentKey}]`));
+        // ...but the sheet still has other editable students, so saving stays available.
+        assert(html.includes('Save score'));
       });
       await check('HTTP forged assignment does not expose score forms', async () => {
         const bad = new URL(url); bad.searchParams.set('pair', input.classId + ':' + a.subjects[1]!.id);
@@ -216,7 +221,7 @@ async function main() {
       await db.update(schema.schools).set({ settings: {} }).where(eq(schema.schools.id, a.schoolId));
       await check('HTTP missing configuration shows setup guidance', async () => {
         const html = await (await fetch(new URL('/portal/ca', base), { headers: { cookie } })).text();
-        assert(html.includes('CA components are not configured')); assert(!html.includes('Save score'));
+        assert(html.includes('Assessment components are not configured')); assert(!html.includes('Save score'));
       });
     }
     console.log(count + ' PASS / 0 FAIL');
