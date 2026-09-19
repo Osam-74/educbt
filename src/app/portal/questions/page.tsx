@@ -53,6 +53,14 @@ export default async function QuestionBankPage({ searchParams }: { searchParams:
     departmentId: departmentId ? String(departmentId) : '', examType, delivery, marks: String(marks), method,
     waecMode: waecMode ? '1' : '', setId: setId ? String(setId) : '',
   }).toString();
+  // Method now switches locally without a round-trip (see BankFields), so the
+  // URL's own `method` can lag behind what's on screen. ManualEntry's save
+  // action redirects back using this string — pin it to 'manual' explicitly
+  // so saving a question always lands back on the manual panel, regardless
+  // of whatever method the URL last carried.
+  const manualReturnParams = new URLSearchParams(returnParams);
+  manualReturnParams.set('method', 'manual');
+  const manualReturnParamsStr = manualReturnParams.toString();
 
   const loaded = setId ? await setWithQuestions(actor, setId) : null;
   const periodTitle = current ? await forSchool(actor.schoolId, async (tx) => {
@@ -108,22 +116,21 @@ export default async function QuestionBankPage({ searchParams }: { searchParams:
             subjectId={subjectId} levelId={levelId} departmentId={departmentId}
             examType={examType} delivery={delivery} marks={marks} method={method} waecMode={waecMode}
             theoryAllowed={!!theoryAllowed} action={openSet}
-          />
-
-          {!subjectId || !levelId ? (
-            <p className="muted" style={{ marginTop: 18 }}>Choose a subject and class level to begin.</p>
-          ) : delivery === 'written' ? (
-            loaded ? (
+            opening={<p className="muted">Opening…</p>}
+            writtenIntent={loaded ? (
               <WrittenIntent subject={subject} level={level} setId={loaded.set.id} returnParams={returnParams}
                 already={loaded.set.status !== 'draft'} />
-            ) : <p className="muted">Opening…</p>
-          ) : loaded ? (
-            method === 'manual' ? (
-              <ManualEntry set={loaded.set as never} questions={loaded.questions as never} returnParams={returnParams} />
-            ) : (
-              <BulkImport mode={method} examType={examType} defaultMarks={Number(loaded.set.defaultMarks) || marks} setId={loaded.set.id} />
-            )
-          ) : <p className="muted">Opening…</p>}
+            ) : null}
+            manualEntry={loaded ? (
+              <ManualEntry set={loaded.set as never} questions={loaded.questions as never} returnParams={manualReturnParamsStr} />
+            ) : null}
+            pasteImport={loaded ? (
+              <BulkImport mode="paste" examType={examType} defaultMarks={Number(loaded.set.defaultMarks) || marks} setId={loaded.set.id} />
+            ) : null}
+            csvImport={loaded ? (
+              <BulkImport mode="csv" examType={examType} defaultMarks={Number(loaded.set.defaultMarks) || marks} setId={loaded.set.id} />
+            ) : null}
+          />
         </section>
       ) : null}
 

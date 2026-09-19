@@ -101,6 +101,11 @@
 /* Mobile: actions wrap, forms stack; the table itself scrolls (wrap above). */
 @media (max-width: 640px) {
   .sa-edit-form { flex-direction: column; align-items: stretch; }
+  /* .sa-edit-field's flex:1 1 150px above is a WIDTH for the desktop row —
+     once the form stacks to a column here, that same flex-basis is read as
+     a HEIGHT, forcing every edit-row field to a ~150px-tall box with empty
+     space below its input. Reset to natural content height on mobile. */
+  .sa-edit-form .sa-edit-field { flex: 0 1 auto; }
 }
 
 /* Bare <select> elements in School Area cards (staff.php's "What are you

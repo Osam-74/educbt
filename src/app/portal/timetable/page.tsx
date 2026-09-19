@@ -302,13 +302,6 @@ export default async function TimetablePage({
 
                   {papers.length > 0 ? <PrintTrigger /> : null}
                 </div>
-                <p className="muted" style={{ padding: '0 22px 18px', margin: 0 }}>
-                  Papers are created from the question sets already approved for this
-                  examination&apos;s session and term. Re-running adds anything newly approved
-                  and lays every paper out across the sitting window again — any slot you
-                  have moved by hand is reset, so adjust the timetable after regenerating,
-                  not before.
-                </p>
               </section>
             ) : null}
 

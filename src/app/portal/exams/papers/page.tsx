@@ -369,12 +369,6 @@ export default async function ExamPapersPage({
       <section className="sd-panel sd-panel--wide" style={{ marginBottom: 22 }}>
         <header><h2><PortalIcon name="tests" />Practice exams</h2></header>
         <div style={{ padding: '0 22px 20px' }}>
-          <p className="muted" style={{ margin: '10px 0 0' }}>
-            Practice papers are not scheduled or reviewed like a CA test or examination —
-            teachers can set questions into them at any time, and once at least one paper
-            exists students can take it whenever they like. There is nothing to compose to a
-            timetable and nothing to publish.
-          </p>
           {practiceSeries.length === 0 ? (
             <p className="muted" style={{ margin: '10px 0 0' }}>
               No practice papers yet. Choose "Practice" as the type below to start one.
@@ -396,13 +390,6 @@ export default async function ExamPapersPage({
       <section className="sd-panel sd-panel--wide" style={{ marginBottom: 22 }}>
         <header><h2><PortalIcon name="questions" />Question bank controller</h2></header>
         <div style={{ padding: '0 22px 20px' }}>
-          <p className="muted" style={{ margin: '10px 0 0' }}>
-            The school-wide question bank must not be open for setting at all
-            times. Choose which CA test or examination teachers may currently
-            submit questions into — closing it never touches questions already
-            submitted, it only stops new ones. Practice always stays open in
-            its own collection and never needs this control.
-          </p>
           <p style={{ margin: '10px 0 0' }}>
             Currently open: {bankOpenFor
               ? <strong>{bankOpenFor.title}</strong>
@@ -426,11 +413,6 @@ export default async function ExamPapersPage({
       <section className="sd-panel sd-panel--wide" style={{ marginBottom: 22 }}>
         <header><h2><PortalIcon name="tests" />Continuous assessment tests</h2></header>
         <div style={{ padding: '0 22px 20px' }}>
-          <p className="muted" style={{ margin: '10px 0 0' }}>
-            Every CA test still in play — not yet published or closed. "Papers"
-            counts subjects with enough approved questions to compose against
-            the total subjects that have submitted anything at all.
-          </p>
           {activeCaTests.length === 0 ? (
             <p className="muted" style={{ margin: '18px 0' }}>
               No CA test is open right now. Use "Open a new assessment window" below to start one.
@@ -677,11 +659,6 @@ export default async function ExamPapersPage({
       <section className="sd-panel sd-panel--wide" style={{ marginTop: 22 }}>
         <header><h2><PortalIcon name="papers" />Papers ({papers.length})</h2></header>
         <div style={{ padding: '0 22px 20px' }}>
-          <p className="muted" style={{ margin: '10px 0 0' }}>
-            Papers are created when you build the timetable. Compose pulls all approved
-            questions into the exam, ready for CBT examination; once composed, publish it
-            or delete it. A written paper needs no composition — it has nothing to type.
-          </p>
           {papers.length === 0 ? (
             <p className="muted" style={{ margin: '18px 0' }}>
               No papers yet. Build the timetable for an examination or CA test above to

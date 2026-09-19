@@ -29,8 +29,14 @@ export function isSchoolWide(role: string): boolean {
  * Empty for a teacher with no assignments — which correctly yields no students
  * rather than all of them. A missing assignment must never fail open.
  */
-async function reachableClassIds(actor: Actor): Promise<number[] | 'all'> {
-  if (isSchoolWide(actor.role)) return 'all';
+async function reachableClassIds(actor: Actor, mine = false): Promise<number[] | 'all'> {
+  // "mine" forces the teacher-owned lookup even for a school-wide role — used
+  // when a principal/VP/exam officer who also holds a teaching assignment
+  // opens the "Teaching" sidebar area instead of "School": /portal/classes
+  // and /portal/students are the same route either way, and without this the
+  // wide-role branch always wins, so "My assignments"/"My students" quietly
+  // rendered the full School-area view instead of the teacher's own rows.
+  if (isSchoolWide(actor.role) && !mine) return 'all';
 
   if (!actor.staffId) return [];
 
@@ -67,9 +73,9 @@ export type StudentRow = {
 
 export async function listStudents(
   actor: Actor,
-  opts: { search?: string; status?: string; classId?: number } = {},
+  opts: { search?: string; status?: string; classId?: number; mine?: boolean } = {},
 ): Promise<{ rows: StudentRow[]; scopeNote: string | null }> {
-  const reachable = await reachableClassIds(actor);
+  const reachable = await reachableClassIds(actor, opts.mine);
 
   if (reachable !== 'all' && reachable.length === 0) {
     return {
@@ -227,8 +233,8 @@ export async function listStaff(actor: Actor) {
   );
 }
 
-export async function listClasses(actor: Actor) {
-  const reachable = await reachableClassIds(actor);
+export async function listClasses(actor: Actor, opts: { mine?: boolean } = {}) {
+  const reachable = await reachableClassIds(actor, opts.mine);
 
   if (reachable !== 'all' && reachable.length === 0) return [];
 

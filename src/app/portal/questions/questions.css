@@ -66,4 +66,12 @@
   .question-bank .card, .question-bank .qs-scope { padding:14px; }
   .qs-row { flex-direction:column; align-items:stretch; }
   .qs-field { min-width:0; }
+  /* .qs-field--grow's flex:1 1 200px is written for the desktop ROW layout,
+     where 200px is a WIDTH (main axis = horizontal). Once .qs-row switches
+     to flex-direction:column above, the main axis becomes vertical, so that
+     same flex-basis is read as a HEIGHT — forcing the Subject and Class
+     Level fields to a literal 200px-tall box with nothing but whitespace
+     under the select, which is exactly the huge gap reported on mobile.
+     Reset it to natural content height here. */
+  .qs-field--grow { flex: 0 1 auto; }
 }

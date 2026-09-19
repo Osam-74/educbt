@@ -13,12 +13,22 @@ export const dynamic = 'force-dynamic';
  * edits arm / capacity / department inline, and archives a class only once it
  * is empty of students and papers. Teachers and exam officers keep the legacy
  * teacher view: the classes they hold, read-only.
+ *
+ * A principal/VP/exam officer who ALSO holds a teaching assignment gets a
+ * "Teaching" sidebar area whose "My assignments" link points at this same
+ * route with ?scope=mine — that forces the teacher-owned view below even
+ * though the role itself would otherwise take the office branch.
  */
-export default async function ClassesPage() {
+export default async function ClassesPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ scope?: string }>;
+}) {
   const actor = await requireSchoolSession();
+  const mine = (await searchParams).scope === 'mine';
 
-  if (!['principal', 'vice_principal'].includes(actor.role)) {
-    const classes = await listClasses(actor);
+  if (!['principal', 'vice_principal'].includes(actor.role) || mine) {
+    const classes = await listClasses(actor, { mine });
 
     return (
       <>

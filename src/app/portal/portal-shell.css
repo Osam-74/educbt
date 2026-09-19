@@ -154,7 +154,17 @@ button.sd-action { border-width:1px; font:inherit; }
 .eo-filters input { padding:9px 12px; border:1px solid #d7ded9; border-radius:9px; background:#fff; color:#173c26; font:inherit; font-size:14px; box-sizing:border-box; }
 .eo-filters select:focus, .eo-filters input:focus { outline:none; border-color:#14532d; box-shadow:0 0 0 3px rgba(20,83,45,.12); }
 .eo-filters__reset { align-self:center; font-size:12.5px; font-weight:650; color:#8a4b12; text-decoration:none; padding-bottom:2px; }
-@media (max-width:640px) { .eo-filters { flex-direction:column; align-items:stretch; padding:0 14px 16px; margin:0 -14px; } .eo-filters select, .eo-filters input { min-width:0; width:100%; } }
+.eo-filters__search { flex: 1 1 220px; }
+@media (max-width:640px) {
+  .eo-filters { flex-direction:column; align-items:stretch; padding:0 14px 16px; margin:0 -14px; }
+  .eo-filters select, .eo-filters input { min-width:0; width:100%; }
+  /* .eo-filters__search's flex:1 1 220px is a WIDTH on the desktop row
+     layout; once the filters stack into a column above, that same
+     flex-basis reads as a HEIGHT, forcing a ~220px-tall search field with
+     empty space beneath it — the "extra spacing right after the first
+     field" reported on mobile. Reset to natural content height here. */
+  .eo-filters__search { flex: 0 1 auto; }
+}
 
 .eo-review-card { border:1px solid #e0e6e4; border-radius:14px; padding:18px 20px; margin:0 0 16px; background:#fcfdfc; }
 .eo-review-card:last-child { margin-bottom:0; }

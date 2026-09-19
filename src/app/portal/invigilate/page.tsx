@@ -97,7 +97,7 @@ export default async function TestExamSessionsPage({
       <section className="sd-panel sd-panel--wide">
         <div style={{ padding: '20px 22px 4px' }}>
           <form method="get" className="eo-filters" style={{ margin: 0, padding: 0 }}>
-            <label style={{ flex: '1 1 220px' }}>
+            <label className="eo-filters__search">
               <span>Search student</span>
               <input type="text" name="q" defaultValue={query.q ?? ''} placeholder="Name or admission number" />
             </label>

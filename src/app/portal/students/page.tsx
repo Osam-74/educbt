@@ -8,26 +8,32 @@ export const dynamic = 'force-dynamic';
 export default async function StudentsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; status?: string; class?: string }>;
+  searchParams: Promise<{ q?: string; status?: string; class?: string; scope?: string }>;
 }) {
   const params = await searchParams;
   const actor = await requireSchoolSession();
   const status = params.status ?? 'active';
+  // A principal/VP/exam officer who also teaches reaches this same route via
+  // the "Teaching" area's "My students" link (?scope=mine) — force the
+  // teacher-owned view even though the role would otherwise take the office
+  // branch, matching the same fix applied to /portal/classes.
+  const mine = params.scope === 'mine';
 
   const [{ rows, scopeNote }, classes, pendingCount] = await Promise.all([
     listStudents(actor, {
       search: params.q?.trim(),
       status,
       classId: params.class ? Number(params.class) : undefined,
+      mine,
     }),
-    listClasses(actor),
+    listClasses(actor, { mine }),
     pendingApprovalCount(actor),
   ]);
 
   // Teachers enrol into their own classes only, and the record waits for the
   // office's approval (legacy teacher_add_student). The service enforces it;
   // the flag here only changes the form's wording.
-  const office = isSchoolWide(actor.role);
+  const office = isSchoolWide(actor.role) && !mine;
 
   return (
     <>

@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useSearchParams } from 'next/navigation';
 import PendingButton from '@/app/PendingButton';
 import { useEffect, useRef, useState } from 'react';
 
@@ -15,7 +15,11 @@ export function portalAreas(role: string, teaching: boolean, classTeacher: boole
   // Legacy parity: the plugin's School area has NO score-entry item —
   // recording scores is Teaching work, shown only where the teacher does it.
   if (wide) areas.push({ label: 'School', items: [item('', 'Overview', 'area:school'), item('/staff', 'Staff', 'staff'), item('/students', 'Students', 'students'), item('/classes', 'Classes', 'classes'), item('/subjects', 'Subjects', 'subjects'), item('/results', 'Results', 'results'), item('/broadsheet', 'Broadsheet', 'broadsheet'), ...(role === 'principal' || role === 'vice_principal' ? [item('/promotion', 'Promotion', 'promotion')] : []), ...(role === 'principal' ? [item('/transcripts', 'Transcripts', 'transcripts')] : []), ...(role === 'principal' || role === 'vice_principal' ? [item('/activity', 'Activity log', 'activity')] : [])] });
-  if (role === 'teacher' || role === 'exam_officer' || (wide && teaching)) areas.push({ label: 'Teaching', items: [item('', 'Dashboard', 'area:teacher'), item('/classes', 'My assignments', 'classes'), ...(classTeacher || wide ? [item('/students', 'My students', 'students')] : []), item('/ca', 'Record scores', 'scores')] });
+  // "My assignments" / "My students" share a route with the School area's own
+  // "Classes" / "Students" pages (?scope=mine forces the teacher-owned view —
+  // see /portal/classes and /portal/students — for a wide role that also
+  // teaches; a no-op for a plain teacher, who always gets that view anyway).
+  if (role === 'teacher' || role === 'exam_officer' || (wide && teaching)) areas.push({ label: 'Teaching', items: [item('', 'Dashboard', 'area:teacher'), item('/classes?scope=mine', 'My assignments', 'classes'), ...(classTeacher || wide ? [item('/students?scope=mine', 'My students', 'students')] : []), item('/ca', 'Record scores', 'scores')] });
   if (wide) areas.find(a => a.label === 'School')!.items.push(item('/settings', 'School Settings', 'settings'));
   else if (role === 'teacher' && classTeacher) areas.find(a => a.label === 'Teaching')!.items.push(item('/settings', 'Signatures & remarks', 'edit'));
   // Legacy parity (PortalRouter::sections()['exams']): Overview, Question
@@ -99,11 +103,25 @@ export function PortalIcon({ name }: { name: string }) {
 
 export default function PortalShell({ children, school, displayName, role, sessionTitle, termTitle, teaching, classTeacher, signOut, unread = 0 }: { children: React.ReactNode; school: string; displayName: string; role: string; sessionTitle: string; termTitle: string; teaching: boolean; classTeacher: boolean; signOut: () => Promise<void>; unread?: number }) {
   const pathname = usePathname();
+  // Only the 'scope' param disambiguates two nav items that share a route
+  // (Classes/Students vs My assignments/My students) — every other query
+  // param a page keeps for its own filters (search, status, ...) must NOT
+  // affect which sidebar item lights up.
+  const currentScope = useSearchParams().get('scope') ?? '';
+  const splitHref = (href: string) => {
+    const q = href.indexOf('?');
+    if (q === -1) return { path: href, scope: '' };
+    return { path: href.slice(0, q), scope: new URLSearchParams(href.slice(q + 1)).get('scope') ?? '' };
+  };
   const areas = portalAreas(role, teaching, classTeacher);
   const allItems = areas.flatMap(a => a.items);
   const activeHref = allItems
     .map(i => i.href)
-    .filter(href => pathname === href || (href !== '/portal' && pathname.startsWith(href + '/')))
+    .filter(href => {
+      const { path, scope } = splitHref(href);
+      if (pathname === path) return scope === currentScope;
+      return path !== '/portal' && pathname.startsWith(path + '/');
+    })
     .sort((a, b) => b.length - a.length)[0];
   const matches = (href: string) => href === activeHref;
   const automatic = areas.find(a => a.items.some(i => matches(i.href)))?.label ?? areas[0]!.label;
