@@ -25,9 +25,14 @@ export function portalAreas(role: string, teaching: boolean, classTeacher: boole
   // Teaching > Dashboard needs ?scope=mine to land on TeacherDashboard
   // instead of the office overview they'd otherwise get by default.
   const teachingDashboardHref = wide && teaching ? '?scope=mine' : '';
-  if (role === 'teacher' || role === 'exam_officer' || (wide && teaching)) areas.push({ label: 'Teaching', items: [item(teachingDashboardHref, 'Dashboard', 'area:teacher'), item('/classes?scope=mine', 'My assignments', 'classes'), ...(classTeacher || wide ? [item('/students?scope=mine', 'My students', 'students')] : []), item('/ca', 'Record scores', 'scores')] });
+  // Legacy PortalRouter's 'teacher' menu (for reference, matched item-for-item
+  // as each is built): Dashboard, Subject Registration, My Assignments,
+  // Subject Results, Record Scores, My Students*, Class Results*, Signature*,
+  // Remarks* (* = requires_class_teacher). Subject Registration, Subject
+  // Results and Class Results are not yet built - add them here, in that
+  // slot, when they land.
+  if (role === 'teacher' || role === 'exam_officer' || (wide && teaching)) areas.push({ label: 'Teaching', items: [item(teachingDashboardHref, 'Dashboard', 'area:teacher'), item('/classes?scope=mine', 'My assignments', 'classes'), item('/ca', 'Record scores', 'scores'), ...(classTeacher || wide ? [item('/students?scope=mine', 'My students', 'students')] : []), ...(role === 'teacher' && classTeacher ? [item('/signature', 'Signature', 'edit'), item('/remarks', 'Remarks', 'edit')] : [])] });
   if (wide) areas.find(a => a.label === 'School')!.items.push(item('/settings', 'School Settings', 'settings'));
-  else if (role === 'teacher' && classTeacher) areas.find(a => a.label === 'Teaching')!.items.push(item('/settings', 'Signatures & remarks', 'edit'));
   // Legacy parity (PortalRouter::sections()['exams']): Overview, Question
   // Bank, Approve Questions, Exam Papers, Timetable, Invigilation Schedule,
   // Test/Exam Sessions, Marking Status — same order, names and icon keys as
