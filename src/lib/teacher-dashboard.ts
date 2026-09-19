@@ -19,8 +19,14 @@ export type TeacherClassAssignment = { classId: number; className: string; stude
 export type TeacherSubject = { subjectId: number; subjectName: string; classes: TeacherClassAssignment[] };
 export type TeacherHeadedClass = { classId: number; className: string; students: number; pipeline: { state: string; students: number }[] };
 
-export async function teacherDashboard(actor: Actor) {
-  if (actor.role !== 'teacher' || !actor.staffId) return null;
+export async function teacherDashboard(actor: Actor, opts: { mine?: boolean } = {}) {
+  // A plain teacher always gets this. A principal/VP/exam officer who ALSO
+  // holds a teaching assignment only gets it when explicitly asked for
+  // (opts.mine, set by /portal?scope=mine) — by default they land on
+  // SchoolDashboard, matching every other office-vs-teaching split in this
+  // app (see reachableClassIds' `mine` in lib/queries.ts).
+  if (!actor.staffId) return null;
+  if (actor.role !== 'teacher' && !opts.mine) return null;
   const staffId = actor.staffId;
 
   // The marking queue is its own forSchool read; keep it out of the block

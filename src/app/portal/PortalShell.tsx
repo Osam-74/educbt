@@ -19,7 +19,13 @@ export function portalAreas(role: string, teaching: boolean, classTeacher: boole
   // "Classes" / "Students" pages (?scope=mine forces the teacher-owned view —
   // see /portal/classes and /portal/students — for a wide role that also
   // teaches; a no-op for a plain teacher, who always gets that view anyway).
-  if (role === 'teacher' || role === 'exam_officer' || (wide && teaching)) areas.push({ label: 'Teaching', items: [item('', 'Dashboard', 'area:teacher'), item('/classes?scope=mine', 'My assignments', 'classes'), ...(classTeacher || wide ? [item('/students?scope=mine', 'My students', 'students')] : []), item('/ca', 'Record scores', 'scores')] });
+  // Dashboard: a plain teacher's own '/portal' already resolves to
+  // TeacherDashboard with no scope needed. A wide role who ALSO teaches
+  // reaches the SAME '/portal' route from School > Overview, so their
+  // Teaching > Dashboard needs ?scope=mine to land on TeacherDashboard
+  // instead of the office overview they'd otherwise get by default.
+  const teachingDashboardHref = wide && teaching ? '?scope=mine' : '';
+  if (role === 'teacher' || role === 'exam_officer' || (wide && teaching)) areas.push({ label: 'Teaching', items: [item(teachingDashboardHref, 'Dashboard', 'area:teacher'), item('/classes?scope=mine', 'My assignments', 'classes'), ...(classTeacher || wide ? [item('/students?scope=mine', 'My students', 'students')] : []), item('/ca', 'Record scores', 'scores')] });
   if (wide) areas.find(a => a.label === 'School')!.items.push(item('/settings', 'School Settings', 'settings'));
   else if (role === 'teacher' && classTeacher) areas.find(a => a.label === 'Teaching')!.items.push(item('/settings', 'Signatures & remarks', 'edit'));
   // Legacy parity (PortalRouter::sections()['exams']): Overview, Question

@@ -55,6 +55,73 @@ async function reachableClassIds(actor: Actor, mine = false): Promise<number[] |
   });
 }
 
+/**
+ * Classes this actor heads as CLASS TEACHER — legacy templates/portal/teacher/
+ * students.php scoped strictly to assignment_type='class_teacher', not every
+ * class the teacher merely holds a subject in (that broader set is
+ * reachableClassIds, used by "My assignments"). A wide role only gets a
+ * result here if they ALSO hold a class_teacher assignment themselves.
+ */
+export async function headedClassIds(actor: Actor): Promise<number[]> {
+  if (!actor.staffId) return [];
+  return forSchool(actor.schoolId, async (tx) => {
+    const rows = await tx
+      .select({ classId: schema.staffAssignments.classId })
+      .from(schema.staffAssignments)
+      .where(and(
+        eq(schema.staffAssignments.staffId, actor.staffId!),
+        eq(schema.staffAssignments.assignmentType, 'class_teacher'),
+        eq(schema.staffAssignments.status, 'active'),
+      ));
+    return rows.map((r) => r.classId).filter((id): id is number => id !== null);
+  });
+}
+
+export type MyStudentRow = {
+  id: number;
+  admissionNumber: string;
+  firstName: string;
+  lastName: string;
+  status: string;
+  parentName: string | null;
+  parentPhone: string | null;
+};
+
+/**
+ * The roster for ONE class a class teacher heads — legacy My Students
+ * (templates/portal/teacher/students.php): name, admission number, parent /
+ * guardian, phone, status. classId must be one of headedClassIds(actor); an
+ * id outside that set yields an empty roster rather than another class's
+ * students, the same fail-closed shape as reachableClassIds.
+ */
+export async function myStudents(actor: Actor, classId: number): Promise<MyStudentRow[]> {
+  const headed = await headedClassIds(actor);
+  if (!headed.includes(classId)) return [];
+
+  return forSchool(actor.schoolId, async (tx) => tx
+    .select({
+      id: schema.students.id,
+      admissionNumber: schema.students.admissionNumber,
+      firstName: schema.students.firstName,
+      lastName: schema.students.lastName,
+      status: schema.students.status,
+      parentName: schema.students.parentName,
+      parentPhone: schema.students.parentPhone,
+    })
+    .from(schema.students)
+    .innerJoin(schema.enrollments, and(
+      eq(schema.enrollments.studentId, schema.students.id),
+      eq(schema.enrollments.classId, classId),
+      eq(schema.enrollments.status, 'active'),
+    ))
+    .where(and(
+      eq(schema.students.schoolId, actor.schoolId),
+      inArray(schema.students.status, ['active', 'pending_approval']),
+    ))
+    .orderBy(asc(schema.students.lastName), asc(schema.students.firstName))
+    .limit(500));
+}
+
 export type StudentRow = {
   id: number;
   admissionNumber: string;

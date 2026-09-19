@@ -11,19 +11,39 @@ import FamilyChildren from './children/FamilyChildren';
 
 export const dynamic = 'force-dynamic';
 
-export default async function PortalHome() {
+export default async function PortalHome({
+  searchParams,
+}: {
+  searchParams: Promise<{ scope?: string }>;
+}) {
   const actor = await requireSchoolSession();
+  // A principal/VP/exam officer who also holds a teaching assignment reaches
+  // this same route from the sidebar's "Teaching > Dashboard" link via
+  // ?scope=mine — without it they'd always land on SchoolDashboard below
+  // (which fires for any wide role) and the Teaching area's own dashboard
+  // would be unreachable, showing the office overview under both links.
+  const mine = (await searchParams).scope === 'mine';
 
   // The office (principal, vice principal, exam officer) lands on the school
   // overview; a teacher lands on their own teaching surface; a parent lands
   // on their children (legacy made that list the parent dashboard itself).
   // Each service returns null for every other role, so this dispatch can
   // never hand a dashboard to someone whose role does not earn it.
-  const dashboard = await schoolDashboard(actor);
-  if (dashboard) return <SchoolDashboard data={dashboard} role={actor.role} />;
+  if (!mine) {
+    const dashboard = await schoolDashboard(actor);
+    if (dashboard) return <SchoolDashboard data={dashboard} role={actor.role} />;
+  }
 
-  const teaching = await teacherDashboard(actor);
+  const teaching = await teacherDashboard(actor, { mine });
   if (teaching) return <TeacherDashboard data={teaching} />;
+
+  if (mine) {
+    // ?scope=mine was requested but this actor holds no teaching assignment
+    // (staffId) — fall back to the office overview rather than falling all
+    // the way through to the bare "Dashboard" placeholder below.
+    const dashboard = await schoolDashboard(actor);
+    if (dashboard) return <SchoolDashboard data={dashboard} role={actor.role} />;
+  }
 
   if (actor.role === 'parent') {
     const children = await forSchool(actor.schoolId, (tx) => guardianChildren(tx, actor.userId));

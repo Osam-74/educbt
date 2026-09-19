@@ -1,6 +1,7 @@
+import Link from 'next/link';
 import '../school-table.css';
 import { requireSchoolSession } from '@/lib/session';
-import { isSchoolWide, listStudents, listClasses, pendingApprovalCount } from '@/lib/queries';
+import { isSchoolWide, listStudents, listClasses, pendingApprovalCount, headedClassIds, myStudents } from '@/lib/queries';
 import { RegisterStudentForm, ImportStudentsForm, StudentRowForm, AutoSubmitSelect } from './StudentForms';
 
 export const dynamic = 'force-dynamic';
@@ -19,21 +20,95 @@ export default async function StudentsPage({
   // branch, matching the same fix applied to /portal/classes.
   const mine = params.scope === 'mine';
 
+  // "My students" (Teaching area, ?scope=mine) is a DIFFERENT page from the
+  // School area's Students list, not the same list re-scoped — legacy
+  // templates/portal/teacher/students.php is a plain read-only roster for
+  // the classes this actor heads as CLASS TEACHER specifically (not every
+  // class they merely teach a subject in), with no search/status filter and
+  // no enrol form (the legacy plugin never wires a form to that capability
+  // from this page either). Handle it as its own render, before the shared
+  // office layout below.
+  if (mine) {
+    const headed = await headedClassIds(actor);
+    const classId = params.class ? Number(params.class) : headed[0];
+    const classOptions = headed.length
+      ? await listClasses(actor, { mine: true })
+      : [];
+    const visibleClasses = classOptions.filter((c) => headed.includes(c.id));
+    const roster = classId ? await myStudents(actor, classId) : [];
+
+    return (
+      <>
+        <h1 className="page-title">My Students</h1>
+
+        <div className="stack">
+          <section className="card sa-card">
+            {visibleClasses.length === 0 ? (
+              <p className="sa-empty">You are not the class teacher of any class. The school office assigns class teacher roles under Staff.</p>
+            ) : (
+              <form className="sa-toolbar" method="get">
+                <input type="hidden" name="scope" value="mine" />
+                <AutoSubmitSelect name="class" defaultValue={String(classId ?? '')} aria-label="Choose class">
+                  {visibleClasses.map((c) => (
+                    <option key={c.id} value={c.id}>{c.displayName}</option>
+                  ))}
+                </AutoSubmitSelect>
+                <noscript><button type="submit" className="sa-btn">Show</button></noscript>
+              </form>
+            )}
+          </section>
+
+          {visibleClasses.length > 0 && (
+            <section className="card sa-card">
+              <h2>Students <span className="muted">({roster.length})</span></h2>
+
+              {roster.length === 0 ? (
+                <p className="sa-empty">No active students in this class for the current session.</p>
+              ) : (
+                <div className="sa-table-wrap">
+                  <table className="sa-table">
+                    <thead>
+                      <tr>
+                        <th>#</th><th>Name</th><th>Admission No.</th><th>Parent / Guardian</th><th>Phone</th><th>Status</th><th />
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {roster.map((s, i) => (
+                        <tr key={s.id}>
+                          <td>{i + 1}</td>
+                          <td><Link href={`/portal/students/${s.id}`}>{s.lastName}, {s.firstName}</Link></td>
+                          <td>{s.admissionNumber}</td>
+                          <td>{s.parentName || '—'}</td>
+                          <td>{s.parentPhone || '—'}</td>
+                          <td><span className={`sa-pill sa-pill--${s.status}`}>{s.status === 'pending_approval' ? 'Pending Approval' : s.status}</span></td>
+                          <td><Link className="sa-btn" href={`/portal/students/${s.id}`}>View profile</Link></td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </section>
+          )}
+        </div>
+      </>
+    );
+  }
+
   const [{ rows, scopeNote }, classes, pendingCount] = await Promise.all([
     listStudents(actor, {
       search: params.q?.trim(),
       status,
       classId: params.class ? Number(params.class) : undefined,
-      mine,
     }),
-    listClasses(actor, { mine }),
+    listClasses(actor),
     pendingApprovalCount(actor),
   ]);
 
   // Teachers enrol into their own classes only, and the record waits for the
   // office's approval (legacy teacher_add_student). The service enforces it;
   // the flag here only changes the form's wording.
-  const office = isSchoolWide(actor.role) && !mine;
+  const office = isSchoolWide(actor.role);
 
   return (
     <>
