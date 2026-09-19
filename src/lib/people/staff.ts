@@ -687,3 +687,60 @@ export async function dropAssignment(actor: Actor, assignmentId: number): Promis
     });
   });
 }
+
+// ── Assignment builder pre-fill ──────────────────────────────────────────────
+
+export type DutyRow = { staffId: number; type: string; levelId: number | null; subjectId: number | null };
+export type AssignmentPrefill = { classTeacherLevelIds: number[]; subjectTeacherLevelIds: number[]; subjectIds: number[] };
+
+/**
+ * What each active teacher already holds, for the "Assign teaching duties"
+ * builder's pre-fill (portal/staff/page.tsx → StaffForms.tsx). Pure and
+ * DB-free so the one rule that matters is unit-testable on its own:
+ *
+ * CLASS-TEACHER LEVELS AND SUBJECT-TEACHER LEVELS MUST NEVER MIX. A teacher
+ * can be the class teacher of one class and a subject teacher of a completely
+ * different one — those are independent duties. Merging them into one level
+ * set (a real bug this fixed) meant picking "Class teacher" for someone who
+ * was only ever a subject teacher somewhere pre-selected that class as if it
+ * were already their class-teacher assignment, and vice versa.
+ */
+export function buildAssignmentPrefill(dutyRows: DutyRow[], activeStaffIds: number[]): Record<number, AssignmentPrefill> {
+  const activeSet = new Set(activeStaffIds);
+  const result: Record<number, AssignmentPrefill> = {};
+  for (const staffId of activeStaffIds) {
+    result[staffId] = { classTeacherLevelIds: [], subjectTeacherLevelIds: [], subjectIds: [] };
+  }
+  const classTeacherSets = new Map<number, Set<number>>();
+  const subjectTeacherSets = new Map<number, Set<number>>();
+  const subjectSets = new Map<number, Set<number>>();
+  for (const d of dutyRows) {
+    if (!activeSet.has(d.staffId)) continue;
+    if (d.type === 'class_teacher') {
+      if (d.levelId != null) {
+        const set = classTeacherSets.get(d.staffId) ?? new Set<number>();
+        set.add(d.levelId);
+        classTeacherSets.set(d.staffId, set);
+      }
+    } else {
+      if (d.levelId != null) {
+        const set = subjectTeacherSets.get(d.staffId) ?? new Set<number>();
+        set.add(d.levelId);
+        subjectTeacherSets.set(d.staffId, set);
+      }
+      if (d.subjectId != null) {
+        const set = subjectSets.get(d.staffId) ?? new Set<number>();
+        set.add(d.subjectId);
+        subjectSets.set(d.staffId, set);
+      }
+    }
+  }
+  for (const staffId of activeStaffIds) {
+    result[staffId] = {
+      classTeacherLevelIds: [...(classTeacherSets.get(staffId) ?? [])],
+      subjectTeacherLevelIds: [...(subjectTeacherSets.get(staffId) ?? [])],
+      subjectIds: [...(subjectSets.get(staffId) ?? [])],
+    };
+  }
+  return result;
+}

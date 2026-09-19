@@ -3,6 +3,7 @@ import { requireSchoolSession, requireRole } from '@/lib/session';
 import { forSchool, schema } from '@/db';
 import { and, asc, eq } from 'drizzle-orm';
 import { RegisterStaffForm, AssignDutiesForm, StaffRowForm, type StaffRow } from './StaffForms';
+import * as staffLib from '@/lib/people/staff';
 
 export const dynamic = 'force-dynamic';
 
@@ -151,21 +152,19 @@ export default async function StaffPage() {
     classIds: data.classRows.filter((c) => c.levelId === l.id).map((c) => Number(c.id)),
   }));
 
-  // Pre-fill data for the builder: what each active teacher already holds,
-  // keyed by level id / subject id (plugin's educbtExistingAssignments).
-  const existing: Record<number, { levelIds: number[]; subjectIds: number[] }> = {};
-  for (const s of staff) {
-    if (s.status !== 'active') continue;
-    if (!byStaff.has(s.id)) continue;
-    const levelIds = new Set<number>();
-    const subjectIds = new Set<number>();
-    for (const d of data.dutyRows) {
-      if (d.staffId !== s.id) continue;
-      if (d.levelId != null) levelIds.add(Number(d.levelId));
-      if (d.type === 'subject_teacher' && d.subjectId != null) subjectIds.add(Number(d.subjectId));
-    }
-    existing[s.id] = { levelIds: [...levelIds], subjectIds: [...subjectIds] };
-  }
+  // Pre-fill data for the builder: what each active teacher already holds
+  // (plugin's educbtExistingAssignments), computed by the same pure function
+  // the unit test in lib/people/staff-prefill.test.ts pins down — see
+  // buildAssignmentPrefill's own comment for the rule it enforces.
+  const activeStaffIds = staff.filter((s) => s.status === 'active' && byStaff.has(s.id)).map((s) => s.id);
+  const existing = staffLib.buildAssignmentPrefill(
+    data.dutyRows.map((d) => ({
+      staffId: Number(d.staffId), type: d.type,
+      levelId: d.levelId == null ? null : Number(d.levelId),
+      subjectId: d.subjectId == null ? null : Number(d.subjectId),
+    })),
+    activeStaffIds,
+  );
 
   const staffOptions = staff
     .filter((s) => s.status === 'active')

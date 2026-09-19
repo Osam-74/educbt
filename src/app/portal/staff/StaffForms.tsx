@@ -165,7 +165,7 @@ export function AssignDutiesForm({ staffOptions, levels, subjects, existing }: {
   staffOptions: Array<{ id: number; name: string }>;
   levels: LevelOption[];
   subjects: SubjectOption[];
-  existing: Record<number, { levelIds: number[]; subjectIds: number[] }>;
+  existing: Record<number, { classTeacherLevelIds: number[]; subjectTeacherLevelIds: number[]; subjectIds: number[] }>;
 }) {
   const [state, action, pending] = useActionState(staffAction, EMPTY);
   const [kind, setKind] = useState<'subject_teacher' | 'class_teacher'>('subject_teacher');
@@ -176,23 +176,45 @@ export function AssignDutiesForm({ staffOptions, levels, subjects, existing }: {
     setRows((rs) => rs.map((r) => r.key === key ? { ...r, ...patch } : r));
   };
 
-  const chooseTeacher = (key: number, staffId: number) => {
+  // Which levels pre-fill depends on the DUTY BEING BUILT, not everything
+  // this teacher happens to hold — a class-teacher pick must only pre-select
+  // levels where they are ALREADY the class teacher, never levels where they
+  // merely teach a subject, and vice versa. See page.tsx's `existing` builder.
+  //
+  // Shared by chooseTeacher (a row's Teacher select) AND changeKind (the top
+  // "What are you assigning?" select): switching kind after a teacher and
+  // classes were already chosen must re-derive the pre-fill for the NEW kind,
+  // not leave the previous kind's classes sitting there checked. That stale
+  // carry-over — a subject-teacher's class still showing selected once you
+  // switch to "Class teacher" — was the actual bug: the two duties were, in
+  // effect, sharing one class list.
+  const prefillFor = (staffId: number, forKind: 'subject_teacher' | 'class_teacher') => {
     const held = staffId ? existing[staffId] : undefined;
-    if (!held) { update(key, { staffId, levelIds: [], subjectIds: [], prefill: null }); return; }
-    if (kind === 'class_teacher') {
-      const names = held.levelIds.map((id) => levels.find((l) => l.id === id)?.name).filter(Boolean);
-      update(key, {
-        staffId, levelIds: held.levelIds, subjectIds: [],
-        prefill: names.length ? `Pre-filled: ${names.join(', ')}` : null,
-      });
-    } else {
-      const subjectNames = held.subjectIds.map((id) => subjects.find((s) => s.id === id)?.name).filter(Boolean);
-      const levelNames = held.levelIds.map((id) => levels.find((l) => l.id === id)?.name).filter(Boolean);
-      update(key, {
-        staffId, levelIds: held.levelIds, subjectIds: held.subjectIds,
-        prefill: `Pre-filled: ${subjectNames.length} subject${subjectNames.length === 1 ? '' : 's'}, ${levelNames.length} class level${levelNames.length === 1 ? '' : 's'}`,
-      });
+    if (!held) return { levelIds: [] as number[], subjectIds: [] as number[], prefill: null as string | null };
+    if (forKind === 'class_teacher') {
+      const levelIds = held.classTeacherLevelIds;
+      const names = levelIds.map((id) => levels.find((l) => l.id === id)?.name).filter(Boolean);
+      return { levelIds, subjectIds: [], prefill: names.length ? `Pre-filled: ${names.join(', ')}` : null };
     }
+    const levelIds = held.subjectTeacherLevelIds;
+    const subjectNames = held.subjectIds.map((id) => subjects.find((s) => s.id === id)?.name).filter(Boolean);
+    const levelNames = levelIds.map((id) => levels.find((l) => l.id === id)?.name).filter(Boolean);
+    return {
+      levelIds, subjectIds: held.subjectIds,
+      prefill: (subjectNames.length || levelNames.length)
+        ? `Pre-filled: ${subjectNames.length} subject${subjectNames.length === 1 ? '' : 's'}, ${levelNames.length} class level${levelNames.length === 1 ? '' : 's'}`
+        : null,
+    };
+  };
+
+  const chooseTeacher = (key: number, staffId: number) => {
+    if (!staffId) { update(key, { staffId, levelIds: [], subjectIds: [], prefill: null }); return; }
+    update(key, { staffId, ...prefillFor(staffId, kind) });
+  };
+
+  const changeKind = (next: 'subject_teacher' | 'class_teacher') => {
+    setKind(next);
+    setRows((rs) => rs.map((r) => (r.staffId ? { ...r, ...prefillFor(r.staffId, next) } : { ...r, levelIds: [], subjectIds: [], prefill: null })));
   };
 
   const toggleLevel = (key: number, levelId: number) => {
@@ -240,7 +262,7 @@ export function AssignDutiesForm({ staffOptions, levels, subjects, existing }: {
             <label htmlFor="bulk_type">What are you assigning?</label>
             <select
               id="bulk_type" value={kind}
-              onChange={(e) => setKind(e.target.value === 'class_teacher' ? 'class_teacher' : 'subject_teacher')}
+              onChange={(e) => changeKind(e.target.value === 'class_teacher' ? 'class_teacher' : 'subject_teacher')}
             >
               <option value="subject_teacher">Subject teachers</option>
               <option value="class_teacher">Class teachers</option>
