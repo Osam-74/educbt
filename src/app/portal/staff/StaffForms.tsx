@@ -253,7 +253,11 @@ export function AssignDutiesForm({ staffOptions, levels, subjects, existing }: {
             <div key={row.key} className="sa-assign-row">
               <div className="sa-field">
                 <label>Teacher</label>
-                <select value={row.staffId || ''} onChange={(e) => chooseTeacher(row.key, Number(e.target.value))}>
+                <select
+                  name={`row${row.key}.staffId`}
+                  value={row.staffId || ''}
+                  onChange={(e) => chooseTeacher(row.key, Number(e.target.value))}
+                >
                   <option value="">Choose a teacher</option>
                   {staffOptions.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
                 </select>

@@ -2,7 +2,7 @@ import { requirePlatformSession } from '@/lib/platform/session';
 import { listPlatformManagers } from '@/lib/platform/managers';
 import { PaIcon } from '../icons';
 import { ManagersForm } from './ManagersForm';
-import { setManagerStatusAction } from './actions';
+import { ManagerRowActions } from './ManagerRowActions';
 
 export const dynamic = 'force-dynamic';
 
@@ -18,7 +18,7 @@ export const dynamic = 'force-dynamic';
 export default async function ManagersPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string }>;
+  searchParams: Promise<{ error?: string; ok?: string }>;
 }) {
   const params = await searchParams;
   const actor = await requirePlatformSession();
@@ -36,6 +36,11 @@ export default async function ManagersPage({
       {params.error ? (
         <div className="pa-alert pa-alert--error" style={{ marginBottom: 16 }}>
           <PaIcon name="alert" width={15} height={15} />{params.error}
+        </div>
+      ) : null}
+      {params.ok ? (
+        <div className="pa-alert pa-alert--ok" style={{ marginBottom: 16 }}>
+          <PaIcon name="checkCircle" width={15} height={15} />{params.ok}
         </div>
       ) : null}
 
@@ -98,17 +103,7 @@ export default async function ManagersPage({
                           {isSelf ? (
                             <span style={{ fontSize: 12, color: 'var(--pa-stone-400)' }}>Current session</span>
                           ) : (
-                            <form action={setManagerStatusAction}>
-                              <input type="hidden" name="managerId" value={m.id} />
-                              <input type="hidden" name="status" value={active ? 'suspended' : 'active'} />
-                              <button
-                                type="submit"
-                                className={active ? 'pa-btn pa-btn--danger pa-btn--sm' : 'pa-btn pa-btn--outline pa-btn--sm'}
-                                title={active ? 'Suspend this manager' : 'Reactivate this manager'}
-                              >
-                                {active ? 'Suspend' : 'Reactivate'}
-                              </button>
-                            </form>
+                            <ManagerRowActions managerId={m.id} loginId={m.loginId} active={active} />
                           )}
                         </td>
                       </tr>

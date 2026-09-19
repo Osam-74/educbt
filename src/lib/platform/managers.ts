@@ -303,3 +303,110 @@ export async function setManagerStatus(
     });
   });
 }
+
+// ── Resetting a manager's password ────────────────────────────────────────────
+
+export type ManagerPasswordReset = { loginId: string; temporaryPassword: string };
+
+/**
+ * Issues a fresh temporary password exactly like resetStaffPassword() does
+ * for school staff: hashed before the transaction opens, forces a change at
+ * next sign-in, and revokes every existing session so the old password
+ * stops working immediately. A manager resets their OWN password from
+ * Account Settings, not here — self-service is refused so this screen
+ * cannot be used to silently take over the caller's own account.
+ */
+export async function resetManagerPassword(
+  actor: PlatformActor,
+  managerId: number,
+): Promise<ManagerPasswordReset> {
+  assertPlatformAdmin(actor);
+
+  if (managerId === actor.userId) {
+    throw new ManagerConflictError('Change your own password from Account Settings, not here.');
+  }
+
+  const temporaryPassword = generateInitialPassword(12);
+  const passwordHash = await hashPassword(temporaryPassword);
+
+  return asPlatformAdmin(actor.userId, `Reset password for platform manager account #${managerId}`, async (tx) => {
+    const [target] = await tx
+      .select({ id: schema.users.id, loginId: schema.users.loginId, role: schema.users.role })
+      .from(schema.users)
+      .where(and(eq(schema.users.id, managerId), isNull(schema.users.schoolId)))
+      .limit(1);
+
+    if (!target || target.role !== 'platform_admin') throw new ManagerNotFoundError();
+
+    await tx.update(schema.users).set({
+      passwordHash,
+      mustChangePassword: true,
+      failedAttempts: 0,
+      lockedUntil: null,
+    }).where(eq(schema.users.id, managerId));
+
+    await tx.delete(schema.sessions).where(eq(schema.sessions.userId, managerId));
+
+    await tx.insert(schema.auditLog).values({
+      schoolId: null,
+      actorUserId: actor.userId,
+      actorRole: 'platform_admin',
+      action: 'platform_admin.manager_password_reset',
+      entityType: 'users',
+      entityId: managerId,
+      after: { temporaryPasswordIssued: true, sessionsRevoked: true },
+    });
+
+    return { loginId: target.loginId, temporaryPassword };
+  });
+}
+
+// ── Deleting a manager ─────────────────────────────────────────────────────────
+
+/**
+ * Permanent removal — distinct from suspend/reactivate, which keeps the
+ * account around to bring back. Same self-protection and "someone must be
+ * left standing" guardrails as setManagerStatus(): you cannot delete your
+ * own account, and the platform can never be left with zero manager
+ * accounts (active or suspended) — that would be a platform no one can
+ * ever sign into again. Audit log keeps a before-snapshot since the row
+ * itself is gone after this.
+ */
+export async function deletePlatformManager(actor: PlatformActor, managerId: number): Promise<void> {
+  assertPlatformAdmin(actor);
+
+  if (managerId === actor.userId) {
+    throw new ManagerConflictError('You cannot delete your own account.');
+  }
+
+  await asPlatformAdmin(actor.userId, `Delete platform manager account #${managerId}`, async (tx) => {
+    const [target] = await tx
+      .select({ id: schema.users.id, loginId: schema.users.loginId, status: schema.users.status, role: schema.users.role })
+      .from(schema.users)
+      .where(and(eq(schema.users.id, managerId), isNull(schema.users.schoolId)))
+      .limit(1);
+
+    if (!target || target.role !== 'platform_admin') throw new ManagerNotFoundError();
+
+    const allManagers = await tx
+      .select({ id: schema.users.id })
+      .from(schema.users)
+      .where(and(isNull(schema.users.schoolId), eq(schema.users.role, 'platform_admin')));
+
+    if (allManagers.length <= 1) {
+      throw new ManagerConflictError('At least one platform manager account must remain.');
+    }
+
+    await tx.delete(schema.users).where(eq(schema.users.id, managerId));
+
+    await tx.insert(schema.auditLog).values({
+      schoolId: null,
+      actorUserId: actor.userId,
+      actorRole: 'platform_admin',
+      action: 'platform_admin.manager_deleted',
+      entityType: 'users',
+      entityId: managerId,
+      before: { loginId: target.loginId, status: target.status },
+    });
+  });
+}

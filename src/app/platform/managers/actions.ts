@@ -17,6 +17,8 @@ import { requirePlatformSession } from '@/lib/platform/session';
 import {
   createPlatformManager,
   setManagerStatus,
+  resetManagerPassword,
+  deletePlatformManager,
   ManagerConflictError,
   ManagerNotFoundError,
   ManagerPermissionError,
@@ -26,6 +28,11 @@ import {
 export type ManagerCreatedState =
   | { status: 'idle' }
   | { status: 'error'; message: string; fieldErrors?: Record<string, string> }
+  | { status: 'success'; result: { loginId: string; temporaryPassword: string } };
+
+export type ManagerPasswordResetState =
+  | { status: 'idle' }
+  | { status: 'error'; message: string }
   | { status: 'success'; result: { loginId: string; temporaryPassword: string } };
 
 export async function createManagerAction(
@@ -89,4 +96,60 @@ export async function setManagerStatusAction(formData: FormData): Promise<void> 
 
   revalidatePath('/platform/managers');
   redirect('/platform/managers');
+}
+
+
+export async function resetManagerPasswordAction(
+  _prev: ManagerPasswordResetState,
+  formData: FormData,
+): Promise<ManagerPasswordResetState> {
+  const actor = await requirePlatformSession();
+  const managerId = Number(formData.get('managerId'));
+
+  if (!Number.isInteger(managerId) || managerId <= 0) {
+    return { status: 'error', message: 'That manager could not be found.' };
+  }
+
+  try {
+    const result = await resetManagerPassword(actor, managerId);
+    return { status: 'success', result };
+  } catch (error) {
+    const message =
+      error instanceof ManagerPermissionError ||
+      error instanceof ManagerConflictError ||
+      error instanceof ManagerNotFoundError
+        ? error.message
+        : 'The password could not be reset.';
+    if (!(error instanceof ManagerPermissionError || error instanceof ManagerConflictError || error instanceof ManagerNotFoundError)) {
+      console.error('resetManagerPasswordAction failed', error);
+    }
+    return { status: 'error', message };
+  }
+}
+
+export async function deleteManagerAction(formData: FormData): Promise<void> {
+  const actor = await requirePlatformSession();
+  const managerId = Number(formData.get('managerId'));
+
+  if (!Number.isInteger(managerId) || managerId <= 0) {
+    redirect(`/platform/managers?error=${encodeURIComponent('That manager could not be found.')}`);
+  }
+
+  try {
+    await deletePlatformManager(actor, managerId);
+  } catch (error) {
+    const message =
+      error instanceof ManagerPermissionError ||
+      error instanceof ManagerConflictError ||
+      error instanceof ManagerNotFoundError
+        ? error.message
+        : 'The manager could not be deleted.';
+    if (!(error instanceof ManagerPermissionError || error instanceof ManagerConflictError || error instanceof ManagerNotFoundError)) {
+      console.error('deleteManagerAction failed', error);
+    }
+    redirect(`/platform/managers?error=${encodeURIComponent(message)}`);
+  }
+
+  revalidatePath('/platform/managers');
+  redirect('/platform/managers?ok=' + encodeURIComponent('Manager account deleted.'));
 }

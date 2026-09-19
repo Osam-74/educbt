@@ -39,6 +39,11 @@ body {
 
 .auth-card h1 { margin: 0 0 4px; font-size: 20px; }
 .auth-card .sub { margin: 0 0 22px; color: var(--muted); font-size: 14px; }
+/* Heading/subtitle stay centered above; the form itself reads left-to-
+   right like every other form in the app — a centered label above a
+   full-width input looks fine for one field, but drifts noticeably once a
+   form has more than one (auth-shell login forms, forgot/reset password). */
+.auth-card form { text-align: left; }
 
 label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 6px; }
 
@@ -209,7 +214,20 @@ button[type='submit']:not(.sa-btn):not(.primary):not(.sd-action):disabled { opac
 .facts dd { margin: 0; font-weight: 500; }
 
 /* ── Question authoring ─────────────────────────────────────────────────── */
-.card textarea, .card input[type='text'], .card input[type='number'], .card select {
+/* :not(.sa-card) on the .card element itself — every filter toolbar and
+   inline edit row (Activity Log, Students, Staff, Subjects, Classes,
+   Promotion...) lives inside a <section className="card sa-card">, and
+   this rule's two-class-plus-element specificity tied with (and, by
+   source order, beat) .sa-toolbar/.sa-card's own select styling. The
+   result: every filter <select> and the search <input> silently got
+   width:100%+margin-bottom:14px here, so each one filled the whole row on
+   its own line instead of sitting inline — the toolbar looked and behaved
+   like four stacked fields instead of one filter bar (same specificity-
+   collision family as the .sa-btn exclusion below). Plain .card forms
+   (Transcripts, Broadsheet, Promotion's commit/reverse, Review) never
+   carry sa-card too, so they keep this styling unchanged. */
+.card:not(.sa-card) textarea, .card:not(.sa-card) input[type='text'],
+.card:not(.sa-card) input[type='number'], .card:not(.sa-card) select {
   width: 100%; padding: 10px 12px; border: 1.5px solid var(--line);
   border-radius: 9px; font-size: 14.5px; margin-bottom: 14px;
   font-family: inherit; background: var(--white); color: var(--ink);
