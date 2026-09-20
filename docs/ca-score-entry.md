@@ -18,7 +18,11 @@ The schema already stores school settings and defines `AssessmentComponent`, but
 ]
 ```
 
-These values are an example, not a default or a prescribed grading policy. Only non-exam components are offered. Missing/invalid configuration disables entry with setup guidance. Configuration is re-read when saving, including the maximum. This branch does not configure any production school. A school-settings editor and its navigation remain follow-ups.
+These values are an example, not a default or a prescribed grading policy. Missing/invalid configuration disables entry with setup guidance. Configuration is re-read when saving, including the maximum. This branch does not configure any production school. A school-settings editor and its navigation remain follow-ups.
+
+### The exam component, for a written paper
+
+Non-exam components are always offered. The exam component (`isExam: true`) is normally read-only here — a CBT paper's mark comes from the marked attempt, never typed in. The one exception: when the governing exam paper for that exact class+subject is `delivery_mode: 'written'` (a whole series set to Written, or an individual subject declared Written under a Mixed series — see `docs/question-bank-completion.md`) AND that paper has actually been sat (`published` or `closed`, never `draft`), the exam cell becomes editable and is entered by hand exactly like a CA component: same upsert (`enterScore`), same identity (school/student/subject/session/term/component), same lock/review/publish gating. A CBT paper, even published, never accepts manual entry — `lib/exam/compose.ts`'s `deliveryMode` on `exam_papers` is what's checked, not the series' declared mode, since an individual subject can differ under Mixed. `lib/results/workflow.ts` reads this manual score the same way it reads a marked CBT attempt when compiling results.
 
 ## Service and security
 
@@ -44,7 +48,7 @@ npx tsx src/db/test-ca.ts
 
 The first has 20 checks and requires no database. Integration tests require `DATABASE_URL_APP` and `DATABASE_URL_UNPOOLED` pointing at a disposable LOCAL database whose name ends in `_ca_test`. Prepare migrations/RLS and the non-owner, non-BYPASSRLS app role first.
 
-Integration creates UUID-named schools and deletes only its fixtures in finally, including non-cascading score/result/audit rows. It does not depend on DEMO fixtures. 59 service/RLS/concurrency checks; optional `CA_TEST_HTTP_URL=http://127.0.0.1:3017` adds five real HTTP route checks against a running app using the same disposable DB. The HTTP checks verify authentication redirect, rendered context, read-only state, forged-scope rejection and configuration guidance. They are not a visual or interactive browser test.
+Integration creates UUID-named schools and deletes only its fixtures in finally, including non-cascading score/result/audit rows. It does not depend on DEMO fixtures. 64 service/RLS/concurrency checks (including the written-exam manual-entry gating above); optional `CA_TEST_HTTP_URL=http://127.0.0.1:3017` adds five real HTTP route checks against a running app using the same disposable DB. The HTTP checks verify authentication redirect, rendered context, read-only state, forged-scope rejection and configuration guidance. They are not a visual or interactive browser test.
 
 ## Review and integration
 
