@@ -42,6 +42,7 @@
     "test:dashboards": "tsx src/db/test-dashboards.ts",
     "test:exam-dashboard": "tsx src/db/test-exam-dashboard.ts",
     "test:marking-sessions": "tsx src/db/test-marking-sessions.ts",
+    "test:registration": "tsx src/db/test-registration.ts",
     "test:timetable": "tsx src/db/test-timetable.ts",
     "test:promotion": "tsx src/db/test-promotion.ts",
     "bootstrap:platform-admin": "tsx scripts/bootstrap-platform-admin.ts",
