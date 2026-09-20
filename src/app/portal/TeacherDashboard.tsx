@@ -36,7 +36,10 @@ export default function TeacherDashboard({ data, canReview }: { data: NonNullabl
   // Result Pipeline card shows.
   const pipelineCounts = new Map<string, number>();
   for (const c of data.headed) for (const p of c.pipeline) pipelineCounts.set(p.state, (pipelineCounts.get(p.state) ?? 0) + p.students);
-  const hasPipeline = data.headed.length > 0 && pipelineCounts.size > 0;
+  // Legacy shows this card whenever the teacher heads a class, zero counts
+  // and all — hiding it just because nothing has reached a stage yet made an
+  // empty pilot class look like the card had never been built.
+  const hasPipeline = data.headed.length > 0;
 
   return <div className="school-dashboard">
     <div className="sd-heading">

@@ -87,8 +87,8 @@ async function main() {
       rejects(() => staff.registerStaff(a.eo, { firstName: 'No', lastName: 'Way', role: 'teacher' }), 'permission'));
 
     const first = await staff.registerStaff(a.principal, { firstName: 'Grace', lastName: 'Okafor', title: 'Mrs', gender: 'female', email: 'g.okafor@example.com', role: 'teacher' });
-    await check('staff numbers follow CODE/STF/NNN', () => {
-      assert.match(first.staffNumber, new RegExp(`^${a.code}/STF/\\d{3,4}$`));
+    await check('staff numbers follow PREFIX/SF/NNNN', () => {
+      assert.match(first.staffNumber, new RegExp(`^${a.code}/SF/\\d{4}$`));
     });
     await check('login is the staff number (slashes become dots) with a temporary password', async () => {
       assert.equal(first.loginId, first.staffNumber.replace(/\//g, '.'));
@@ -208,8 +208,8 @@ async function main() {
     const s1 = await students.registerStudent(a.principal, {
       firstName: 'Ada', lastName: 'Obi', gender: 'female', dateOfBirth: '2010-04-01', classId: a.classes[0]!.id,
     });
-    await check('admission numbers follow CODE/YEAR/0001 and academic year', () => {
-      assert.match(s1.admissionNumber, new RegExp(`^${a.code}/\\d{4}/\\d{4}$`));
+    await check('admission numbers follow PREFIX/YY/0001 and academic year', () => {
+      assert.match(s1.admissionNumber, new RegExp(`^${a.code}/\\d{2}/\\d{4}$`));
     });
     await check('initial password is the surname and change is forced', async () => {
       assert.equal(s1.initialPassword, 'obi00000');
@@ -325,7 +325,7 @@ async function main() {
       assert.equal(imported.created, 2);
       assert.equal(imported.outcomes.length, 3);
       assert.equal(imported.outcomes[0]!.ok, true);
-      assert.match(imported.outcomes[0]!.admissionNumber!, new RegExp(`^${a.code}/\\d{4}/\\d{4}$`));
+      assert.match(imported.outcomes[0]!.admissionNumber!, new RegExp(`^${a.code}/\\d{2}/\\d{4}$`));
       assert.equal(imported.outcomes[1]!.ok, false);
       assert.ok(imported.outcomes[1]!.error!.includes('first name and a surname'));
       assert.equal(imported.outcomes[2]!.ok, true);

@@ -472,3 +472,20 @@
   .pa-form-card { padding: 20px 16px; }
   .pa-detail-header, .pa-detail-body, .pa-detail-footer { padding: 16px; }
 }
+
+/* ── Collapsible "Add a manager" entry section ──────────────────────────────
+   Same convention as the school portal's Students/Staff pages: the roll
+   (the managers table) is what the page is for, the create form folds away
+   above it instead of permanently occupying a side column. */
+.pa-details > summary {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  cursor: pointer; padding: 14px 18px; list-style: none;
+  background: var(--pa-glass-bg, #fff); border: 1px solid var(--pa-stone-200); border-radius: 14px;
+  margin-bottom: 16px;
+}
+.pa-details > summary::-webkit-details-marker { display: none; }
+.pa-details > summary span.pa-details-title { font-size: 14px; font-weight: 700; }
+.pa-details[open] > summary { border-radius: 14px 14px 0 0; margin-bottom: 0; border-bottom: 0; }
+.pa-details[open] > div.pa-details-body { border-radius: 0 0 14px 14px; border: 1px solid var(--pa-stone-200); border-top: 0; padding: 18px; margin-bottom: 20px; }
+.pa-details > summary::after { content: '+'; color: var(--pa-stone-500); font-size: 18px; line-height: 1; }
+.pa-details[open] > summary::after { content: '\2212'; }

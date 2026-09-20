@@ -6,7 +6,8 @@
  * Legacy parity (portal/school/staff.php + PortalActions + StaffService):
  * - Creating a teacher and assigning them are separate acts. A new hire with
  *   "nothing given yet" is a correct, expressible state.
- * - The staff number is GENERATED (SCHOOL_CODE/STF/001), never invented, and
+ * - The staff number is GENERATED (PREFIX/SF/0001) unless the school types its
+ *   own, and
  *   the login is provisioned from it with a one-time temporary password.
  * - One class teacher per class: assigning a second REPLACES the first
  *   (status 'replaced'), because mid-session reassignment is a normal event.
@@ -80,6 +81,9 @@ export type RegisterStaffInput = {
   /** Set by the action layer after savePassportPhoto; absent photo is fine. */
   photoUrl?: string;
   role: StaffRole;
+  /** A school that already runs its own staff IDs types theirs and keeps it
+   *  — same idea as a student's custom admission number. Blank generates one. */
+  staffNumber?: string;
 };
 
 export type RegisteredStaff = {
@@ -91,14 +95,17 @@ export type RegisteredStaff = {
 };
 
 /**
- * {SCHOOL_CODE}/STF/001 — generated, so nobody invents or duplicates one.
- * Sequence follows insertion order and re-checks for collisions (numbers can
- * be taken by rows restored from a backup with higher ids).
+ * {SCHOOL_ID_PREFIX}/SF/0001 — generated, so nobody invents or duplicates one
+ * unless the school explicitly supplies its own (see registerStaff). Sequence
+ * follows insertion order and re-checks for collisions (numbers can be taken
+ * by rows restored from a backup with higher ids).
  */
 async function allocateStaffNumber(tx: Tx, schoolId: number): Promise<string> {
-  const [school] = await tx.select({ code: schema.schools.code }).from(schema.schools)
+  const [school] = await tx.select({ idPrefix: schema.schools.idPrefix, code: schema.schools.code }).from(schema.schools)
     .where(eq(schema.schools.id, schoolId)).limit(1);
-  const prefix = `${school?.code || 'SCH'}/STF/`;
+  // KC/SF/0018 — idPrefix is the short code that belongs on an ID; `code`
+  // only covers a school onboarded before this column existed.
+  const prefix = `${school?.idPrefix || school?.code || 'SCH'}/SF/`;
 
   const [last] = await tx.select({ staffNumber: schema.staff.staffNumber }).from(schema.staff)
     .where(and(eq(schema.staff.schoolId, schoolId), sql`${schema.staff.staffNumber} LIKE ${prefix + '%'}`))
@@ -111,7 +118,7 @@ async function allocateStaffNumber(tx: Tx, schoolId: number): Promise<string> {
   }
 
   for (let attempt = 0; attempt < 50; attempt += 1) {
-    const candidate = `${prefix}${String(sequence).padStart(3, '0')}`;
+    const candidate = `${prefix}${String(sequence).padStart(4, '0')}`;
     const [taken] = await tx.select({ id: schema.staff.id }).from(schema.staff)
       .where(and(eq(schema.staff.schoolId, schoolId), eq(schema.staff.staffNumber, candidate))).limit(1);
     if (!taken) return candidate;
@@ -150,10 +157,19 @@ export async function registerStaff(actor: Actor, input: RegisterStaffInput): Pr
       }
     }
 
-    const staffNumber = await allocateStaffNumber(tx, actor.schoolId);
+    // A school that runs its own staff IDs types theirs and keeps it.
+    // Uppercased because a staff ID is a code, not a sentence.
+    let staffNumber = (input.staffNumber ?? '').trim().toUpperCase();
+    if (staffNumber) {
+      const [clash] = await tx.select({ id: schema.staff.id }).from(schema.staff)
+        .where(and(eq(schema.staff.schoolId, actor.schoolId), eq(schema.staff.staffNumber, staffNumber))).limit(1);
+      if (clash) throw new StaffError('That staff ID is already in use by another staff member.');
+    } else {
+      staffNumber = await allocateStaffNumber(tx, actor.schoolId);
+    }
     const temporaryPassword = generateTemporaryPassword();
     // The staff number is the login id: slash is not keyboard-friendly, so it
-    // becomes a dot — GRE/STF/001 signs in as GRE.STF.001.
+    // becomes a dot — KC/SF/0018 signs in as KC.SF.0018.
     const loginId = staffNumber.replace(/\//g, '.');
     const passwordHash = await hashPassword(temporaryPassword);
 
@@ -219,6 +235,8 @@ export type UpdateStaffInput = {
   confirmTransfer?: boolean;
   /** New photo URL, or undefined to keep the current one. */
   photoUrl?: string;
+  /** Correct a staff ID after the fact — undefined/blank keeps the current one. */
+  staffNumber?: string;
 };
 
 export async function updateStaff(actor: Actor, input: UpdateStaffInput): Promise<void> {
@@ -245,6 +263,31 @@ export async function updateStaff(actor: Actor, input: UpdateStaffInput): Promis
     // Absent = keep the current photograph; only an explicit new upload
     // replaces it, so an edit without a file never blanks the photo.
     if (input.photoUrl !== undefined) updates.photoUrl = input.photoUrl || null;
+
+    // A school that runs its own staff IDs must be able to correct one after
+    // the fact. The ID is also the login username, so the account has to move
+    // with it or the staff member is locked out — same rule as a student's
+    // admission number.
+    const newStaffNumber = (input.staffNumber ?? '').trim().toUpperCase();
+    if (newStaffNumber && newStaffNumber !== existing.staffNumber) {
+      const [clash] = await tx.select({ id: schema.staff.id }).from(schema.staff)
+        .where(and(
+          eq(schema.staff.schoolId, actor.schoolId),
+          eq(schema.staff.staffNumber, newStaffNumber),
+          ne(schema.staff.id, input.staffId),
+        )).limit(1);
+      if (clash) throw new StaffError('That staff ID is already in use by another staff member.');
+
+      const newLoginId = newStaffNumber.replace(/\//g, '.');
+      if (existing.userId) {
+        const [loginClash] = await tx.select({ id: schema.users.id }).from(schema.users)
+          .where(and(eq(schema.users.loginId, newLoginId), ne(schema.users.id, existing.userId))).limit(1);
+        if (loginClash) throw new StaffError('That staff ID is already in use as a login.');
+        await tx.update(schema.users).set({ loginId: newLoginId }).where(eq(schema.users.id, existing.userId));
+      }
+
+      updates.staffNumber = newStaffNumber;
+    }
 
     const roleChanges = Boolean(newRole) && newRole !== existing.role;
 

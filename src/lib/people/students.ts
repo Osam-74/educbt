@@ -28,11 +28,11 @@
  */
 
 import { randomBytes } from 'node:crypto';
-import { and, eq, ne, sql } from 'drizzle-orm';
+import { and, eq, inArray, ne, sql } from 'drizzle-orm';
 import { schema, forSchool, type Tx } from '@/db';
 import type { Actor } from '@/lib/session';
 import { hashPassword } from '@/lib/auth/password';
-import { isSchoolWide } from '@/lib/queries';
+import { isSchoolWide, headedClassIds } from '@/lib/queries';
 import { generateTemporaryPassword } from '@/lib/people/staff';
 
 export class StudentError extends Error {
@@ -140,15 +140,19 @@ export async function currentSessionId(tx: Tx, schoolId: number): Promise<number
  * no two students collide and no school invents a numbering convention.
  */
 export async function allocateAdmissionNumber(tx: Tx, schoolId: number): Promise<string> {
-  const [school] = await tx.select({ code: schema.schools.code }).from(schema.schools)
+  const [school] = await tx.select({ idPrefix: schema.schools.idPrefix, code: schema.schools.code }).from(schema.schools)
     .where(eq(schema.schools.id, schoolId)).limit(1);
-  const code = school?.code || 'SCH';
+  // idPrefix is the short code that actually belongs on an ID (KC/26/0412) —
+  // `code` is only a fallback for a school onboarded before this column
+  // existed and never backfilled.
+  const prefixWord = school?.idPrefix || school?.code || 'SCH';
 
   const now = new Date();
   let year = now.getUTCFullYear();
   if (now.getUTCMonth() + 1 >= 9) year += 1;
+  const yy = String(year % 100).padStart(2, '0');
 
-  const prefix = `${code}/${year}/`;
+  const prefix = `${prefixWord}/${yy}/`;
   const [last] = await tx.select({ admissionNumber: schema.students.admissionNumber })
     .from(schema.students)
     .where(and(eq(schema.students.schoolId, schoolId), sql`${schema.students.admissionNumber} LIKE ${prefix + '%'}`))
@@ -917,6 +921,144 @@ export async function subjectRegistrationView(actor: Actor, studentId: number): 
     }
 
     return { core, electives, registered, sessionId };
+  });
+}
+
+
+export type RegisterCoreForClassResult = { studentsUpdated: number; coreCount: number; alreadyComplete: number };
+
+/**
+ * A class teacher's bulk action — legacy teacher/registration.php's
+ * "Register these for the whole class": add every COMPULSORY subject to
+ * every actively-enrolled student in one class, for the current session.
+ * Deliberately does not touch electives at all — not "reset to core only",
+ * purely additive — so re-running this after some students have already
+ * chosen electives never wipes their choices. A student who already has
+ * every core subject is simply left alone (idempotent).
+ */
+export async function registerCoreForClass(actor: Actor, classId: number): Promise<RegisterCoreForClassResult> {
+  if (!isSchoolWide(actor.role)) {
+    const headed = await headedClassIds(actor);
+    if (!headed.includes(classId)) throw new StudentError('You are not the class teacher of that class.');
+  }
+
+  return forSchool(actor.schoolId, async (tx) => {
+    const sessionId = await currentSessionId(tx, actor.schoolId);
+    if (!sessionId) throw new StudentError('The school has no current academic session.');
+
+    const coreSubjects = await tx.select({ id: schema.subjects.id }).from(schema.subjects)
+      .where(and(
+        eq(schema.subjects.schoolId, actor.schoolId),
+        eq(schema.subjects.status, 'active'),
+        eq(schema.subjects.isCompulsory, true),
+      ));
+    const coreIds = coreSubjects.map((s) => Number(s.id));
+    if (coreIds.length === 0) return { studentsUpdated: 0, coreCount: 0, alreadyComplete: 0 };
+
+    const enrolled = await tx.select({ studentId: schema.enrollments.studentId }).from(schema.enrollments)
+      .where(and(
+        eq(schema.enrollments.schoolId, actor.schoolId),
+        eq(schema.enrollments.classId, classId),
+        eq(schema.enrollments.sessionId, sessionId),
+        eq(schema.enrollments.status, 'active'),
+      ));
+    const studentIds = [...new Set(enrolled.map((e) => e.studentId))];
+    if (studentIds.length === 0) return { studentsUpdated: 0, coreCount: coreIds.length, alreadyComplete: 0 };
+
+    const existing = await tx.select({
+      studentId: schema.studentSubjects.studentId,
+      subjectId: schema.studentSubjects.subjectId,
+    }).from(schema.studentSubjects)
+      .where(and(
+        eq(schema.studentSubjects.sessionId, sessionId),
+        inArray(schema.studentSubjects.studentId, studentIds),
+      ));
+    const existingByStudent = new Map<number, Set<number>>();
+    for (const row of existing) {
+      const set = existingByStudent.get(row.studentId) ?? new Set<number>();
+      set.add(row.subjectId);
+      existingByStudent.set(row.studentId, set);
+    }
+
+    const toInsert: { schoolId: number; studentId: number; subjectId: number; sessionId: number }[] = [];
+    let alreadyComplete = 0;
+    for (const studentId of studentIds) {
+      const has = existingByStudent.get(studentId) ?? new Set<number>();
+      const missing = coreIds.filter((id) => !has.has(id));
+      if (missing.length === 0) { alreadyComplete++; continue; }
+      for (const subjectId of missing) toInsert.push({ schoolId: actor.schoolId, studentId, subjectId, sessionId });
+    }
+
+    if (toInsert.length > 0) {
+      await tx.insert(schema.studentSubjects).values(toInsert);
+    }
+
+    await tx.insert(schema.auditLog).values({
+      schoolId: actor.schoolId,
+      actorUserId: actor.userId,
+      actorRole: actor.role,
+      action: 'student.core_subjects_registered_bulk',
+      entityType: 'classes',
+      entityId: classId,
+      after: { sessionId, classId, studentCount: studentIds.length, coreCount: coreIds.length, rowsAdded: toInsert.length },
+    });
+
+    return { studentsUpdated: studentIds.length, coreCount: coreIds.length, alreadyComplete };
+  });
+}
+
+
+export type ClassRegistrationRow = { id: number; admissionNumber: string; firstName: string; lastName: string; registeredCount: number };
+export type ClassRegistrationRoster = { rows: ClassRegistrationRow[]; coreCount: number; coreSubjects: { id: number; name: string }[] };
+
+/**
+ * The class teacher's Subject Registration roster — legacy
+ * teacher/registration.php's student table: name, admission number, and how
+ * many subjects each student has registered for the current session, so
+ * "none yet" / "incomplete" / complete can be read at a glance against
+ * coreCount (the school's compulsory-subject count).
+ */
+export async function classRegistrationRoster(actor: Actor, classId: number): Promise<ClassRegistrationRoster> {
+  if (!isSchoolWide(actor.role)) {
+    const headed = await headedClassIds(actor);
+    if (!headed.includes(classId)) return { rows: [], coreCount: 0, coreSubjects: [] };
+  }
+
+  return forSchool(actor.schoolId, async (tx) => {
+    const sessionId = await currentSessionId(tx, actor.schoolId);
+    if (!sessionId) return { rows: [], coreCount: 0, coreSubjects: [] };
+
+    const coreRows = await tx.select({ id: schema.subjects.id, name: schema.subjects.name }).from(schema.subjects)
+      .where(and(
+        eq(schema.subjects.schoolId, actor.schoolId),
+        eq(schema.subjects.status, 'active'),
+        eq(schema.subjects.isCompulsory, true),
+      ))
+      .orderBy(schema.subjects.name);
+
+    const rows = await tx.select({
+      id: schema.students.id,
+      admissionNumber: schema.students.admissionNumber,
+      firstName: schema.students.firstName,
+      lastName: schema.students.lastName,
+      registeredCount: sql<number>`(
+        select count(*) from ${schema.studentSubjects}
+        where ${schema.studentSubjects.studentId} = ${schema.students.id}
+          and ${schema.studentSubjects.sessionId} = ${sessionId}
+      )`.mapWith(Number),
+    })
+      .from(schema.students)
+      .innerJoin(schema.enrollments, and(
+        eq(schema.enrollments.studentId, schema.students.id),
+        eq(schema.enrollments.classId, classId),
+        eq(schema.enrollments.sessionId, sessionId),
+        eq(schema.enrollments.status, 'active'),
+      ))
+      .where(eq(schema.students.schoolId, actor.schoolId))
+      .orderBy(schema.students.lastName, schema.students.firstName)
+      .limit(500);
+
+    return { rows, coreCount: coreRows.length, coreSubjects: coreRows.map((c) => ({ id: c.id, name: c.name })) };
   });
 }
 

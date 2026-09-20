@@ -163,7 +163,7 @@ export default async function StudentProfile({
           {!office && guardians.length === 0 && <p className="muted">The school office links guardians.</p>}
         </section>
 
-        <section className="card">
+        <section className="card" id="registration">
           <h2>Subject registration</h2>
           {registration
             ? (

@@ -2,7 +2,7 @@ import { requirePlatformSession } from '@/lib/platform/session';
 import { listPlatformManagers } from '@/lib/platform/managers';
 import { PaIcon } from '../icons';
 import { ManagersForm } from './ManagersForm';
-import { ManagerRowActions } from './ManagerRowActions';
+import { ManagerRow } from './ManagerRow';
 
 export const dynamic = 'force-dynamic';
 
@@ -44,76 +44,39 @@ export default async function ManagersPage({
         </div>
       ) : null}
 
-      <div className="pa-managers-layout">
-        <section aria-label="Add a manager" style={{ maxWidth: 420 }}>
+      <details className="pa-details">
+        <summary><span className="pa-details-title">Add a manager</span></summary>
+        <div className="pa-details-body">
           <ManagersForm />
-        </section>
+        </div>
+      </details>
 
-        <section aria-label="Manager directory" style={{ flex: 1, minWidth: 0 }}>
-          <div className="pa-glass pa-panel">
-            <div className="pa-panel-head" style={{ padding: '14px 18px' }}>
-              <span style={{ fontWeight: 700, fontSize: 13 }}>
-                Managers on the platform
-                <span className="pa-count-badge" style={{ marginLeft: 8 }}>{managers.length}</span>
-              </span>
-            </div>
-            <div className="pa-table-wrap">
-              <table className="pa-table" id="managers-table">
-                <thead>
-                  <tr>
-                    <th>Sign-in ID</th>
-                    <th>Email</th>
-                    <th>Two-factor</th>
-                    <th>Status</th>
-                    <th>Created</th>
-                    <th className="pa-right">Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {managers.map((m) => {
-                    const isSelf = m.id === actor.userId;
-                    const active = m.status === 'active';
-                    return (
-                      <tr key={m.id} id={`managers-row-${m.id}`}>
-                        <td>
-                          <strong>{m.loginId}</strong>
-                          {isSelf ? (
-                            <span className="pa-pill" style={{ marginLeft: 8, background: 'var(--pa-emerald-50)', color: 'var(--pa-emerald-800)' }}>You</span>
-                          ) : null}
-                        </td>
-                        <td style={{ fontSize: 12.5 }}>
-                          {m.email ?? <span style={{ color: 'var(--pa-stone-400)' }}>—</span>}
-                        </td>
-                        <td style={{ fontSize: 12.5 }}>
-                          {m.totpEnabled ? (
-                            <span style={{ color: 'var(--pa-emerald-700)', fontWeight: 600 }}>On</span>
-                          ) : (
-                            <span style={{ color: 'var(--pa-stone-400)' }}>Not set up</span>
-                          )}
-                        </td>
-                        <td>
-                          <span className={active ? 'pa-pill pa-pill--active' : 'pa-pill pa-pill--suspended'}>
-                            {m.status}
-                          </span>
-                        </td>
-                        <td style={{ color: 'var(--pa-stone-500)', fontSize: 12.5 }}>
-                          {m.createdAt.toLocaleDateString('en-GB')}
-                        </td>
-                        <td className="pa-right">
-                          {isSelf ? (
-                            <span style={{ fontSize: 12, color: 'var(--pa-stone-400)' }}>Current session</span>
-                          ) : (
-                            <ManagerRowActions managerId={m.id} loginId={m.loginId} active={active} />
-                          )}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </section>
+      <div className="pa-glass pa-panel">
+        <div className="pa-panel-head" style={{ padding: '14px 18px' }}>
+          <span style={{ fontWeight: 700, fontSize: 13 }}>
+            Managers on the platform
+            <span className="pa-count-badge" style={{ marginLeft: 8 }}>{managers.length}</span>
+          </span>
+        </div>
+        <div className="pa-table-wrap">
+          <table className="pa-table" id="managers-table">
+            <thead>
+              <tr>
+                <th>Sign-in ID</th>
+                <th>Email</th>
+                <th>Two-factor</th>
+                <th>Status</th>
+                <th>Created</th>
+                <th className="pa-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {managers.map((m) => (
+                <ManagerRow key={m.id} manager={m} isSelf={m.id === actor.userId} />
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   );

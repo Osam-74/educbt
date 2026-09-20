@@ -35,6 +35,7 @@ export async function staffAction(_previous: ActionState, form: FormData): Promi
         email: value('email'),
         phone: value('phone'),
         role: (value('role') || 'teacher') as StaffRole,
+        staffNumber: value('staffNumber'),
       });
 
       revalidatePath('/portal/staff');
@@ -60,6 +61,7 @@ export async function staffAction(_previous: ActionState, form: FormData): Promi
         role: value('role') ? (value('role') as StaffRole) : undefined,
         confirmTransfer: value('confirmTransfer') === 'on',
         photoUrl: photoUrl ?? undefined,
+        staffNumber: value('staffNumber'),
       });
 
       revalidatePath('/portal/staff');

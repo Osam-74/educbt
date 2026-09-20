@@ -55,6 +55,17 @@ export const schools = pgTable('schools', {
   name: varchar('name', { length: 191 }).notNull(),
   code: varchar('code', { length: 50 }).notNull(),
 
+  // The SHORT prefix used on every student/staff ID this school issues — not
+  // the same thing as `code` above. `code` is a long, human-chosen platform
+  // reference (searchable, permanent); idPrefix is what actually appears on
+  // an ID card (KC/26/0412, KC/SF/0018) and must stay short. Derived from the
+  // school's name (initials of its first two words) at onboarding, extended
+  // to three letters only if that collides with another school's prefix, and
+  // editable afterwards by the school office under Settings. Changing it only
+  // affects IDs issued from then on — numbers already given out keep their
+  // old prefix, the same as admission numbers never get rewritten.
+  idPrefix: varchar('id_prefix', { length: 10 }),
+
   // A domain is a ROUTING signal only. Resolving a school from the hostname must
   // never by itself grant access — authorisation is checked separately on every
   // protected action.
@@ -78,6 +89,7 @@ export const schools = pgTable('schools', {
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 }, (t) => ({
   codeUq: uniqueIndex('schools_code_uq').on(t.code),
+  idPrefixUq: uniqueIndex('schools_id_prefix_uq').on(t.idPrefix),
   subdomainUq: uniqueIndex('schools_subdomain_uq').on(t.subdomain),
   customDomainUq: uniqueIndex('schools_custom_domain_uq').on(t.customDomain),
 }));

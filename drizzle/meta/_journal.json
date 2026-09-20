@@ -157,6 +157,14 @@
       "tag": "0021_ca_component_key",
       "hash": "4cf98fee5d44776a650f475f6a54074c2f2d428923247d36d2f60b444e8c7c2c",
       "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1789824000000,
+      "tag": "0022_school_id_prefix",
+      "hash": "2cc94dffac1b3f6c76715af5292fdc9bb8b0f397a0b3c8ba5d1814efc681c4ec",
+      "breakpoints": true
     }
   ]
 }

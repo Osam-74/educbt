@@ -84,6 +84,65 @@ const subdomainSchema = z
   .regex(/^[a-z0-9]([a-z0-9-]{1,61}[a-z0-9])?$/, 'Use only letters, numbers and hyphens.')
   .refine((s) => !RESERVED_SUBDOMAINS.has(s), 'That address is reserved for the platform itself.');
 
+/**
+ * The short prefix that actually appears on an ID (KC/26/0412, KC/SF/0018) —
+ * NOT the long `code` above, which is a permanent platform reference the
+ * school never sees on a card. Default: initials of the school name's first
+ * two words. A school whose name only ever gives one usable word (rare, but
+ * "Academy" alone happens) falls back to that word's own first two letters.
+ */
+export function deriveIdPrefixWords(name: string): string[] {
+  return name.trim().split(/\s+/).map((w) => w.replace(/[^A-Za-z]/g, '')).filter(Boolean);
+}
+
+/**
+ * Candidate prefixes in preference order: the natural 2-letter initials
+ * first, then progressively less-natural 3-letter extensions, so a
+ * colliding school gets a THIRD letter added rather than a completely
+ * different scheme. Numbered fallback only if a school runs out of letters
+ * entirely (effectively never).
+ */
+export function* candidateIdPrefixes(name: string): Generator<string> {
+  const words = deriveIdPrefixWords(name);
+  if (words.length === 0) { yield 'SCH'; return; }
+
+  const base2 = words.length >= 2
+    ? (words[0]![0]! + words[1]![0]!).toUpperCase()
+    : words[0]!.slice(0, 2).toUpperCase().padEnd(2, 'X');
+  yield base2;
+
+  if (words.length >= 3) yield (words[0]![0]! + words[1]![0]! + words[2]![0]!).toUpperCase();
+
+  const second = words[1] ?? words[0]!;
+  for (let i = 1; i < second.length && i <= 4; i += 1) yield base2 + second[i]!.toUpperCase();
+
+  const first = words[0]!;
+  for (let i = 1; i < first.length && i <= 4; i += 1) yield base2 + first[i]!.toUpperCase();
+
+  for (let n = 2; n <= 99; n += 1) yield `${base2}${n}`;
+}
+
+/**
+ * Resolve a school's ID prefix inside the onboarding transaction: an
+ * explicit choice wins outright (a school already running its own scheme
+ * types it in, same idea as a student's custom admission number); otherwise
+ * the first non-colliding candidate from the name is used. Checked against
+ * every school on the platform, not just this tenant — two different
+ * schools both minting "KC/26/0412" would be worse than a slightly odd
+ * three-letter prefix.
+ */
+export async function resolveIdPrefix(tx: Tx, name: string, preferred?: string | null): Promise<string> {
+  const explicit = (preferred ?? '').trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+  const candidates = explicit ? [explicit] : candidateIdPrefixes(name);
+  for (const candidate of candidates) {
+    const [taken] = await tx.select({ id: schema.schools.id }).from(schema.schools)
+      .where(eq(schema.schools.idPrefix, candidate)).limit(1);
+    if (!taken) return candidate;
+    if (explicit) throw new Error(`ID prefix "${candidate}" is already used by another school.`);
+  }
+  throw new Error('Could not derive a unique ID prefix for this school.');
+}
+
 const schoolCodeSchema = z
   .string()
   .trim()
@@ -106,6 +165,21 @@ const optionalContactSchema = z
 const onboardingSchema = z.object({
   name: nameSchema,
   code: schoolCodeSchema,
+  // OPTIONAL override for the SHORT prefix printed on every ID this school
+  // issues (KC/26/0412). Left empty, it is derived from the school's name
+  // (see candidateIdPrefixes) — for a school that already runs its own
+  // scheme on paper, typing it here keeps new IDs consistent with the old
+  // ones from day one.
+  idPrefix: z
+    .string()
+    .trim()
+    .toUpperCase()
+    .max(10, 'Use 10 characters or fewer.')
+    .optional()
+    .transform((v) => (v === '' ? undefined : v))
+    .refine((v) => v === undefined || /^[A-Z0-9]{2,10}$/.test(v), {
+      message: 'Use 2–10 letters or numbers.',
+    }),
   email: z
     .string()
     .trim()
@@ -444,11 +518,14 @@ export async function createSchoolWithPrincipal(
 
   try {
     return await asPlatformAdmin(actor.userId, reason, async (tx) => {
+      const idPrefix = await resolveIdPrefix(tx, input.name, input.idPrefix);
+
       const [school] = await tx
         .insert(schema.schools)
         .values({
           name: input.name,
           code: input.code,
+          idPrefix,
           subdomain: input.subdomain ?? null,
           email: input.email ?? null,
           phone: input.phone ?? null,
@@ -460,6 +537,7 @@ export async function createSchoolWithPrincipal(
           id: schema.schools.id,
           name: schema.schools.name,
           code: schema.schools.code,
+          idPrefix: schema.schools.idPrefix,
           subdomain: schema.schools.subdomain,
           status: schema.schools.status,
         });
@@ -506,6 +584,7 @@ export async function createSchoolWithPrincipal(
           id: Number(school!.id),
           name: school!.name,
           code: school!.code,
+          idPrefix: school!.idPrefix,
           subdomain: school!.subdomain,
           status: school!.status,
         },

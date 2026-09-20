@@ -49,7 +49,7 @@ export function RegisterStaffForm() {
   return (
     <form action={action} className="card sa-card" encType="multipart/form-data">
       <h2>Add a staff member</h2>
-      <p className="muted" style={{ marginTop: -6 }}>The staff number and password are generated. Give them a class or subject below once added.</p>
+      <p className="muted" style={{ marginTop: -6 }}>Leave the staff ID blank to generate one, or type in an existing ID to keep a school's own numbering. The password is always generated. Give them a class or subject below once added.</p>
 
       <fieldset disabled={pending} className="sa-grid">
         <input type="hidden" name="operation" value="register" />
@@ -402,6 +402,7 @@ export function StaffRowForm({ staff }: { staff: StaffRow }) {
                 <div><label htmlFor={`title-${staff.id}`}>Title</label><input id={`title-${staff.id}`} name="title" type="text" defaultValue={staff.title ?? ''} maxLength={50} /></div>
                 <div><label htmlFor={`fn-${staff.id}`}>First name *</label><input id={`fn-${staff.id}`} name="firstName" type="text" required defaultValue={staff.firstName} maxLength={100} /></div>
                 <div><label htmlFor={`ln-${staff.id}`}>Surname *</label><input id={`ln-${staff.id}`} name="lastName" type="text" required defaultValue={staff.lastName} maxLength={100} /></div>
+                <div><label htmlFor={`sn-${staff.id}`}>Staff ID</label><input id={`sn-${staff.id}`} name="staffNumber" type="text" defaultValue={staff.staffNumber} maxLength={50} /></div>
                 <div><label htmlFor={`em-${staff.id}`}>Email</label><input id={`em-${staff.id}`} name="email" type="email" defaultValue={staff.email ?? ''} maxLength={191} /></div>
                 <div><label htmlFor={`ph-${staff.id}`}>Phone</label><input id={`ph-${staff.id}`} name="phone" type="tel" defaultValue={staff.phone ?? ''} maxLength={50} /></div>
                 <div>
