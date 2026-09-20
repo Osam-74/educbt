@@ -271,7 +271,7 @@ export default async function TimetablePage({
                     ))}
                   </select>
                 </label>
-                <button type="submit" className="sd-action sd-action--ghost">Show</button>
+                <button type="submit" className="sd-action">Show</button>
               </form>
             </section>
 

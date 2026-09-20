@@ -48,7 +48,7 @@ export function SettingsEditor(p: Props) {
         <Field label="Academic session"><select value={sessionId} onChange={e => { const id = Number(e.target.value); setSessionId(id); setTermId(p.terms.find(t => t.sessionId === id)?.id ?? 0); }}>{p.sessions.map(s => <option key={s.id} value={s.id}>{s.title}{s.isCurrent ? ' · current' : ''}</option>)}</select></Field>
         <Field label="Term"><select value={termId} onChange={e => setTermId(Number(e.target.value))}>{p.terms.filter(t => t.sessionId === sessionId).map(t => <option key={t.id} value={t.id}>{t.title}{t.isCurrent ? ' · current' : ''}</option>)}</select></Field>
       </div></SaveForm>{!p.sessions.length && <p className="settings-empty">No academic sessions yet. Create the first session below.</p>}</section>
-      <section className="settings-card"><h2>Add a session</h2><p>Three terms are created automatically with the standard calendar dates: First Term 1 Sep – 20 Dec, Second Term 8 Jan – 5 Apr, Third Term 22 Apr – 25 Jul. "2026/27" and "2026-2027" also work — the title normalises to 2026/2027.</p>
+      <section className="settings-card"><h2>Add a session</h2>
         <SaveForm kind="session" payload={newSession} disabled={!p.canEdit} label="Add session"><div className="settings-grid">
           <Field label="Session"><input required placeholder="2026/2027" maxLength={100} value={newSession.title} onChange={e => setNewSession({ ...newSession, title: e.target.value })}/></Field>
         </div><label><input type="checkbox" checked={newSession.makeCurrent} onChange={e => setNewSession({ ...newSession, makeCurrent: e.target.checked })}/> Make this the current session, starting with First Term</label></SaveForm></section></>}

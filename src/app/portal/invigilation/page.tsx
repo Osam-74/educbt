@@ -149,7 +149,7 @@ export default async function InvigilationPage({
                   ))}
                 </select>
               </label>
-              <button type="submit" className="sd-action sd-action--ghost">Show</button>
+              <button type="submit" className="sd-action">Show</button>
               {papers.length > 0 ? <PrintTrigger /> : null}
             </form>
           </section>

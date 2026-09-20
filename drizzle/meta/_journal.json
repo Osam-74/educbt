@@ -165,6 +165,13 @@
       "tag": "0022_school_id_prefix",
       "hash": "2cc94dffac1b3f6c76715af5292fdc9bb8b0f397a0b3c8ba5d1814efc681c4ec",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1789910400000,
+      "tag": "0023_staff_assignment_notification",
+      "breakpoints": true
     }
   ]
 }

@@ -28,6 +28,7 @@ import { and, asc, desc, eq, ne, sql } from 'drizzle-orm';
 import { schema, forSchool, type Tx } from '@/db';
 import type { Actor } from '@/lib/session';
 import { hashPassword } from '@/lib/auth/password';
+import { notifyMany } from '@/lib/comms/notifications';
 
 export class StaffError extends Error {
   constructor(message: string) {
@@ -574,26 +575,39 @@ export async function reactivateStaff(actor: Actor, staffId: number): Promise<st
 export type AssignmentRow = { staffId: number; classIds: number[]; subjectIds: number[] };
 export type AssignBulkResult = { saved: number; problems: string[] };
 
+type AssignmentTarget = {
+  userId: number | null;
+  firstName: string;
+  className: string;
+  subjectName: string | null;
+};
+
 async function validateAssignmentTarget(
   tx: Tx,
   schoolId: number,
   staffId: number,
   classId: number,
   subjectId: number | null,
-): Promise<void> {
-  const [staffRow] = await tx.select({ id: schema.staff.id, status: schema.staff.status }).from(schema.staff)
+): Promise<AssignmentTarget> {
+  const [staffRow] = await tx.select({
+    id: schema.staff.id, status: schema.staff.status, userId: schema.staff.userId, firstName: schema.staff.firstName,
+  }).from(schema.staff)
     .where(and(eq(schema.staff.id, staffId), eq(schema.staff.schoolId, schoolId))).limit(1);
   if (!staffRow || staffRow.status !== 'active') throw new StaffError('That staff member could not be found.');
 
-  const [classRow] = await tx.select({ id: schema.classes.id }).from(schema.classes)
+  const [classRow] = await tx.select({ id: schema.classes.id, displayName: schema.classes.displayName }).from(schema.classes)
     .where(and(eq(schema.classes.id, classId), eq(schema.classes.schoolId, schoolId))).limit(1);
   if (!classRow) throw new StaffError('That class could not be found.');
 
+  let subjectName: string | null = null;
   if (subjectId !== null) {
-    const [subjectRow] = await tx.select({ id: schema.subjects.id }).from(schema.subjects)
+    const [subjectRow] = await tx.select({ id: schema.subjects.id, name: schema.subjects.name }).from(schema.subjects)
       .where(and(eq(schema.subjects.id, subjectId), eq(schema.subjects.schoolId, schoolId))).limit(1);
     if (!subjectRow) throw new StaffError('That subject could not be found.');
+    subjectName = subjectRow.name;
   }
+
+  return { userId: staffRow.userId, firstName: staffRow.firstName, className: classRow.displayName, subjectName };
 }
 
 /**
@@ -636,7 +650,7 @@ export async function assignBulk(
 
   for (const item of work) {
     await forSchool(actor.schoolId, async (tx) => {
-      await validateAssignmentTarget(tx, actor.schoolId, item.staffId, item.classId, item.subjectId);
+      const target = await validateAssignmentTarget(tx, actor.schoolId, item.staffId, item.classId, item.subjectId);
 
       // Exactly one class teacher per class. Two people both believing they own
       // a class is how remarks and promotion decisions get overwritten. Replace
@@ -697,6 +711,35 @@ export async function assignBulk(
         entityId: item.staffId,
         after: { type, classId: item.classId, subjectId: item.subjectId },
       });
+
+      // Tell the teacher directly — legacy left this to word of mouth, and
+      // "nobody told me I had this class" was a real complaint at handover
+      // time. A formal notice, same as an approval or a published result.
+      const body = type === 'class_teacher'
+        ? `Dear ${target.firstName},
+
+You have been assigned as the Class Teacher for ${target.className}, effective immediately.
+
+Please review your class roster and responsibilities in the portal.
+
+— School Management`
+        : `Dear ${target.firstName},
+
+You have been assigned to teach ${target.subjectName} for ${target.className}, effective immediately.
+
+Please review your teaching schedule in the portal.
+
+— School Management`;
+      // A staff row can outlive its login (ON DELETE SET NULL) — nothing to notify then.
+      if (target.userId !== null) {
+        await notifyMany(tx, actor.schoolId, [{
+          userId: target.userId,
+          type: 'staff_assigned',
+          title: type === 'class_teacher' ? `You are now Class Teacher for ${target.className}` : `You have been assigned ${target.subjectName} for ${target.className}`,
+          body,
+          link: '/portal/classes',
+        }]);
+      }
 
       saved.push(item.staffId);
     });

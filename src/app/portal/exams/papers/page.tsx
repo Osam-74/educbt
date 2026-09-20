@@ -356,10 +356,6 @@ export default async function ExamPapersPage({
         <div>
           <p className="sd-eyebrow">Examination office</p>
           <h1>Exam Papers</h1>
-          <p>
-            Every examination, CA test and practice paper ever created for this school —
-            check the question bank, compose the papers, place them on the timetable, and publish.
-          </p>
         </div>
       </div>
 

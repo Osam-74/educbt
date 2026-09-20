@@ -21,6 +21,7 @@ export const NOTIFICATION_TYPES = [
   'promotion_approved', 'guardian_invite', 'password_reset', 'announcement',
   'message_received', 'exam_prep_opened', 'question_submitted',
   'question_withdrawn', 'question_set_deleted', 'result_approved',
+  'staff_assigned',
 ] as const;
 
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
@@ -42,6 +43,7 @@ const DEFAULT_LINKS: Record<NotificationType, string> = {
   question_withdrawn: '/portal/exams',
   question_set_deleted: '/portal/exams',
   result_approved: '/portal/results',
+  staff_assigned: '/portal/classes',
 };
 
 export function defaultLink(type: NotificationType): string {

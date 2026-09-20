@@ -39,6 +39,7 @@ export const notificationType = pgEnum('notification_type', [
   'promotion_approved', 'guardian_invite', 'password_reset', 'announcement',
   'message_received', 'exam_prep_opened', 'question_submitted',
   'question_withdrawn', 'question_set_deleted', 'result_approved',
+  'staff_assigned',
 ]);
 
 export const announcementAudience = pgEnum('announcement_audience', [
