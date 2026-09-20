@@ -55,7 +55,8 @@ async function inputs(tx: Tx, actor: Actor, scope: ResultScope) {
   const scores = ids.length ? await tx.select().from(schema.assessmentScores).where(and(
     inArray(schema.assessmentScores.studentId, ids), eq(schema.assessmentScores.sessionId, scope.sessionId),
     eq(schema.assessmentScores.termId, scope.termId))).orderBy(asc(schema.assessmentScores.id)) : [];
-  const papers = await tx.select({ id: schema.examPapers.id, subjectId: schema.examPapers.subjectId }).from(schema.examPapers)
+  const papers = await tx.select({ id: schema.examPapers.id, subjectId: schema.examPapers.subjectId,
+    deliveryMode: schema.examPapers.deliveryMode }).from(schema.examPapers)
     .innerJoin(schema.examSeries, eq(schema.examSeries.id, schema.examPapers.seriesId)).where(and(
       eq(schema.examSeries.sessionId, scope.sessionId), eq(schema.examSeries.termId, scope.termId),
       eq(schema.examSeries.seriesType, 'examination'), inArray(schema.examSeries.status, ['published', 'closed']),
@@ -87,18 +88,31 @@ async function inputs(tx: Tx, actor: Actor, scope: ResultScope) {
     const applicable = papers.filter(p => p.subjectId === offering.subjectId);
     let examComplete = false;
     if (applicable.length === 1 && examComponent) {
-      const attempt = attempts.find(a => a.studentId === offering.studentId && a.paperId === applicable[0]!.id);
-      if (attempt && ['submitted', 'auto_submitted'].includes(attempt.status) && attempt.questionOrder.length > 0) {
-        const selected = attempt.questionOrder.map(id => answers.find(a => a.attemptId === attempt.id && a.questionId === id));
-        if (selected.every(a => a && a.awarded !== null && Number(a.marks) > 0 && Number(a.awarded) >= 0 && Number(a.awarded) <= Number(a.marks))) {
-          const maximum = selected.reduce((s, a) => s + Number(a!.marks), 0);
-          const awarded = selected.reduce((s, a) => s + Number(a!.awarded), 0);
-          components.push({ key: examComponent.key, score: Math.round(awarded / maximum * examComponent.maxScore * 100) / 100 });
+      const paper = applicable[0]!;
+      if (paper.deliveryMode === 'written') {
+        // No attempt exists for a written sitting — the mark was typed in by
+        // hand on the same score sheet as CA (lib/ca/queries.ts caFullSheet),
+        // stored the same way a CA component is.
+        const manual = scores.find(s => s.studentId === offering.studentId && s.subjectId === offering.subjectId && s.componentKey === examComponent.key);
+        if (manual && Number(manual.maxScore) === examComponent.maxScore && Number(manual.score) >= 0 && Number(manual.score) <= examComponent.maxScore) {
+          components.push({ key: examComponent.key, score: Number(manual.score) });
           examComplete = true;
+        }
+      } else {
+        const attempt = attempts.find(a => a.studentId === offering.studentId && a.paperId === paper.id);
+        if (attempt && ['submitted', 'auto_submitted'].includes(attempt.status) && attempt.questionOrder.length > 0) {
+          const selected = attempt.questionOrder.map(id => answers.find(a => a.attemptId === attempt.id && a.questionId === id));
+          if (selected.every(a => a && a.awarded !== null && Number(a.marks) > 0 && Number(a.awarded) >= 0 && Number(a.awarded) <= Number(a.marks))) {
+            const maximum = selected.reduce((s, a) => s + Number(a!.marks), 0);
+            const awarded = selected.reduce((s, a) => s + Number(a!.awarded), 0);
+            components.push({ key: examComponent.key, score: Math.round(awarded / maximum * examComponent.maxScore * 100) / 100 });
+            examComplete = true;
+          }
         }
       }
     }
-    if (!examComplete) missing.push(applicable.length > 1 ? 'Multiple exam papers: aggregation policy required' : 'Examination missing or not fully marked');
+    if (!examComplete) missing.push(applicable.length > 1 ? 'Multiple exam papers: aggregation policy required'
+      : applicable[0]?.deliveryMode === 'written' ? 'Examination mark not yet entered' : 'Examination missing or not fully marked');
     const total = computeTotal(config?.assessmentComponents ?? [], components);
     return { ...offering, ...total, complete: Boolean(config) && total.complete, missing,
       caComplete, examComplete, stored: results.find(r => r.studentId === offering.studentId && r.subjectId === offering.subjectId) ?? null };

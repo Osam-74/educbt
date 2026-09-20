@@ -78,12 +78,15 @@ export type CaSheetRow = {
 /**
  * The whole score sheet for one class + subject, current term: every CA/
  * assignment component as an editable column, plus (when a terminal exam
- * paper has been published for this subject/class) a read-only exam column
- * sourced from CBT attempts — ported from the plugin's teacher/scores.php,
- * which puts every component on one screen with a single Save.
+ * paper has been published for this subject/class) an exam column too —
+ * ported from the plugin's teacher/scores.php, which puts every component
+ * on one screen with a single Save.
  *
- * A written (non-CBT) exam mark has no attempt to read and is not shown
- * here yet — entering it manually is a separate, not-yet-wired feature.
+ * The exam column's source depends on how that paper is delivered: a CBT
+ * paper is read-only here, sourced from the marked attempt; a written paper
+ * has no attempt at all, so its column is editable exactly like a CA
+ * component and saved the same way (see the exam-key allowance in
+ * lib/ca/access.ts validateCaContext).
  */
 export async function caFullSheet(actor: Actor, scope: CaSheetScope) {
   if (!canEnterCa(actor) || !caSheetScopeSchema.safeParse(scope).success) return null;
@@ -140,21 +143,23 @@ export async function caFullSheet(actor: Actor, scope: CaSheetScope) {
     // paper matches this subject in this class (directly, or via level +
     // department, same fallback the timetable and compile use).
     let examPaperId: number | null = null;
+    let examPaperWritten = false;
     if (examComponent) {
       const papers = await tx.select({ id: schema.examPapers.id, classId: schema.examPapers.classId,
-        levelId: schema.examPapers.levelId, departmentId: schema.examPapers.departmentId })
+        levelId: schema.examPapers.levelId, departmentId: schema.examPapers.departmentId,
+        deliveryMode: schema.examPapers.deliveryMode })
         .from(schema.examPapers).innerJoin(schema.examSeries, eq(schema.examSeries.id, schema.examPapers.seriesId))
         .where(and(eq(schema.examPapers.schoolId, actor.schoolId), eq(schema.examPapers.subjectId, scope.subjectId),
           eq(schema.examSeries.sessionId, term.sessionId), eq(schema.examSeries.termId, term.id),
           eq(schema.examSeries.seriesType, 'examination'), inArray(schema.examPapers.status, ['published', 'closed'])));
       const matching = papers.filter(p => p.classId === scope.classId || (p.classId === null && p.levelId === context.levelId
         && (context.departmentId ? (p.departmentId === null || p.departmentId === context.departmentId) : p.departmentId === null)));
-      if (matching.length === 1) examPaperId = Number(matching[0]!.id);
+      if (matching.length === 1) { examPaperId = Number(matching[0]!.id); examPaperWritten = matching[0]!.deliveryMode === 'written'; }
     }
 
     let attempts: Array<{ id: number; studentId: number; status: string; questionOrder: number[] }> = [];
     let answers: Array<{ attemptId: number; questionId: number; marks: string; awarded: string | null }> = [];
-    if (examPaperId && ids.length) {
+    if (examPaperId && ids.length && !examPaperWritten) {
       attempts = (await tx.select({ id: schema.attempts.id, studentId: schema.attempts.studentId,
         status: schema.attempts.status, questionOrder: schema.attempts.questionOrder })
         .from(schema.attempts).where(and(eq(schema.attempts.paperId, examPaperId), inArray(schema.attempts.studentId, ids))))
@@ -178,7 +183,13 @@ export async function caFullSheet(actor: Actor, scope: CaSheetScope) {
         const found = scores.find(sc => Number(sc.studentId) === sid && sc.componentKey === c.key);
         cells[c.key] = { score: found ? Number(found.score) : null, editable };
       }
-      if (examPaperId && examComponent) {
+      if (examPaperId && examComponent && examPaperWritten) {
+        // Written: there is no attempt to read. The mark is typed in here,
+        // stored exactly like a CA component (see enterScore's exam-key
+        // allowance in lib/ca/access.ts).
+        const found = scores.find(sc => Number(sc.studentId) === sid && sc.componentKey === examComponent.key);
+        cells[examComponent.key] = { score: found ? Number(found.score) : null, editable };
+      } else if (examPaperId && examComponent) {
         const attempt = attempts.find(a => a.studentId === sid);
         let score: number | null = null;
         let waiting = 'Not sat';
@@ -207,6 +218,9 @@ export async function caFullSheet(actor: Actor, scope: CaSheetScope) {
       sessionTitle: session?.title ?? '', termTitle: term.title,
       sessionId: Number(term.sessionId), termId: Number(term.id),
       components, students: rows,
+      // Only meaningful when an exam column is actually present; the sheet UI
+      // uses it purely to caption that column correctly (CBT vs written).
+      examDeliveryMode: examPaperId ? (examPaperWritten ? 'written' as const : 'cbt' as const) : null,
     };
   });
 }

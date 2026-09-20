@@ -12,9 +12,9 @@ function shortLabel(label: string) {
     .replace(/continuous assessment/i, 'CA').replace(/\s*test\b/i, '');
 }
 
-export function ScoreSheet({ classId, subjectId, sessionId, termId, components, students }: {
+export function ScoreSheet({ classId, subjectId, sessionId, termId, components, students, examDeliveryMode }: {
   classId: number; subjectId: number; sessionId: number; termId: number;
-  components: AssessmentComponent[]; students: CaSheetRow[];
+  components: AssessmentComponent[]; students: CaSheetRow[]; examDeliveryMode: 'cbt' | 'written' | null;
 }) {
   const [state, action, pending] = useActionState<SaveState, FormData>(saveCaSheet, { ok: false, message: '' });
   const anyEditable = students.some(s => s.editable);
@@ -35,7 +35,7 @@ export function ScoreSheet({ classId, subjectId, sessionId, termId, components, 
             {components.map(c => <th key={c.key} style={{ width: 100, textAlign: 'center', whiteSpace: 'nowrap' }}>
               {shortLabel(c.label)}
               <span className="muted" style={{ fontWeight: 400, fontSize: '.78em', display: 'block' }}>
-                /{c.maxScore}{c.isExam ? ' · CBT' : ''}
+                /{c.maxScore}{c.isExam && examDeliveryMode ? (examDeliveryMode === 'written' ? ' · Written' : ' · CBT') : ''}
               </span>
             </th>)}
             <th style={{ textAlign: 'center' }}>Total</th>
@@ -54,7 +54,9 @@ export function ScoreSheet({ classId, subjectId, sessionId, termId, components, 
 
     <p className="muted" style={{ marginTop: 10 }}>
       Leave a box empty for a student you have not marked yet — that is different from a zero.
-      CBT exam marks are shown automatically and cannot be edited here.
+      {examDeliveryMode === 'written'
+        ? ' The exam mark for a written paper is entered here, same as any other component.'
+        : ' CBT exam marks are shown automatically and cannot be edited here.'}
     </p>
     <p role="status" aria-live="polite" className={state.ok ? 'ok' : state.message ? 'error' : 'muted'}>{state.message}</p>
     {anyEditable && <button type="submit" className="sa-btn sa-btn--primary" disabled={pending} style={{ marginTop: 8 }}>

@@ -193,6 +193,9 @@ async function main() {
     const [englishSubject] = await db.insert(core.subjects).values({
       schoolId: officeSchoolId, name: 'English Language', code: 'ENG', isCompulsory: true,
     }).returning();
+    const [civicsSubject] = await db.insert(core.subjects).values({
+      schoolId: officeSchoolId, name: 'Civic Education', code: 'CIV', isCompulsory: true,
+    }).returning();
 
     const officer: Actor = {
       userId: 1, schoolId: officeSchoolId, role: 'exam_officer',
@@ -254,6 +257,14 @@ async function main() {
 
     await seededSet(Number(mathSubject!.id), 3);
     await seededSet(Number(englishSubject!.id), 1);
+    // Written delivery, submitted with nothing typed in — WrittenIntent.tsx's
+    // whole point. It must still get composed, or a written subject could
+    // never reach the timetable at all.
+    await db.insert(qb.questionSets).values({
+      schoolId: officeSchoolId, sessionId: Number(officeSession!.id), termId: Number(officeTerm!.id),
+      subjectId: Number(civicsSubject!.id), levelId: Number(officeLevel!.id),
+      examType: 'objective', seriesId: 0, status: 'approved', minRequired: 2, deliveryMode: 'written',
+    });
 
     const afterBank = await questionAvailability(officer, Number(officeSeries.id));
     const mathRow = afterBank.rows.find((r) => r.subjectName === 'Mathematics');
@@ -265,10 +276,18 @@ async function main() {
 
     const composed = await composeSeries(officer, Number(officeSeries.id));
     check(
-      'the short subject is skipped and named, the ready one composed',
-      composed.created === 1 && composed.short.length === 1,
+      'the short subject is skipped and named, the ready and written ones composed',
+      composed.created === 2 && composed.short.length === 1,
       composed.short.join(', '),
     );
+    const [civicsPaper] = await db.select().from(att.examPapers)
+      .where(and(eq(att.examPapers.seriesId, Number(officeSeries.id)), eq(att.examPapers.subjectId, Number(civicsSubject!.id))));
+    check(
+      'the written paper composed with zero questions, correctly tagged',
+      civicsPaper?.deliveryMode === 'written' && civicsPaper?.questionCount === 2,
+    );
+    const civicsQuestions = await db.select().from(att.paperQuestions).where(eq(att.paperQuestions.paperId, Number(civicsPaper!.id)));
+    check('the written paper holds no paper questions — there is nothing to pool', civicsQuestions.length === 0);
 
     // Idempotent: the office WILL press this twice.
     const recomposed = await composeSeries(officer, Number(officeSeries.id));
@@ -288,7 +307,7 @@ async function main() {
     const scheduled = await scheduleSeries(
       officer, Number(officeSeries.id), monday.toISOString().slice(0, 10), null, 2,
     );
-    check('scheduling places the paper on a school day', scheduled.scheduled === 1 && scheduled.unplaced.length === 0);
+    check('scheduling places both papers on a school day', scheduled.scheduled === 2 && scheduled.unplaced.length === 0);
 
     const [windowRow] = await db.select().from(qb.examSeries)
       .where(eq(qb.examSeries.id, Number(officeSeries.id))).limit(1);
@@ -298,7 +317,7 @@ async function main() {
     );
 
     const published = await publishSeries(officer, Number(officeSeries.id));
-    check('publishing after scheduling succeeds', published === 1);
+    check('publishing after scheduling succeeds', published === 2);
 
     let republishBlocked = false;
     try {

@@ -1,7 +1,7 @@
-import { and, eq, exists, sql } from 'drizzle-orm';
+import { and, eq, exists, inArray, sql } from 'drizzle-orm';
 import { schema, type Tx } from '@/db';
 import type { Actor } from '@/lib/session';
-import { caComponents, type CaScoreInput } from './validation';
+import { caComponents, caComponentsAll, type CaScoreInput } from './validation';
 
 export const CA_ROLES = ['teacher', 'principal', 'vice_principal', 'exam_officer'] as const;
 export function canEnterCa(actor: Actor) { return (CA_ROLES as readonly string[]).includes(actor.role); }
@@ -33,11 +33,37 @@ export async function caSchool(tx: Tx, actor: Actor) {
   return school ?? null;
 }
 
+/**
+ * True only when a written (non-CBT) exam paper for this subject and class
+ * exists and has actually been sat — published or closed, never a draft the
+ * office is still composing. A cancelled paper marks nothing.
+ */
+async function writtenExamPaperExists(tx: Tx, actor: Actor, classId: number, subjectId: number): Promise<boolean> {
+  const [klass] = await tx.select({ levelId: schema.classes.levelId, departmentId: schema.classes.departmentId })
+    .from(schema.classes).where(and(eq(schema.classes.id, classId), eq(schema.classes.schoolId, actor.schoolId)));
+  if (!klass) return false;
+  const papers = await tx.select({ classId: schema.examPapers.classId, levelId: schema.examPapers.levelId,
+    departmentId: schema.examPapers.departmentId })
+    .from(schema.examPapers)
+    .where(and(eq(schema.examPapers.schoolId, actor.schoolId), eq(schema.examPapers.subjectId, subjectId),
+      eq(schema.examPapers.deliveryMode, 'written'), inArray(schema.examPapers.status, ['published', 'closed'])));
+  return papers.some(p => p.classId === classId || (p.classId === null && p.levelId === klass.levelId
+    && (klass.departmentId ? (p.departmentId === null || p.departmentId === klass.departmentId) : p.departmentId === null)));
+}
+
 /** Rechecked inside the score transaction, never trusted from hidden fields. */
 export async function validateCaContext(tx: Tx, actor: Actor, args: CaScoreInput): Promise<string | null> {
   const school = await caSchool(tx, actor);
   if (!school) return 'You do not have permission to enter CA scores.';
-  const component = caComponents(school.settings).find(c => c.key === args.componentKey);
+  let component = caComponents(school.settings).find(c => c.key === args.componentKey);
+  if (!component) {
+    // Not a CA component — the only other legitimate key is the exam
+    // component, and only when this subject's paper is written and has
+    // actually been sat. A CBT exam mark is never entered here; it comes
+    // from the marked attempt instead.
+    const examComponent = caComponentsAll(school.settings).find(c => c.isExam && c.key === args.componentKey);
+    if (examComponent && args.classId && await writtenExamPaperExists(tx, actor, args.classId, args.subjectId)) component = examComponent;
+  }
   if (!component || component.maxScore !== args.maxScore) return 'The assessment configuration changed or is unavailable. Reload the score sheet.';
   const [context] = await tx.select({ id: schema.students.id }).from(schema.students)
     .innerJoin(schema.enrollments, and(

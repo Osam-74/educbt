@@ -24,7 +24,7 @@ export default async function CaPage({ searchParams }: {
 
   return <>
     <h1 className="page-title">Record Scores</h1>
-    <p className="muted">All assessment components are shown together. CBT exam marks appear automatically and are read-only.</p>
+    <p className="muted">All assessment components are shown together. A CBT exam mark appears automatically and is read-only; a written exam mark is entered here like any other component.</p>
     {!options.pairs.length ? <p className="note">You have not been assigned any subject to teach yet. The school office assigns these under Staff.</p> :
       <section className="card sa-card">
         <form method="get">
@@ -52,6 +52,6 @@ export default async function CaPage({ searchParams }: {
     {sheet && !sheet.noTerm && !sheet.noConfig && sheet.students.length > 0 && parsed.success && <ScoreSheet
       classId={parsed.data.classId} subjectId={parsed.data.subjectId}
       sessionId={sheet.sessionId} termId={sheet.termId}
-      components={sheet.components} students={sheet.students} />}
+      components={sheet.components} students={sheet.students} examDeliveryMode={sheet.examDeliveryMode} />}
   </>;
 }

@@ -179,6 +179,13 @@
       "when": 1789996800000,
       "tag": "0024_assessment_mode",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1790083200000,
+      "tag": "0025_exam_papers_delivery_mode",
+      "breakpoints": true
     }
   ]
 }

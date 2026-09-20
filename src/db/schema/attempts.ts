@@ -15,7 +15,7 @@ import {
 } from 'drizzle-orm/pg-core';
 import { schools, subjects, classes, classLevels, departments } from './core';
 import { students, staff } from './people';
-import { examSeries, questions, questionOptions } from './questions';
+import { examSeries, questions, questionOptions, deliveryMode } from './questions';
 
 export const paperStatus = pgEnum('paper_status', [
   'draft', 'published', 'closed', 'cancelled',
@@ -82,6 +82,17 @@ export const examPapers = pgTable('exam_papers', {
 
   // How many of the pooled questions each candidate answers.
   questionCount: integer('question_count').default(0).notNull(),
+
+  /**
+   * Copied from the governing question set at compose time. 'written' means
+   * there is no CBT sitting for this paper at all — students sit it on
+   * paper, and the exam mark is entered by hand on the CA/exam score sheet
+   * (see lib/ca/queries.ts caFullSheet + lib/results/workflow.ts) instead of
+   * being read from attempts. Denormalized here rather than re-derived on
+   * every read because the paper, not the question set, is what scheduling,
+   * invigilation and results all actually query.
+   */
+  deliveryMode: deliveryMode('delivery_mode').default('cbt').notNull(),
 
   shuffleQuestions: boolean('shuffle_questions').default(true).notNull(),
   shuffleOptions: boolean('shuffle_options').default(true).notNull(),

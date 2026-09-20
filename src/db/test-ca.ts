@@ -19,7 +19,7 @@ async function main() {
   }
   const { schema, forSchool, client: appClient } = await import('@/db');
   const { enterScore } = await import('@/lib/exam/results');
-  const { caOptions, caRoster } = await import('@/lib/ca/queries');
+  const { caOptions, caRoster, caFullSheet } = await import('@/lib/ca/queries');
   const owner = postgres(process.env.DATABASE_URL_UNPOOLED!, { max: 1, onnotice: () => {} });
   const db = drizzle(owner, { schema });
   const app = postgres(process.env.DATABASE_URL_APP!, { max: 1 });
@@ -108,6 +108,36 @@ async function main() {
     await check('foreign school scope cannot be read', async () => assert.equal(await caRoster(b.actor, scope), null));
     await check('forged component rejected', () => deny(a.actor, { componentKey: 'madeup' }));
     await check('exam component rejected', () => deny(a.actor, { componentKey: 'exam', maxScore: 70 }));
+
+    // A written-delivery paper has no attempt to mark, so its exam mark is
+    // typed in here — but only once an actual paper for this class/subject
+    // has been sat (published or closed, and specifically written delivery).
+    const examInput = { ...input, componentKey: 'exam', maxScore: 70, score: 55 };
+    await check('exam component still rejected with no exam paper at all', () => deny(a.actor, examInput));
+    const [writtenSeries] = await db.insert(schema.examSeries).values({
+      schoolId: a.schoolId, title: 'First Term Examination', seriesType: 'examination',
+      sessionId: a.sessions[0]!.id, termId: a.terms[0]!.id,
+      status: 'composed', questionsPerStudent: 20, durationMinutes: 60,
+    }).returning();
+    const [writtenPaper] = await db.insert(schema.examPapers).values({
+      schoolId: a.schoolId, seriesId: writtenSeries!.id, subjectId: a.subjects[0]!.id, classId: a.classes[0]!.id,
+      deliveryMode: 'written', status: 'draft',
+    }).returning();
+    await check('a draft written paper (not yet sat) still rejects manual entry', () => deny(a.actor, examInput));
+    await db.update(schema.examPapers).set({ status: 'published' }).where(eq(schema.examPapers.id, writtenPaper!.id));
+    await check('a published written paper accepts its manual exam mark', async () =>
+      assert.equal((await enterScore(a.actor, examInput)).ok, true));
+    await check('the written exam mark reloads on the full sheet, editable like any component', async () => {
+      const sheet = await caFullSheet(a.actor, { classId: a.classes[0]!.id, subjectId: a.subjects[0]!.id });
+      assert(sheet && !sheet.noTerm && !sheet.noConfig);
+      assert.equal(sheet.examDeliveryMode, 'written');
+      const row = sheet.students.find(s => s.studentId === a.students[0]!.id);
+      assert.equal(row?.cells.exam?.score, 55);
+      assert.equal(row?.cells.exam?.editable, true);
+    });
+    await db.update(schema.examPapers).set({ deliveryMode: 'cbt' }).where(eq(schema.examPapers.id, writtenPaper!.id));
+    await check('a CBT paper (even published) still rejects manual entry — it comes from the marked attempt', () => deny(a.actor, examInput));
+    await db.update(schema.examPapers).set({ deliveryMode: 'written' }).where(eq(schema.examPapers.id, writtenPaper!.id));
     await check('forged maximum rejected', () => deny(a.actor, { maxScore: 100 }));
     await check('over maximum rejected', () => deny(a.actor, { score: 20.01 }));
     await check('non-finite score rejected', () => deny(a.actor, { score: NaN }));
@@ -139,7 +169,8 @@ async function main() {
     await check('other school can save independently', async () => assert((await enterScore(b.actor, { ...input, classId: b.classes[0]!.id, studentId: b.students[0]!.id, subjectId: b.subjects[0]!.id, sessionId: b.sessions[0]!.id, termId: b.terms[0]!.id, score: 8 })).ok));
     await check('all score dimensions remain isolated', async () => {
       const rows = await db.select().from(schema.assessmentScores).where(eq(schema.assessmentScores.schoolId, a.schoolId));
-      assert.equal(rows.length, 6);
+      // 6 CA dimensions plus the one written exam mark entered earlier.
+      assert.equal(rows.length, 7);
       const sheet = await caRoster(a.actor, scope);
       assert.deepEqual(sheet!.rows.map(r => Number(r.score)), [12.34, 4]);
     });

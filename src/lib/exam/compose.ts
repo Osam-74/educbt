@@ -292,7 +292,13 @@ export async function composeSeries(
     const short: string[] = [];
 
     for (const c of candidates) {
-      if (c.available < perStudent) {
+      // Written delivery has nothing to pool — there is no bank of typed
+      // questions, only the teacher's intent (see WrittenIntent.tsx). It
+      // still needs a paper: the exam office schedules it, invigilates it,
+      // and later enters its mark by hand (lib/ca/queries.ts caFullSheet) —
+      // none of which can happen if it never gets composed for want of
+      // questions it was never going to have.
+      if (c.deliveryMode !== 'written' && c.available < perStudent) {
         skipped++;
         short.push(`${c.subjectName} ${c.levelName} (${c.available} of ${perStudent})`);
         continue;
@@ -312,6 +318,10 @@ export async function composeSeries(
         )).limit(1);
 
       if (existing) {
+        // A written paper has nothing to fill in later — its existence alone
+        // means it is done, unlike a CBT placeholder which is deliberately
+        // left to be filled the moment questions become available.
+        if (c.deliveryMode === 'written') { skipped++; continue; }
         const existingRows = await tx.select({ existingCount: sql<number>`count(*)`.mapWith(Number) })
           .from(schema.paperQuestions)
           .where(eq(schema.paperQuestions.paperId, Number(existing.id)));
@@ -359,14 +369,22 @@ export async function composeSeries(
         ))
         .orderBy(asc(schema.questions.sequence));
 
-      await tx.insert(schema.paperQuestions).values(
-        pool.map((q, i) => ({
-          schoolId: actor.schoolId,
-          paperId,
-          questionId: Number(q.id),
-          sortOrder: i,
-        })),
-      );
+      if (pool.length > 0) {
+        await tx.insert(schema.paperQuestions).values(
+          pool.map((q, i) => ({
+            schoolId: actor.schoolId,
+            paperId,
+            questionId: Number(q.id),
+            sortOrder: i,
+          })),
+        );
+      }
+
+      // Denormalized onto the paper so scheduling, invigilation and results
+      // can all tell a written sitting from a CBT one without re-joining
+      // back to the question set every time.
+      await tx.update(schema.examPapers).set({ deliveryMode: c.deliveryMode === 'written' ? 'written' : 'cbt' })
+        .where(eq(schema.examPapers.id, paperId));
 
       created++;
     }
