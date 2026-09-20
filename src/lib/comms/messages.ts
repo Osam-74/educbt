@@ -191,6 +191,23 @@ export async function replyToThread(actor: Actor, threadId: number, body: string
         eq(schema.threadParticipants.userId, actor.userId),
       ));
 
+    // Reading the thread here (Messages page) and reading it via the
+    // notification bell are two different entry points to the same event —
+    // clearing one must clear the other, or the bell/inbox keeps counting a
+    // message the person has actually already read. Match by the exact
+    // deep link notifyMany() wrote for this thread (`?thread=${threadId}`,
+    // not a prefix, so thread 1 never clears thread 12's notification).
+    await tx
+      .update(schema.notifications)
+      .set({ isRead: true, readAt: new Date() })
+      .where(and(
+        eq(schema.notifications.schoolId, actor.schoolId),
+        eq(schema.notifications.userId, actor.userId),
+        eq(schema.notifications.type, 'message_received'),
+        eq(schema.notifications.link, `/portal/messages?thread=${threadId}`),
+        eq(schema.notifications.isRead, false),
+      ));
+
     return 1;
   });
 }

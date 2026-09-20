@@ -1,3 +1,4 @@
+import '../school-table.css';
 import { redirect } from 'next/navigation';
 import { requireSchoolSession } from '@/lib/session';
 import { forSchool, schema } from '@/db';
@@ -109,91 +110,106 @@ export default async function AnnouncementsPage({
       {visible.length === 0 ? (
         <p className="muted empty-state">No announcements for you yet. School-wide notices and anything addressed to your class will appear here.</p>
       ) : (
-        <ul className="announcement-list">
-          {visible.map((a) => (
-            <li key={a.id} className="announcement">
-              <strong>{a.subject}</strong>
-              <p>{a.body}</p>
-              <p className="muted">
-                {AUDIENCE_LABELS[a.audience] ?? a.audience}
-                {a.publishedAt ? ` · ${new Date(a.publishedAt).toLocaleDateString('en-NG', { dateStyle: 'medium' })}` : ''}
-              </p>
-            </li>
-          ))}
-        </ul>
+        <div className="card sa-card inbox-card">
+          <ul className="announcement-list">
+            {visible.map((a) => (
+              <li key={a.id}>
+                <h3>{a.subject}</h3>
+                <p>{a.body}</p>
+                <span className="inbox-row__meta">
+                  <span className="inbox-row__type">{AUDIENCE_LABELS[a.audience] ?? a.audience}</span>
+                  {a.publishedAt ? (
+                    <span className="inbox-row__time">
+                      {new Date(a.publishedAt).toLocaleDateString('en-NG', { dateStyle: 'medium' })}
+                    </span>
+                  ) : null}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
       )}
 
       {canManage ? (
-        <section>
-          <h2 className="sub-head">New announcement</h2>
+        <section className="card sa-card" style={{ marginTop: 24 }}>
+          <h2>New announcement</h2>
           <p className="muted">
             A class teacher may address their own class. Only the principal or deputy may
             address the whole school or a whole role.
           </p>
           <form action={create}>
-            <label htmlFor="subject">Subject</label>
-            <input id="subject" name="subject" maxLength={200} required minLength={3} />
+            <fieldset className="form-grid">
+              <label htmlFor="subject">Subject
+                <input id="subject" name="subject" maxLength={200} required minLength={3} />
+              </label>
 
-            <label htmlFor="body">Message</label>
-            <textarea id="body" name="body" rows={4} required minLength={5}></textarea>
+              <label htmlFor="audience">Audience
+                <select id="audience" name="audience" required>
+                  {allowedAudiences(actor).map((aud) => (
+                    <option key={aud} value={aud}>{AUDIENCE_LABELS[aud]}</option>
+                  ))}
+                </select>
+              </label>
 
-            <label htmlFor="audience">Audience</label>
-            <select id="audience" name="audience" required>
-              {allowedAudiences(actor).map((aud) => (
-                <option key={aud} value={aud}>{AUDIENCE_LABELS[aud]}</option>
-              ))}
-            </select>
-
-            <label htmlFor="audienceRef">Addressed to</label>
-            <select id="audienceRef" name="audienceRef">
-              {(classOptions.length > 0 || levelOptions.length > 0 || departmentOptions.length > 0) ? (
-                <>
-                  {classOptions.map((c) => <option key={`c${c.id}`} value={`${c.id}`}>Class: {c.name}</option>)}
-                  {levelOptions.map((l) => <option key={`l${l.id}`} value={`${l.id}`}>Level: {l.name}</option>)}
-                  {departmentOptions.map((d) => <option key={`d${d.id}`} value={`${d.id}`}>Department: {d.name}</option>)}
-                  {(actor.role === 'principal' || actor.role === 'vice_principal') && (
+              <label htmlFor="audienceRef">Addressed to
+                <select id="audienceRef" name="audienceRef">
+                  {(classOptions.length > 0 || levelOptions.length > 0 || departmentOptions.length > 0) ? (
                     <>
-                      <option value="student">Role: all students</option>
-                      <option value="teacher">Role: all teachers</option>
-                      <option value="parent">Role: all parents</option>
+                      {classOptions.map((c) => <option key={`c${c.id}`} value={`${c.id}`}>Class: {c.name}</option>)}
+                      {levelOptions.map((l) => <option key={`l${l.id}`} value={`${l.id}`}>Level: {l.name}</option>)}
+                      {departmentOptions.map((d) => <option key={`d${d.id}`} value={`${d.id}`}>Department: {d.name}</option>)}
+                      {(actor.role === 'principal' || actor.role === 'vice_principal') && (
+                        <>
+                          <option value="student">Role: all students</option>
+                          <option value="teacher">Role: all teachers</option>
+                          <option value="parent">Role: all parents</option>
+                        </>
+                      )}
                     </>
+                  ) : (
+                    <option value="">Whole school (default)</option>
                   )}
-                </>
-              ) : (
-                <option value="">Whole school (default)</option>
-              )}
-            </select>
+                </select>
+              </label>
 
-            <label className="check">
+            </fieldset>
+            <label htmlFor="body" style={{ display: 'block', marginBottom: 6, fontWeight: 550, fontSize: '13.5px' }}>Message</label>
+            <textarea id="body" name="body" rows={4} required minLength={5} style={{ width: '100%', marginBottom: 14, padding: '9px 12px', border: '1px solid #d7dedb', borderRadius: 9, font: 'inherit', fontSize: 14 }}></textarea>
+
+            <label className="check" style={{ marginBottom: 14 }}>
               <input type="checkbox" name="publish" defaultChecked />
               Publish now (notify the audience immediately)
             </label>
-            <button type="submit" className="btn">Save announcement</button>
+            <div>
+              <button type="submit" className="sa-btn sa-btn--primary">Save announcement</button>
+            </div>
           </form>
 
           {mine.length > 0 ? (
-            <table className="tbl">
-              <thead>
-                <tr><th>Subject</th><th>Audience</th><th>Status</th><th></th></tr>
-              </thead>
-              <tbody>
-                {mine.map((a) => (
-                  <tr key={a.id}>
-                    <td>{a.subject}</td>
-                    <td>{AUDIENCE_LABELS[a.audience] ?? a.audience}</td>
-                    <td>{a.status}</td>
-                    <td>
-                      {a.status === 'draft' && (actor.role === 'principal' || actor.role === 'vice_principal') ? (
-                        <form action={publish}>
-                          <input type="hidden" name="id" value={a.id} />
-                          <button type="submit" className="btn btn-ghost">Publish</button>
-                        </form>
-                      ) : null}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            <div className="sa-table-wrap">
+              <table className="sa-table">
+                <thead>
+                  <tr><th>Subject</th><th>Audience</th><th>Status</th><th></th></tr>
+                </thead>
+                <tbody>
+                  {mine.map((a) => (
+                    <tr key={a.id}>
+                      <td>{a.subject}</td>
+                      <td>{AUDIENCE_LABELS[a.audience] ?? a.audience}</td>
+                      <td><span className={`sa-pill sa-pill--${a.status}`}>{a.status}</span></td>
+                      <td>
+                        {a.status === 'draft' && (actor.role === 'principal' || actor.role === 'vice_principal') ? (
+                          <form action={publish}>
+                            <input type="hidden" name="id" value={a.id} />
+                            <button type="submit" className="sa-btn sa-btn--small">Publish</button>
+                          </form>
+                        ) : null}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           ) : null}
         </section>
       ) : null}

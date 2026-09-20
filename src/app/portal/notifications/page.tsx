@@ -1,3 +1,4 @@
+import '../school-table.css';
 import { requireSchoolSession } from '@/lib/session';
 import { forSchool, schema } from '@/db';
 import { desc, eq } from 'drizzle-orm';
@@ -28,6 +29,10 @@ const TYPE_LABELS: Record<NotificationType, string> = {
  * scoped by the session user in the same transaction, and RLS bounds it to
  * the school. Mutations (mark read, preferences) are server actions; there is
  * no client-side authorization to bypass.
+ *
+ * Gmail-style row: the whole row is the click target (a full-width submit
+ * button, since opening also has to mark the notification read) — there is
+ * no separate "Open" link and no per-row "Mark read" button.
  */
 export default async function NotificationsPage({
   searchParams,
@@ -55,12 +60,15 @@ export default async function NotificationsPage({
     return { rows, unread: await unreadCount(tx, actor.schoolId, actor.userId), prefs: await getPrefs(tx, actor.schoolId, actor.userId) };
   });
 
-  async function markOne(formData: FormData) {
+  // One action for the whole row: mark read, then go wherever the
+  // notification points (or just stay on the list if it has no link).
+  async function open(formData: FormData) {
     'use server';
     const a = await requireSchoolSession();
     const id = Number(formData.get('id'));
+    const link = String(formData.get('link') ?? '');
     if (id) await forSchool(a.schoolId, (tx) => markRead(tx, a.schoolId, a.userId, [id]));
-    redirect('/portal/notifications');
+    redirect(link || '/portal/notifications');
   }
 
   async function markAll() {
@@ -95,30 +103,38 @@ export default async function NotificationsPage({
         </p>
       ) : (
         <>
-          <form action={markAll}>
-            <button type="submit" className="btn" disabled={unread === 0}>Mark all as read</button>
-          </form>
-          <ul className="notification-list">
-            {rows.map((n) => (
-              <li key={n.id} className={n.isRead ? 'notification read' : 'notification unread'}>
-                <div>
-                  <strong>{n.title}</strong>
-                  <span className="notification-type">{TYPE_LABELS[n.type as NotificationType] ?? n.type}</span>
-                </div>
-                {n.body ? <p>{n.body}</p> : null}
-                <p className="muted">
-                  {new Date(n.createdAt).toLocaleString('en-NG', { dateStyle: 'medium', timeStyle: 'short' })}
-                  {n.link ? <> · <a href={n.link}>Open</a></> : null}
-                </p>
-                {!n.isRead ? (
-                  <form action={markOne}>
+          <div className="comm-toolbar">
+            <form action={markAll}>
+              <button type="submit" className="sa-btn sa-btn--ghost sa-btn--small" disabled={unread === 0}>Mark all as read</button>
+            </form>
+          </div>
+          <div className="card sa-card inbox-card">
+            <ul className="inbox-list">
+              {rows.map((n) => (
+                <li key={n.id}>
+                  <form action={open}>
                     <input type="hidden" name="id" value={n.id} />
-                    <button type="submit" className="btn btn-ghost">Mark read</button>
+                    <input type="hidden" name="link" value={n.link ?? ''} />
+                    <button type="submit" className={n.isRead ? 'inbox-row' : 'inbox-row unread'}>
+                      <span className="inbox-row__main">
+                        <span className="inbox-row__title">
+                          {!n.isRead ? <span className="inbox-row__dot" aria-hidden="true" /> : null}
+                          {n.title}
+                        </span>
+                        <span className="inbox-row__excerpt">{n.body || TYPE_LABELS[n.type as NotificationType] || n.type}</span>
+                      </span>
+                      <span className="inbox-row__meta">
+                        <span className="inbox-row__type">{TYPE_LABELS[n.type as NotificationType] ?? n.type}</span>
+                        <span className="inbox-row__time">
+                          {new Date(n.createdAt).toLocaleString('en-NG', { dateStyle: 'medium', timeStyle: 'short' })}
+                        </span>
+                      </span>
+                    </button>
                   </form>
-                ) : null}
-              </li>
-            ))}
-          </ul>
+                </li>
+              ))}
+            </ul>
+          </div>
         </>
       )}
 
@@ -128,19 +144,21 @@ export default async function NotificationsPage({
           In-app notifications are always delivered. Email is optional and per type — muting an
           email type never hides the in-app record.
         </p>
-        <form action={savePrefs}>
-          <label className="check">
-            <input type="checkbox" name="emailEnabled" defaultChecked={prefs.emailEnabled} />
-            Send me email notifications
-          </label>
-          {NOTIFICATION_TYPES.map((t) => (
-            <label key={t} className="check">
-              <input type="checkbox" name={`mute_${t}`} defaultChecked={prefs.mutedTypes.includes(t)} />
-              Mute email for &ldquo;{TYPE_LABELS[t]}&rdquo;
+        <div className="card">
+          <form action={savePrefs}>
+            <label className="check">
+              <input type="checkbox" name="emailEnabled" defaultChecked={prefs.emailEnabled} />
+              Send me email notifications
             </label>
-          ))}
-          <button type="submit" className="btn">Save preferences</button>
-        </form>
+            {NOTIFICATION_TYPES.map((t) => (
+              <label key={t} className="check">
+                <input type="checkbox" name={`mute_${t}`} defaultChecked={prefs.mutedTypes.includes(t)} />
+                Mute email for &ldquo;{TYPE_LABELS[t]}&rdquo;
+              </label>
+            ))}
+            <button type="submit" className="sa-btn sa-btn--primary">Save preferences</button>
+          </form>
+        </div>
       </details>
     </div>
   );

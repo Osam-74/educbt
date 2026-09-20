@@ -428,44 +428,74 @@ fieldset > legend { font-size: 13px; font-weight: 600; color: var(--muted); marg
   .form-grid { grid-template-columns: 1fr; }
 }
 
-/* ── Communications (notifications, announcements, messages) ───────────── */
+/* ── Communications (notifications, announcements, messages) ─────────────
+   Gmail-style inbox pattern shared by all three Communications pages, built
+   on the same .sa-card/.sa-btn language as the rest of the school area
+   (school-table.css) instead of the ad hoc styling these pages had before.
+   Whole rows are the click target (a single <a> or full-width <button>) —
+   no separate "Open" link and no per-row "Mark read" button. */
 
 .empty-state { padding: 18px 0; }
 
-/* Notifications inbox */
-.notification-list { list-style: none; margin: 12px 0 20px; padding: 0; display: grid; gap: 10px; }
-.notification { border: 1px solid var(--line); border-radius: 9px; padding: 12px 14px; background: var(--wash); }
-.notification.unread { border-left: 4px solid var(--green, #1a7f37); background: var(--white); }
-.notification > div:first-child { display: flex; justify-content: space-between; gap: 10px; align-items: baseline; flex-wrap: wrap; }
-.notification-type { font-size: 12px; color: var(--muted); white-space: nowrap; }
-.notification p { margin: 6px 0 0; }
-.notification .btn-ghost { margin-top: 10px; }
+.comm-toolbar { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
 
-.btn-ghost { background: none; border: 1px solid var(--line); color: var(--ink); cursor: pointer; border-radius: 7px; padding: 6px 12px; font-size: 13px; }
-.btn-ghost:hover { background: var(--wash); }
+.inbox-card { padding: 0; overflow: hidden; }
+.inbox-list { list-style: none; margin: 0; padding: 0; }
+.inbox-list li { border-bottom: 1px solid var(--line); }
+.inbox-list li:last-child { border-bottom: 0; }
+.inbox-list li form { margin: 0; }
+
+/* Shared by the notification <button> and the thread <a> — same box, same
+   hover, same layout; only the element type differs (a mutation needs a
+   form+button, plain navigation just needs an anchor). */
+.inbox-row {
+  display: flex; align-items: center; gap: 14px; width: 100%;
+  padding: 14px 18px; border: 0; background: none; cursor: pointer;
+  font: inherit; text-align: left; color: var(--ink); text-decoration: none;
+}
+.inbox-row:hover { background: #f5f7f6; }
+.inbox-row__main { flex: 1 1 auto; min-width: 0; display: flex; align-items: baseline; gap: 10px; }
+.inbox-row__title {
+  font-weight: 500; white-space: nowrap; flex: 0 0 auto; max-width: 42%;
+  overflow: hidden; text-overflow: ellipsis; display: flex; align-items: center; gap: 7px;
+}
+.inbox-row.unread .inbox-row__title { font-weight: 700; }
+.inbox-row__dot { width: 8px; height: 8px; border-radius: 50%; background: #14532d; flex: 0 0 auto; }
+.inbox-row__excerpt { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1 1 auto; min-width: 0; }
+.inbox-row__meta { flex: 0 0 auto; display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 12.5px; }
+.inbox-row__type, .inbox-row__time { white-space: nowrap; }
+.inbox-row .ps-badge { margin-left: 0; }
+
+@media (max-width: 640px) {
+  .inbox-row { flex-wrap: wrap; padding: 12px 16px; }
+  .inbox-row__main { flex-basis: 100%; }
+  .inbox-row__title { max-width: 100%; }
+  .inbox-row__meta { flex-basis: 100%; justify-content: space-between; }
+}
 
 .prefs { margin-top: 28px; }
-.prefs summary { cursor: pointer; }
+.prefs summary { cursor: pointer; font-weight: 600; }
 .prefs form { display: grid; gap: 8px; margin-top: 12px; }
 
-/* Announcements */
-.announcement-list { list-style: none; margin: 12px 0 28px; padding: 0; display: grid; gap: 12px; }
-.announcement { border: 1px solid var(--line); border-radius: 9px; padding: 14px 16px; }
-.announcement p { margin: 6px 0; }
+/* Announcements — the audience/date line reuses .inbox-row__meta's look. */
+.announcement-list { list-style: none; margin: 0; padding: 0; }
+.announcement-list li { border-bottom: 1px solid var(--line); padding: 16px 18px; }
+.announcement-list li:last-child { border-bottom: 0; }
+.announcement-list h3 { margin: 0 0 6px; font-size: 15px; }
+.announcement-list p { margin: 0 0 8px; }
 
-/* Messages */
-.thread-list { list-style: none; margin: 12px 0 20px; padding: 0; display: grid; gap: 8px; }
-.thread { border: 1px solid var(--line); border-radius: 9px; background: var(--wash); }
-.thread.active { border-color: var(--green, #1a7f37); background: var(--white); }
-.thread a { display: flex; flex-direction: column; gap: 4px; padding: 10px 14px; text-decoration: none; color: var(--ink); }
-.thread .badge, .ps-badge { display: inline-block; background: var(--green, #1a7f37); color: var(--white); font-size: 11px; font-weight: 600; border-radius: 999px; padding: 1px 8px; margin-left: 8px; }
+/* Messages — thread list is the same .inbox-row pattern; the open thread is
+   a lightweight chat view, not a form-styled card. */
+.thread.active .inbox-row { background: #f0f6f1; }
 
-.thread-view { margin-bottom: 28px; }
-.message-list { list-style: none; margin: 12px 0 18px; padding: 0; display: grid; gap: 10px; }
+.thread-view { margin-top: 4px; }
+.thread-view__head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
+.message-list { list-style: none; margin: 0 0 16px; padding: 0; display: grid; gap: 10px; }
 .message { border: 1px solid var(--line); border-radius: 9px; padding: 10px 14px; background: var(--wash); max-width: 72ch; }
-.message.mine { background: var(--white); border-color: var(--green, #1a7f37); }
+.message.mine { background: #f0f6f1; border-color: #14532d; }
 .message p { margin: 4px 0; }
 .message strong { display: block; }
+.reply-form { margin-top: 4px; }
 
 /* ── Auth pages: sign-in, two-step, forgot/reset password ─────────────────── */
 
