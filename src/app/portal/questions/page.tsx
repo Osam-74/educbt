@@ -41,6 +41,8 @@ export default async function QuestionBankPage({ searchParams }: { searchParams:
   const setId = Number(q.setId) || 0;
 
   const theoryAllowed = current?.seriesType === 'examination';
+  const lockedDelivery: 'cbt' | 'written' | null =
+    current?.assessmentMode === 'cbt' ? 'cbt' : current?.assessmentMode === 'written' ? 'written' : null;
   const componentLabel = current?.caComponentKey
     ? caComponents(data.settings as Record<string, unknown>).find((c) => c.key === current.caComponentKey)?.label ?? current.caComponentKey
     : '';
@@ -115,7 +117,7 @@ export default async function QuestionBankPage({ searchParams }: { searchParams:
             scopes={data.scopes.filter((s): s is typeof s & { subjectId: number } => s.subjectId !== null)}
             subjectId={subjectId} levelId={levelId} departmentId={departmentId}
             examType={examType} delivery={delivery} marks={marks} method={method} waecMode={waecMode}
-            theoryAllowed={!!theoryAllowed} action={openSet}
+            theoryAllowed={!!theoryAllowed} lockedDelivery={lockedDelivery} action={openSet}
             opening={<p className="muted">Opening…</p>}
             writtenIntent={loaded ? (
               <WrittenIntent subject={subject} level={level} setId={loaded.set.id} returnParams={returnParams}

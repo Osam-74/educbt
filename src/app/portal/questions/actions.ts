@@ -57,6 +57,13 @@ export async function openSet(form: FormData) {
     if (!current) throw new Error('The question bank is closed. Ask the exam office to open a submission window.');
     if (!current.termId) throw new Error('The collection needs an academic term.');
 
+    // The series may have already decided the format for every subject —
+    // the client hides the toggle in that case, but the choice is enforced
+    // here too rather than trusted from the form.
+    const forcedDelivery = current.assessmentMode === 'cbt' || current.assessmentMode === 'written'
+      ? current.assessmentMode
+      : null;
+
     const setScope: SetScope = {
       sessionId: current.sessionId,
       termId: current.termId,
@@ -66,7 +73,7 @@ export async function openSet(form: FormData) {
       examType: current.seriesType === 'examination' ? scope.examType : 'objective',
       seriesId: current.seriesType === 'examination' ? 0 : current.id,
       waecMode: scope.waecMode,
-      deliveryMode: scope.delivery,
+      deliveryMode: forcedDelivery ?? scope.delivery,
       defaultMarks: scope.marks,
     };
     const set = await findOrCreateSet(actor, setScope);

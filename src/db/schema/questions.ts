@@ -40,6 +40,24 @@ export const seriesStatus = pgEnum('series_status', [
   'draft', 'open', 'composed', 'published', 'closed', 'cancelled',
 ]);
 
+/**
+ * How this series (CA test or examination) is assessed:
+ *
+ *   cbt      every subject is a CBT test — the Written option is hidden from
+ *            teachers in the Question Bank; they can only submit CBT questions.
+ *   written  every subject is on paper — the CBT option is hidden; teachers
+ *            submit written intent only, which clears immediately (nothing
+ *            to review) exactly as submitSet() already does today.
+ *   mixed    each subject-teacher CHOOSES cbt or written for their own
+ *            subject (as the Question Bank has always allowed). The
+ *            difference from plain 'written'/'cbt': a written declaration
+ *            under 'mixed' is an intent that itself needs review — it goes
+ *            to the exam office as a normal submission rather than
+ *            auto-clearing, because in a mixed series nobody but the office
+ *            has agreed yet that THIS subject is the paper-based one.
+ */
+export const assessmentMode = pgEnum('assessment_mode', ['cbt', 'written', 'mixed']);
+
 export const examType = pgEnum('exam_type', ['objective', 'theory']);
 
 export const deliveryMode = pgEnum('delivery_mode', ['cbt', 'written']);
@@ -106,6 +124,7 @@ export const examSeries = pgTable('exam_series', {
   durationMinutes: integer('duration_minutes').default(0).notNull(),
 
   status: seriesStatus('status').default('draft').notNull(),
+  assessmentMode: assessmentMode('assessment_mode').default('mixed').notNull(),
   createdBy: bigint('created_by', { mode: 'number' }),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 }, (t) => ({

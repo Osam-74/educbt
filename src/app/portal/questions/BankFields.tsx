@@ -41,6 +41,7 @@ export default function BankFields({
   method: initialMethod,
   waecMode: initialWaecMode,
   theoryAllowed,
+  lockedDelivery,
   action,
   manualEntry,
   pasteImport,
@@ -58,6 +59,10 @@ export default function BankFields({
   method: 'manual' | 'paste' | 'csv';
   waecMode: boolean;
   theoryAllowed: boolean;
+  /** When set, this series has already decided the format for every subject
+   * — the Delivery Mode toggle is hidden and forced to this value. Null under
+   * 'mixed', where each subject-teacher still chooses. */
+  lockedDelivery: 'cbt' | 'written' | null;
   action: (formData: FormData) => void;
   /** Pre-rendered entry panels for the set already loaded at this scope — all
    * three (manual/paste/csv) are handed in up front so switching Method is a
@@ -94,6 +99,12 @@ export default function BankFields({
   // value than what's showing (fresh load, shared link, etc). Method itself
   // never triggers a round-trip, so this only reacts to the server's value.
   useEffect(() => { setMethod(initialMethod); }, [initialMethod]);
+  // A series with a forced mode overrides whatever the teacher last had
+  // selected — the choice isn't theirs to make in cbt/written mode.
+  useEffect(() => {
+    if (lockedDelivery && delivery !== lockedDelivery) { setDelivery(lockedDelivery); submitSoon(); }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lockedDelivery]);
 
   const subjectOptions = [...new Map(scopes.map((s) => [s.subjectId, s.subject])).entries()]
     .sort((a, b) => a[1].localeCompare(b[1]));
@@ -122,12 +133,20 @@ export default function BankFields({
         <div className="qs-row qs-row--context">
           <div className="qs-field">
             <span className="qs-label">Delivery Mode</span>
-            <div className="qs-toggle" role="group" aria-label="Delivery mode">
-              <button type="button" className={delivery === 'cbt' ? 'is-active' : ''}
-                onClick={() => { setDelivery('cbt'); submitSoon(); }}>CBT</button>
-              <button type="button" className={delivery === 'written' ? 'is-active' : ''}
-                onClick={() => { setDelivery('written'); submitSoon(); }}>Written</button>
-            </div>
+            {lockedDelivery ? (
+              <p className="qs-hint" style={{ margin: '4px 0 0' }}>
+                {lockedDelivery === 'written'
+                  ? 'This examination is written/paper-based — every subject is Written.'
+                  : 'This examination is CBT-based — every subject is CBT.'}
+              </p>
+            ) : (
+              <div className="qs-toggle" role="group" aria-label="Delivery mode">
+                <button type="button" className={delivery === 'cbt' ? 'is-active' : ''}
+                  onClick={() => { setDelivery('cbt'); submitSoon(); }}>CBT</button>
+                <button type="button" className={delivery === 'written' ? 'is-active' : ''}
+                  onClick={() => { setDelivery('written'); submitSoon(); }}>Written</button>
+              </div>
+            )}
           </div>
         </div>
 

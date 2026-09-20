@@ -19,11 +19,11 @@
  */
 
 import { and, eq, count, asc, sql } from 'drizzle-orm';
-import { forSchool, schema } from '@/db';
+import { forSchool, schema, type Tx } from '@/db';
 import type { Actor } from '@/lib/session';
 import { isSchoolWide } from '@/lib/queries';
 import { authoringActor, authoringLock, permittedScope, permittedCollection, editableSetAccess } from './authoring-access';
-import { validateQuestion } from './authoring-validation';
+import { validateQuestion, authoringConfig } from './authoring-validation';
 
 export type SetScope = {
   sessionId: number;
@@ -227,6 +227,29 @@ export async function addQuestion(
  * other half. A CA test and a practice paper have no theory half, so they
  * submit alone.
  */
+/**
+ * The exam series that governs this set's assessment mode. A CA test's own
+ * row IS the series (seriesId is real); a formal examination's questions
+ * live in the shared terminal bank (seriesId 0 — see the note at the top of
+ * questions.ts), so its governing series is whichever one the exam office
+ * currently has open for submission (schools.settings.questionBank.seriesId
+ * — the same config collectionView()/openSet() use to resolve "current").
+ */
+async function governingAssessmentMode(tx: Tx, schoolId: number, set: typeof schema.questionSets.$inferSelect): Promise<'cbt' | 'written' | 'mixed'> {
+  let seriesId = set.seriesId;
+  if (seriesId === 0) {
+    const [school] = await tx.select({ settings: schema.schools.settings }).from(schema.schools)
+      .where(eq(schema.schools.id, schoolId)).limit(1);
+    seriesId = authoringConfig((school?.settings ?? {}) as Record<string, unknown>).seriesId ?? 0;
+    if (seriesId === 0) return 'mixed';
+  }
+  const [series] = await tx.select({ assessmentMode: schema.examSeries.assessmentMode })
+    .from(schema.examSeries)
+    .where(and(eq(schema.examSeries.id, seriesId), eq(schema.examSeries.schoolId, schoolId)))
+    .limit(1);
+  return series?.assessmentMode ?? 'mixed';
+}
+
 export async function submitSet(actor: Actor, setId: number) {
   return forSchool(actor.schoolId, async (tx) => {
     await authoringLock(tx, actor.schoolId);
@@ -240,16 +263,38 @@ export async function submitSet(actor: Actor, setId: number) {
     await editableSetAccess(tx, actor, set);
     if (!isEditable(set.status)) throw new Error('This set has already been submitted.');
 
+    const mode = await governingAssessmentMode(tx, actor.schoolId, set);
+    if (mode === 'cbt' && set.deliveryMode === 'written') {
+      throw new Error('This examination is CBT-only — Written is not an option here.');
+    }
+    if (mode === 'written' && set.deliveryMode !== 'written') {
+      throw new Error('This examination is written/paper-based only — set Delivery Mode to Written.');
+    }
+
     // Written delivery means the school prints and marks the paper on paper —
-    // there is no bank of typed questions to hold to a quota. The "submission"
-    // is the intent itself, so it always clears, alone, with nothing to review.
-    if (set.deliveryMode === 'written') {
+    // there is no bank of typed questions to hold to a quota. Under a
+    // whole-series 'written' or 'cbt' mode the school has already decided the
+    // format, so the "submission" is the intent itself and it clears alone,
+    // with nothing to review. Under 'mixed', each subject-teacher is the one
+    // choosing written over CBT for their own subject, so the exam office
+    // still needs to see and approve that choice like any other submission.
+    if (set.deliveryMode === 'written' && mode !== 'mixed') {
       await tx.update(schema.questionSets)
         .set({ status: 'approved', submittedAt: new Date(), submittedBy: actor.userId, reviewedAt: new Date(), reviewedBy: actor.userId })
         .where(eq(schema.questionSets.id, setId));
       await tx.insert(schema.auditLog).values({ schoolId: actor.schoolId, actorUserId: actor.userId, actorRole: actor.role,
         action: 'question_set.written_intent', entityType: 'question_sets', entityId: setId });
       return { success: true as const, autoApproved: true };
+    }
+
+    if (set.deliveryMode === 'written') {
+      // Mixed mode: the intent itself is what gets reviewed. Nothing to count.
+      await tx.update(schema.questionSets)
+        .set({ status: 'submitted', submittedAt: new Date(), submittedBy: actor.userId })
+        .where(eq(schema.questionSets.id, setId));
+      await tx.insert(schema.auditLog).values({ schoolId: actor.schoolId, actorUserId: actor.userId, actorRole: actor.role,
+        action: 'question_set.written_intent_submitted', entityType: 'question_sets', entityId: setId });
+      return { success: true as const, autoApproved: false };
     }
 
     const paired = set.seriesId === 0;

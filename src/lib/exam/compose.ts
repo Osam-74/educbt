@@ -56,6 +56,10 @@ export const createSeriesInput = z.object({
   // counts towards — meaningful only for seriesType 'ca_test'. Validated
   // against the school's own configured slots below, not trusted as-is.
   caComponentKey: z.string().trim().min(1).max(64).optional().nullable(),
+  // 'cbt' or 'written' forces every subject in this series; 'mixed' lets each
+  // subject-teacher choose in the Question Bank (see submitSet in sets.ts for
+  // what 'mixed' changes about a written declaration).
+  assessmentMode: z.enum(['cbt', 'written', 'mixed']).default('mixed'),
 }).refine(
   (v) => !v.questionsOpenFrom || !v.questionsOpenTo
     || new Date(v.questionsOpenFrom) < new Date(v.questionsOpenTo),
@@ -126,6 +130,7 @@ export async function createSeries(actor: Actor, input: unknown) {
       questionsOpenFrom: asDate(data.questionsOpenFrom ?? null),
       questionsOpenTo: asDate(data.questionsOpenTo ?? null),
       status: 'draft',
+      assessmentMode: data.assessmentMode,
       createdBy: actor.userId,
     }).returning();
 
@@ -140,6 +145,7 @@ export async function createSeries(actor: Actor, input: unknown) {
         title: data.title,
         seriesType: data.seriesType,
         caComponentKey,
+        assessmentMode: data.assessmentMode,
         questionsPerStudent: data.questionsPerStudent,
         durationMinutes: data.durationMinutes,
       },
@@ -293,7 +299,10 @@ export async function composeSeries(
       }
 
       // Already composed. Re-composing is something an office does, so it must
-      // not produce a second paper for the same subject and level.
+      // not produce a second paper for the same subject and level — UNLESS the
+      // paper is an empty placeholder created ahead of time (see
+      // composeFromAssignments below), in which case this is exactly the moment
+      // it gets its actual questions.
       const [existing] = await tx.select({ id: schema.examPapers.id })
         .from(schema.examPapers)
         .where(and(
@@ -302,30 +311,44 @@ export async function composeSeries(
           eq(schema.examPapers.levelId, c.levelId),
         )).limit(1);
 
-      if (existing) { skipped++; continue; }
+      if (existing) {
+        const existingRows = await tx.select({ existingCount: sql<number>`count(*)`.mapWith(Number) })
+          .from(schema.paperQuestions)
+          .where(eq(schema.paperQuestions.paperId, Number(existing.id)));
+        if ((existingRows[0]?.existingCount ?? 0) > 0) { skipped++; continue; }
+      }
 
-      // A representative class, for display. The paper belongs to the level.
-      const [representative] = await tx.select({ id: schema.classes.id })
-        .from(schema.classes)
-        .where(and(
-          eq(schema.classes.schoolId, actor.schoolId),
-          eq(schema.classes.levelId, c.levelId),
-          eq(schema.classes.status, 'active'),
-        ))
-        .orderBy(asc(schema.classes.arm))
-        .limit(1);
+      let paperId: number;
+      if (existing) {
+        paperId = Number(existing.id);
+        await tx.update(schema.examPapers)
+          .set({ durationSeconds: duration, questionCount: perStudent })
+          .where(eq(schema.examPapers.id, paperId));
+      } else {
+        // A representative class, for display. The paper belongs to the level.
+        const [representative] = await tx.select({ id: schema.classes.id })
+          .from(schema.classes)
+          .where(and(
+            eq(schema.classes.schoolId, actor.schoolId),
+            eq(schema.classes.levelId, c.levelId),
+            eq(schema.classes.status, 'active'),
+          ))
+          .orderBy(asc(schema.classes.arm))
+          .limit(1);
 
-      const [paper] = await tx.insert(schema.examPapers).values({
-        schoolId: actor.schoolId,
-        seriesId,
-        subjectId: c.subjectId,
-        levelId: c.levelId,
-        departmentId: c.departmentId,
-        classId: representative?.id ?? null,
-        durationSeconds: duration,
-        questionCount: perStudent,
-        status: 'draft',
-      }).returning();
+        const [paper] = await tx.insert(schema.examPapers).values({
+          schoolId: actor.schoolId,
+          seriesId,
+          subjectId: c.subjectId,
+          levelId: c.levelId,
+          departmentId: c.departmentId,
+          classId: representative?.id ?? null,
+          durationSeconds: duration,
+          questionCount: perStudent,
+          status: 'draft',
+        }).returning();
+        paperId = Number(paper!.id);
+      }
 
       const pool = await tx.select({ id: schema.questions.id })
         .from(schema.questions)
@@ -339,7 +362,7 @@ export async function composeSeries(
       await tx.insert(schema.paperQuestions).values(
         pool.map((q, i) => ({
           schoolId: actor.schoolId,
-          paperId: Number(paper!.id),
+          paperId,
           questionId: Number(q.id),
           sortOrder: i,
         })),

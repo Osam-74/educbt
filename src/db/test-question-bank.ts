@@ -90,6 +90,50 @@ async function main() {
       const [row] = await db.select().from(schema.auditLog).where(and(eq(schema.auditLog.schoolId, a.schoolId), eq(schema.auditLog.action, 'question_bank.configured')));
       assert(row?.before && row.after);
     });
+
+    await check('written-mode series auto-approves teacher intent with nothing to review', async () => {
+      const [writtenSeries] = await db.insert(schema.examSeries).values({
+        schoolId: a.schoolId, sessionId: a.scope.sessionId, termId: a.scope.termId,
+        title: 'Written CA', seriesType: 'ca_test', assessmentMode: 'written',
+        questionsOpenFrom: new Date(Date.now() - 86400000), questionsOpenTo: new Date(Date.now() + 86400000),
+      }).returning();
+      await saveCollection(principal, { objective: 1, theory: 1, seriesId: writtenSeries!.id });
+      const wSet = await findOrCreateSet(teacher, { ...a.scope, seriesId: writtenSeries!.id, deliveryMode: 'written' });
+      const result = await submitSet(teacher, wSet.id);
+      assert.equal(result.success, true);
+      assert.equal((result as { autoApproved?: boolean }).autoApproved, true);
+      const [row] = await db.select().from(schema.questionSets).where(eq(schema.questionSets.id, wSet.id));
+      assert.equal(row!.status, 'approved');
+    });
+
+    await check('cbt-mode series rejects a written declaration', async () => {
+      const [cbtSeries] = await db.insert(schema.examSeries).values({
+        schoolId: a.schoolId, sessionId: a.scope.sessionId, termId: a.scope.termId,
+        title: 'CBT CA', seriesType: 'ca_test', assessmentMode: 'cbt',
+        questionsOpenFrom: new Date(Date.now() - 86400000), questionsOpenTo: new Date(Date.now() + 86400000),
+      }).returning();
+      await saveCollection(principal, { objective: 1, theory: 1, seriesId: cbtSeries!.id });
+      const cSet = await findOrCreateSet(teacher, { ...a.scope, seriesId: cbtSeries!.id, deliveryMode: 'written' });
+      await assert.rejects(submitSet(teacher, cSet.id), /CBT-only/);
+    });
+
+    await check('mixed-mode series sends a written declaration for approval instead of auto-clearing', async () => {
+      const [mixedSeries] = await db.insert(schema.examSeries).values({
+        schoolId: a.schoolId, sessionId: a.scope.sessionId, termId: a.scope.termId,
+        title: 'Mixed CA', seriesType: 'ca_test', assessmentMode: 'mixed',
+        questionsOpenFrom: new Date(Date.now() - 86400000), questionsOpenTo: new Date(Date.now() + 86400000),
+      }).returning();
+      await saveCollection(principal, { objective: 1, theory: 1, seriesId: mixedSeries!.id });
+      const mSet = await findOrCreateSet(teacher, { ...a.scope, seriesId: mixedSeries!.id, deliveryMode: 'written' });
+      const result = await submitSet(teacher, mSet.id);
+      assert.equal(result.success, true);
+      assert.equal((result as { autoApproved?: boolean }).autoApproved, false);
+      const [row] = await db.select().from(schema.questionSets).where(eq(schema.questionSets.id, mSet.id));
+      assert.equal(row!.status, 'submitted');
+      await reviewSet(principal, mSet.id, 'approve', '');
+      const [approved] = await db.select().from(schema.questionSets).where(eq(schema.questionSets.id, mSet.id));
+      assert.equal(approved!.status, 'approved');
+    });
     if (process.env.CA_TEST_HTTP_URL) {
       const [practice] = await db.insert(schema.examSeries).values({ schoolId: a.schoolId, sessionId: a.scope.sessionId,
         termId: a.scope.termId, title: 'Practice collection', seriesType: 'practice' }).returning();

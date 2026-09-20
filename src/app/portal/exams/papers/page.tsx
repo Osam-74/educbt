@@ -99,6 +99,7 @@ export default async function ExamPapersPage({
         durationMinutes: String(formData.get('durationMinutes') ?? ''),
         questionsOpenFrom: formData.get('questionsOpenFrom') || null,
         questionsOpenTo: formData.get('questionsOpenTo') || null,
+        assessmentMode: String(formData.get('assessmentMode') ?? 'mixed'),
       });
 
       destination = `/portal/exams/${Number(created.id)}`;
@@ -207,6 +208,7 @@ export default async function ExamPapersPage({
         durationMinutes: String(formData.get('durationMinutes') ?? ''),
         questionsOpenFrom: formData.get('questionsOpenFrom') || null,
         questionsOpenTo: formData.get('questionsOpenTo') || null,
+        assessmentMode: String(formData.get('assessmentMode') ?? 'mixed'),
       });
       destination = '/portal/exams/papers?ok=' + encodeURIComponent(`"${title}" is open for teachers to set questions into.`);
     } catch (err) {
@@ -475,6 +477,14 @@ export default async function ExamPapersPage({
                   Name (optional)
                   <input name="title" maxLength={191} placeholder="Defaults to the slot's name" />
                 </label>
+                <label style={{ flex: 1, minWidth: 220 }}>
+                  Assessment mode
+                  <select name="assessmentMode" defaultValue="mixed">
+                    <option value="mixed">Mixed — each teacher chooses CBT or Written</option>
+                    <option value="cbt">CBT — every subject is a CBT test</option>
+                    <option value="written">Written — every subject is on paper</option>
+                  </select>
+                </label>
               </div>
 
               <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
@@ -548,6 +558,14 @@ export default async function ExamPapersPage({
             <label style={{ flex: 1, minWidth: 220 }}>
               Duration (minutes)
               <input name="durationMinutes" type="number" min="5" max="300" placeholder="e.g. 60" required />
+            </label>
+            <label style={{ flex: 1, minWidth: 220 }}>
+              Assessment mode
+              <select name="assessmentMode" defaultValue="mixed">
+                <option value="mixed">Mixed — each teacher chooses CBT or Written</option>
+                <option value="cbt">CBT — every subject is a CBT test</option>
+                <option value="written">Written — every subject is on paper</option>
+              </select>
             </label>
           </div>
 

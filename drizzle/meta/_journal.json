@@ -172,6 +172,13 @@
       "when": 1789910400000,
       "tag": "0023_staff_assignment_notification",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1789996800000,
+      "tag": "0024_assessment_mode",
+      "breakpoints": true
     }
   ]
 }
