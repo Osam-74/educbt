@@ -5,7 +5,6 @@ import { requireSchoolSession } from '@/lib/session';
 import { StudentError, registerCoreForClass } from '@/lib/people/students';
 
 export type RegistrationActionState = { ok: boolean; message: string };
-export const EMPTY: RegistrationActionState = { ok: true, message: '' };
 
 export async function registerCoreAction(_previous: RegistrationActionState, form: FormData): Promise<RegistrationActionState> {
   const actor = await requireSchoolSession();

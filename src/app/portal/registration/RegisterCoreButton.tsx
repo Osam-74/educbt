@@ -1,7 +1,11 @@
 'use client';
 
 import { useActionState } from 'react';
-import { registerCoreAction, EMPTY } from './actions';
+import { registerCoreAction, type RegistrationActionState } from './actions';
+
+// A '"use server"' file may only export async functions — this initial
+// state constant has to live in a plain (client) module instead.
+const EMPTY: RegistrationActionState = { ok: true, message: '' };
 
 /**
  * "Register these for the whole class" — legacy teacher/registration.php's
