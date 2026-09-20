@@ -200,3 +200,16 @@ Fixes: close main's owner at the end of `main()`; close the `@/db` singleton in 
 **Regression status after this round:** the branch CI completed green — **all 34 suites**, including the ten that had never once run in CI before (promotion, comms, operational, roles, totp, settings-validation, settings, question-validation, question-bank, print, print69). Main CI green at `d7023bb`. The full battery now takes ~90 seconds of suite time; promotion specifically went from a 30-minute timeout to 1.4 seconds.
 
 **Lesson for future suites:** a pooled postgres.js client without `idle_timeout` will hang any passing test process that forgets `await client.end()` — always close every client the suite creates, plus the `@/db` singleton if the suite imports it.
+
+## Addendum — Written exam papers were composed as permanently "short" (2026-09-20, `1eda496`)
+
+Audit found a real functional gap, not just polish: a subject declared Written (whole-series Written/CBT mode, or an individual subject under Mixed — see `docs/ca-score-entry.md` and the assessment-mode work on `main`) had a question set with zero questions by design, since nothing is pooled for a paper sat on paper. `composeSeries` treated "0 approved questions" as unconditionally short and skipped it every time, so a written subject could never reach the timetable, and there was no UI path to enter its mark at all.
+
+Fixed on `main`:
+
+- `exam_papers.delivery_mode` (migration 0025, applied to production) denormalizes the governing question set's delivery mode onto the paper — scheduling, invigilation and results all query the paper, not the set.
+- `composeSeries` composes a written paper straight through with an empty pool; recomposing now treats an existing written paper's mere presence as done (there is nothing to fill in later, unlike a CBT placeholder deliberately left open for questions).
+- The exam column on the CA score sheet (`lib/ca/queries.ts` `caFullSheet`, `ScoreSheet.tsx`) becomes editable, gated server-side on an actually `published`/`closed` written paper for that exact class+subject — a CBT paper, even published, stays read-only and attempt-sourced.
+- `lib/results/workflow.ts` reads that manual score the same way it reads a marked CBT attempt, so compile/review/publish are delivery-mode-agnostic.
+
+`test-ca.ts` +6 checks (64 total), `test-results.ts` gained a written-subject composition/scheduling/publishing path alongside CBT. Full local gate green: typecheck, build, ca, results, result-workflow, authoring, question-bank, timetable, dashboards, exam-dashboard.
