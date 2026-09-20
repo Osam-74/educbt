@@ -9,6 +9,8 @@ import { forSchool, schema } from '@/db';
 import { PortalIcon } from '../../PortalShell';
 import { TYPE_LABEL, STATUS_LABEL, fmtDay, fmtTime, addMinutes } from '../labels';
 import DeleteSeriesButton from './DeleteSeriesButton';
+import CaWindowForm from './CaWindowForm';
+import CreateExaminationForm from './CreateExaminationForm';
 
 export const dynamic = 'force-dynamic';
 
@@ -17,25 +19,30 @@ const DELIVERY_LABEL: Record<string, string> = { cbt: 'CBT', written: 'Written' 
 /**
  * Exam Papers (legacy templates/portal/exams/papers.php, $educbt_title = 'Exam Papers').
  *
- * The plugin puts everything on one scrollable page, in this order — see
- * docs/examination-area-parity-todo.md for the full section-by-section
- * breakdown this page was built against:
+ * Deliberately reordered from the legacy plugin so every "create" section
+ * comes before the "list" section it feeds, rather than interleaved:
  *   1. Practice exams notice (practice papers are never scheduled/reviewed —
  *      always available once at least one paper exists).
  *   2. Question bank controller (which single collection teachers may
  *      currently submit into — reuses saveCollection()/collectionView()
  *      from the Question Bank page, not a parallel copy).
- *   3. Continuous assessment tests (live status table — reuses
+ *   3. Open a new assessment window (CA) — createSeries() with
+ *      seriesType 'ca_test' and a caComponentKey slot reference. Form lives
+ *      in CaWindowForm.tsx (client component) so Assessment mode can hide
+ *      the CBT-only fields the moment Written is chosen.
+ *   4. Create examination — createSeries() inline, moved from the old
+ *      /portal/exams/new route. Form lives in CreateExaminationForm.tsx for
+ *      the same reason as #3.
+ *   5. Papers table — every subject/class paper across every formal
+ *      examination and CA test, whether composed yet or not.
+ *   6. Continuous assessment tests (live status table — reuses
  *      questionAvailability() from the examination's own page).
- *   4. Open a new assessment window (CA) — createSeries() with
- *      seriesType 'ca_test' and a caComponentKey slot reference.
- *   5. Create examination — createSeries() inline, moved from the old
- *      /portal/exams/new route.
- *   6. All examinations table — every series with Build timetable /
+ *   7. All examinations table — every series with Build timetable /
  *      Publish / Delete actions.
- *   7. Submitted papers, pending review — every set awaiting a decision,
- *      with a quick no-comment Approve; sending a set back with a reason
- *      still happens on /portal/exams/approvals, which owns that form.
+ *
+ * See docs/examination-area-parity-todo.md for the legacy section-by-section
+ * breakdown this page was originally built against; the underlying actions
+ * are unchanged, only the on-page arrangement moved.
  */
 export default async function ExamPapersPage({
   searchParams,
@@ -50,7 +57,7 @@ export default async function ExamPapersPage({
   const series = await listSeries(actor);
   const bank = await collectionView(actor);
 
-  // Section 7 — "Papers": every subject/class paper across every formal
+  // Section 5 — "Papers": every subject/class paper across every formal
   // examination and CA test, whether composed yet or not (legacy parity:
   // templates/portal/exams/papers.php's own papers table — built from the
   // timetable, composed to pull in the questions, then published or deleted).
@@ -335,7 +342,7 @@ export default async function ExamPapersPage({
   const bankOpenFor = bank.series.find((s) => s.id === bank.config.seriesId);
   const bankCandidates = bank.series.filter((s) => s.seriesType !== 'practice' && ['draft', 'open'].includes(s.status));
 
-  // Section 3 — "Continuous assessment tests": every CA test still in play
+  // Section 6 — "Continuous assessment tests": every CA test still in play
   // (not yet published/closed/cancelled), with a live submitted/total papers
   // count. Runs the exact same availability query the office would see on
   // the examination's own page, so this table can never disagree with it.
@@ -409,6 +416,102 @@ export default async function ExamPapersPage({
       </section>
 
       <section className="sd-panel sd-panel--wide" style={{ marginBottom: 22 }}>
+        <header><h2><PortalIcon name="tests" />Open a new assessment window (CA)</h2></header>
+        <div style={{ padding: '0 22px 20px' }}>
+          {caSlots.length === 0 ? (
+            <p className="muted" style={{ margin: '10px 0' }}>
+              No continuous-assessment slots are configured yet. Add one (e.g.
+              "First CA") in School Settings before opening a window.
+            </p>
+          ) : (
+            <CaWindowForm caSlots={caSlots} action={openCaWindow} />
+          )}
+        </div>
+      </section>
+
+      <section className="sd-panel sd-panel--wide" style={{ marginBottom: 22 }}>
+        <header><h2><PortalIcon name="exam" />Create examination</h2></header>
+        <CreateExaminationForm
+          sessions={sessions}
+          terms={terms}
+          defaultSessionId={defaultSession?.id}
+          defaultTermId={defaultTerm?.id}
+          action={create}
+        />
+      </section>
+
+      <section className="sd-panel sd-panel--wide" style={{ marginTop: 22 }}>
+        <header><h2><PortalIcon name="papers" />Papers ({papers.length})</h2></header>
+        <div style={{ padding: '0 22px 20px' }}>
+          {papers.length === 0 ? (
+            <p className="muted" style={{ margin: '18px 0' }}>
+              No papers yet. Build the timetable for an examination or CA test above to
+              create them.
+            </p>
+          ) : (
+            <div className="sd-table-wrap">
+              <table className="tbl">
+                <thead>
+                  <tr>
+                    <th>Subject</th><th>Class</th><th>Type</th><th>When</th>
+                    <th>Questions</th><th>Invigilator</th><th>Status</th><th />
+                  </tr>
+                </thead>
+                <tbody>
+                  {papers.map((p) => (
+                    <tr key={p.key}>
+                      <td>{p.subjectName}</td>
+                      <td className="muted">{p.levelName ?? '—'}</td>
+                      <td>{DELIVERY_LABEL[p.deliveryMode] ?? p.deliveryMode}</td>
+                      <td className="muted">
+                        {p.scheduledAt
+                          ? `${fmtDay(p.scheduledAt)}, ${fmtTime(p.scheduledAt)}–${fmtTime(addMinutes(p.scheduledAt, (p.durationSeconds ?? 3600) / 60))}`
+                          : 'Not on the timetable yet'}
+                      </td>
+                      <td>{p.status === 'not_composed' ? 'Not composed' : p.questionCount}</td>
+                      <td className="muted">{p.invigilatorName ?? 'Not assigned'}</td>
+                      <td>
+                        {p.status === 'published' ? <span className="pill pill--published">Published</span>
+                          : p.status === 'draft' ? <span className="pill pill--approved">Ready</span>
+                            : <span className="pill pill--draft">Draft</span>}
+                      </td>
+                      <td style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+                        {p.status === 'not_composed' ? (
+                          <form action={composePapers} style={{ display: 'inline' }}>
+                            <input type="hidden" name="seriesId" value={p.seriesId} />
+                            <button type="submit" className="sd-action sd-action--ghost" style={{ padding: '3px 10px', fontSize: 12.5 }}>
+                              Compose
+                            </button>
+                          </form>
+                        ) : null}
+                        {p.status === 'draft' ? (
+                          <>
+                            <form action={publishPapers} style={{ display: 'inline' }}>
+                              <input type="hidden" name="seriesId" value={p.seriesId} />
+                              <button type="submit" className="sd-action sd-action--ghost" style={{ padding: '3px 10px', fontSize: 12.5 }}>
+                                Publish
+                              </button>
+                            </form>
+                            <form action={removePaper} style={{ display: 'inline' }}>
+                              <input type="hidden" name="paperId" value={p.paperId ?? ''} />
+                              <button type="submit" className="sd-action sd-action--ghost" style={{ padding: '3px 10px', fontSize: 12.5 }}>
+                                Delete
+                              </button>
+                            </form>
+                          </>
+                        ) : null}
+                        {p.status === 'published' ? (
+                          <Link href={`/portal/exams/${p.seriesId}`}>View</Link>
+                        ) : null}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      </section>      <section className="sd-panel sd-panel--wide" style={{ marginBottom: 22 }}>
         <header><h2><PortalIcon name="tests" />Continuous assessment tests</h2></header>
         <div style={{ padding: '0 22px 20px' }}>
           {activeCaTests.length === 0 ? (
@@ -452,140 +555,6 @@ export default async function ExamPapersPage({
             </div>
           )}
         </div>
-      </section>
-
-      <section className="sd-panel sd-panel--wide" style={{ marginBottom: 22 }}>
-        <header><h2><PortalIcon name="tests" />Open a new assessment window (CA)</h2></header>
-        <div style={{ padding: '0 22px 20px' }}>
-          {caSlots.length === 0 ? (
-            <p className="muted" style={{ margin: '10px 0' }}>
-              No continuous-assessment slots are configured yet. Add one (e.g.
-              "First CA") in School Settings before opening a window.
-            </p>
-          ) : (
-            <form action={openCaWindow} className="eo-mini-form" style={{ flexDirection: 'column', alignItems: 'stretch' }}>
-              <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
-                <label style={{ flex: 1, minWidth: 220 }}>
-                  Counts towards
-                  <select name="caComponentKey" required>
-                    {caSlots.map((c) => (
-                      <option key={c.key} value={c.key}>{c.label}</option>
-                    ))}
-                  </select>
-                </label>
-                <label style={{ flex: 1, minWidth: 220 }}>
-                  Name (optional)
-                  <input name="title" maxLength={191} placeholder="Defaults to the slot's name" />
-                </label>
-                <label style={{ flex: 1, minWidth: 220 }}>
-                  Assessment mode
-                  <select name="assessmentMode" defaultValue="mixed">
-                    <option value="mixed">Mixed — each teacher chooses CBT or Written</option>
-                    <option value="cbt">CBT — every subject is a CBT test</option>
-                    <option value="written">Written — every subject is on paper</option>
-                  </select>
-                </label>
-              </div>
-
-              <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
-                <label style={{ flex: 1, minWidth: 220 }}>
-                  Question window opens
-                  <input name="questionsOpenFrom" type="date" />
-                </label>
-                <label style={{ flex: 1, minWidth: 220 }}>
-                  Question window closes
-                  <input name="questionsOpenTo" type="date" />
-                </label>
-              </div>
-
-              <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
-                <label style={{ flex: 1, minWidth: 220 }}>
-                  Questions per student
-                  <input name="questionsPerStudent" type="number" min="1" max="200" defaultValue={20} required />
-                </label>
-                <label style={{ flex: 1, minWidth: 220 }}>
-                  Duration (minutes)
-                  <input name="durationMinutes" type="number" min="5" max="300" placeholder="e.g. 30" required />
-                </label>
-              </div>
-
-              <button type="submit" className="sd-action" style={{ alignSelf: 'flex-start' }}>Open assessment window</button>
-            </form>
-          )}
-        </div>
-      </section>
-
-      <section className="sd-panel sd-panel--wide" style={{ marginBottom: 22 }}>
-        <header><h2><PortalIcon name="exam" />Create examination</h2></header>
-        <form action={create} className="eo-mini-form" style={{ flexDirection: 'column', alignItems: 'stretch', padding: '0 22px 20px' }}>
-          <label>
-            Name
-            <input name="title" required maxLength={191} placeholder="e.g. First Term Examination 2026/2027" />
-          </label>
-
-          <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
-            <label style={{ flex: 1, minWidth: 220 }}>
-              Type
-              <select name="seriesType" defaultValue="examination" required>
-                <option value="examination">Examination — terminal, reviewed, timetabled</option>
-                <option value="ca_test">CA Test — continuous assessment, timetabled</option>
-                <option value="practice">Practice — for revision, always available</option>
-              </select>
-            </label>
-            <label style={{ flex: 1, minWidth: 220 }}>
-              Academic session
-              <select name="sessionId" defaultValue={defaultSession?.id} required>
-                {sessions.map((s) => (
-                  <option key={s.id} value={s.id}>{s.title}</option>
-                ))}
-              </select>
-            </label>
-            <label style={{ flex: 1, minWidth: 220 }}>
-              Term
-              <select name="termId" defaultValue={defaultTerm?.id} required>
-                {terms.map((t) => (
-                  <option key={t.id} value={t.id}>{t.title}</option>
-                ))}
-              </select>
-            </label>
-          </div>
-
-          <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
-            <label style={{ flex: 1, minWidth: 220 }}>
-              Questions per paper
-              <input name="questionsPerStudent" type="number" min="1" max="200" defaultValue={40} required />
-            </label>
-            <label style={{ flex: 1, minWidth: 220 }}>
-              Duration (minutes)
-              <input name="durationMinutes" type="number" min="5" max="300" placeholder="e.g. 60" required />
-            </label>
-            <label style={{ flex: 1, minWidth: 220 }}>
-              Assessment mode
-              <select name="assessmentMode" defaultValue="mixed">
-                <option value="mixed">Mixed — each teacher chooses CBT or Written</option>
-                <option value="cbt">CBT — every subject is a CBT test</option>
-                <option value="written">Written — every subject is on paper</option>
-              </select>
-            </label>
-          </div>
-
-          <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
-            <label style={{ flex: 1, minWidth: 220 }}>
-              Teachers submit questions from (optional)
-              <input name="questionsOpenFrom" type="date" />
-            </label>
-            <label style={{ flex: 1, minWidth: 220 }}>
-              Teachers submit questions until (optional)
-              <input name="questionsOpenTo" type="date" />
-            </label>
-          </div>
-
-          <p className="muted" style={{ fontSize: 12.5, margin: '0 0 6px' }}>
-            The sitting dates are not set here. They are set on the timetable once the papers exist.
-          </p>
-
-          <button type="submit" className="sd-action" style={{ alignSelf: 'flex-start' }}>Create examination</button>
-        </form>
       </section>
 
       <section className="sd-panel sd-panel--wide">
@@ -670,78 +639,7 @@ export default async function ExamPapersPage({
         </div>
       </section>
 
-      <section className="sd-panel sd-panel--wide" style={{ marginTop: 22 }}>
-        <header><h2><PortalIcon name="papers" />Papers ({papers.length})</h2></header>
-        <div style={{ padding: '0 22px 20px' }}>
-          {papers.length === 0 ? (
-            <p className="muted" style={{ margin: '18px 0' }}>
-              No papers yet. Build the timetable for an examination or CA test above to
-              create them.
-            </p>
-          ) : (
-            <div className="sd-table-wrap">
-              <table className="tbl">
-                <thead>
-                  <tr>
-                    <th>Subject</th><th>Class</th><th>Type</th><th>When</th>
-                    <th>Questions</th><th>Invigilator</th><th>Status</th><th />
-                  </tr>
-                </thead>
-                <tbody>
-                  {papers.map((p) => (
-                    <tr key={p.key}>
-                      <td>{p.subjectName}</td>
-                      <td className="muted">{p.levelName ?? '—'}</td>
-                      <td>{DELIVERY_LABEL[p.deliveryMode] ?? p.deliveryMode}</td>
-                      <td className="muted">
-                        {p.scheduledAt
-                          ? `${fmtDay(p.scheduledAt)}, ${fmtTime(p.scheduledAt)}–${fmtTime(addMinutes(p.scheduledAt, (p.durationSeconds ?? 3600) / 60))}`
-                          : 'Not on the timetable yet'}
-                      </td>
-                      <td>{p.status === 'not_composed' ? 'Not composed' : p.questionCount}</td>
-                      <td className="muted">{p.invigilatorName ?? 'Not assigned'}</td>
-                      <td>
-                        {p.status === 'published' ? <span className="pill pill--published">Published</span>
-                          : p.status === 'draft' ? <span className="pill pill--approved">Ready</span>
-                            : <span className="pill pill--draft">Draft</span>}
-                      </td>
-                      <td style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-                        {p.status === 'not_composed' ? (
-                          <form action={composePapers} style={{ display: 'inline' }}>
-                            <input type="hidden" name="seriesId" value={p.seriesId} />
-                            <button type="submit" className="sd-action sd-action--ghost" style={{ padding: '3px 10px', fontSize: 12.5 }}>
-                              Compose
-                            </button>
-                          </form>
-                        ) : null}
-                        {p.status === 'draft' ? (
-                          <>
-                            <form action={publishPapers} style={{ display: 'inline' }}>
-                              <input type="hidden" name="seriesId" value={p.seriesId} />
-                              <button type="submit" className="sd-action sd-action--ghost" style={{ padding: '3px 10px', fontSize: 12.5 }}>
-                                Publish
-                              </button>
-                            </form>
-                            <form action={removePaper} style={{ display: 'inline' }}>
-                              <input type="hidden" name="paperId" value={p.paperId ?? ''} />
-                              <button type="submit" className="sd-action sd-action--ghost" style={{ padding: '3px 10px', fontSize: 12.5 }}>
-                                Delete
-                              </button>
-                            </form>
-                          </>
-                        ) : null}
-                        {p.status === 'published' ? (
-                          <Link href={`/portal/exams/${p.seriesId}`}>View</Link>
-                        ) : null}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
-      </section>
+
     </div>
   );
 }
