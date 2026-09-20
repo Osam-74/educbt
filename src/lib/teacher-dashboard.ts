@@ -1,4 +1,4 @@
-import { and, asc, count, eq, inArray, sql } from 'drizzle-orm';
+import { and, asc, count, eq, gte, inArray, ne, sql } from 'drizzle-orm';
 import { forSchool, schema } from '@/db';
 import type { Actor } from '@/lib/session';
 import { portalCalendar } from '@/lib/portal-dashboard';
@@ -18,6 +18,7 @@ import { markingQueue } from '@/lib/exam/results';
 export type TeacherClassAssignment = { classId: number; className: string; students: number };
 export type TeacherSubject = { subjectId: number; subjectName: string; classes: TeacherClassAssignment[] };
 export type TeacherHeadedClass = { classId: number; className: string; students: number; pipeline: { state: string; students: number }[] };
+export type TeacherDuty = { paperId: number; scheduledAt: Date | null; subjectName: string; className: string | null };
 
 export async function teacherDashboard(actor: Actor, opts: { mine?: boolean } = {}) {
   // A plain teacher always gets this. A principal/VP/exam officer who ALSO
@@ -132,6 +133,30 @@ export async function teacherDashboard(actor: Actor, opts: { mine?: boolean } = 
         eq(schema.questionSets.teacherId, staffId),
       ));
 
+    // Upcoming invigilation duties — legacy teacher/classes.php's "Invigilation
+    // Schedule" card. EduCBT holds one invigilator per paper (examPapers.
+    // invigilatorStaffId) rather than the plugin's paper_invigilators join
+    // table, so this is a single-table filter, not a join to a duties table.
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+    const dutyRows = await tx.select({
+      paperId: schema.examPapers.id,
+      scheduledAt: schema.examPapers.scheduledAt,
+      subjectName: schema.subjects.name,
+      className: schema.classes.displayName,
+    })
+      .from(schema.examPapers)
+      .innerJoin(schema.subjects, eq(schema.subjects.id, schema.examPapers.subjectId))
+      .leftJoin(schema.classes, eq(schema.classes.id, schema.examPapers.classId))
+      .where(and(
+        eq(schema.examPapers.schoolId, actor.schoolId),
+        eq(schema.examPapers.invigilatorStaffId, staffId),
+        ne(schema.examPapers.status, 'cancelled'),
+        gte(schema.examPapers.scheduledAt, yesterday),
+      ))
+      .orderBy(asc(schema.examPapers.scheduledAt))
+      .limit(8);
+
     return {
       ...calendar,
       subjects,
@@ -142,6 +167,7 @@ export async function teacherDashboard(actor: Actor, opts: { mine?: boolean } = 
         subjects: [...markingBySubject.entries()].map(([subjectName, answers]) => ({ subjectName, answers })).sort((a, b) => a.subjectName.localeCompare(b.subjectName)),
       },
       questionsWritten: written?.n ?? 0,
+      duties: dutyRows as TeacherDuty[],
     };
   });
 }

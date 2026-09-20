@@ -26,7 +26,7 @@ export default async function CaPage({ searchParams }: {
     <h1 className="page-title">Record Scores</h1>
     <p className="muted">All assessment components are shown together. CBT exam marks appear automatically and are read-only.</p>
     {!options.pairs.length ? <p className="note">You have not been assigned any subject to teach yet. The school office assigns these under Staff.</p> :
-      <section className="sa-card">
+      <section className="card sa-card">
         <form method="get">
           <label htmlFor="ca-pair">Class and subject</label>
           <PairPicker pair={pair} pairs={options.pairs} />
@@ -34,14 +34,14 @@ export default async function CaPage({ searchParams }: {
         </form>
       </section>}
 
-    {noConfig && <section className="sa-card">
+    {noConfig && <section className="card sa-card">
       <p className="note">Assessment components are not configured. Ask your school administrator to configure them in Settings.</p>
     </section>}
     {!noConfig && parsed.success && !sheet && <p role="alert" className="error">This score sheet is unavailable. Check your selection and current assignments.</p>}
-    {sheet && sheet.noTerm && <section className="sa-card">
+    {sheet && sheet.noTerm && <section className="card sa-card">
       <p className="note">No current term is set, so scores cannot be recorded.</p>
     </section>}
-    {sheet && !sheet.noTerm && !sheet.noConfig && <section className="sa-card" style={{ marginTop: 16 }}>
+    {sheet && !sheet.noTerm && !sheet.noConfig && <section className="card sa-card" style={{ marginTop: 16 }}>
       <h2>{sheet.className} — {sheet.subjectName}</h2>
       <p className="muted" style={{ marginTop: -6 }}>{sheet.sessionTitle} · {sheet.termTitle}</p>
       {!sheet.students.length ? <p className="note">No students are registered for that subject in that class.</p> :

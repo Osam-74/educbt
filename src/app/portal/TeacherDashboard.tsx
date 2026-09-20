@@ -4,6 +4,21 @@ import { PortalIcon } from './PortalShell';
 
 const STAGES: Record<string, string> = { draft: 'Draft', compiled: 'Compiled', reviewed: 'Reviewed', published: 'Published', locked: 'Locked' };
 
+// Result Pipeline — legacy teacher/index.php's "Result Pipeline" card: one
+// coloured box per lifecycle stage with a live count, styled exactly like
+// the plugin's inline box (text-align:center, tinted background/border in
+// the stage's own colour). The plugin's stages (draft/submitted/approved/
+// published) map onto EduCBT's real five-stage lifecycle (see
+// src/lib/results/config.ts's resultStateSchema) — one more box than the
+// plugin had, because EduCBT's model genuinely has one more stage (locked).
+const PIPELINE_STAGES: Array<{ state: string; label: string; color: string }> = [
+  { state: 'draft', label: 'Draft', color: '#94a3b8' },
+  { state: 'compiled', label: 'Compiled', color: '#f59e0b' },
+  { state: 'reviewed', label: 'Reviewed', color: '#3b82f6' },
+  { state: 'published', label: 'Published', color: '#16a34a' },
+  { state: 'locked', label: 'Locked', color: '#7c3aed' },
+];
+
 /**
  * Teacher landing experience (legacy templates/portal/teacher/index.php):
  * stat tiles over real assignments, the CA recording surface one click deep,
@@ -11,10 +26,17 @@ const STAGES: Record<string, string> = { draft: 'Draft', compiled: 'Compiled', r
  * that exists and that the teacher is authorised for — there is no analytics
  * here that the database does not already hold.
  */
-export default function TeacherDashboard({ data }: { data: NonNullable<Awaited<ReturnType<typeof teacherDashboard>>> }) {
+export default function TeacherDashboard({ data, canReview }: { data: NonNullable<Awaited<ReturnType<typeof teacherDashboard>>>; canReview: boolean }) {
   const currentTerm = data.term;
   const caHref = (classId: number, subjectId: number) =>
     `/portal/ca?pair=${classId}%3A${subjectId}${currentTerm ? `&termId=${currentTerm.id}` : ''}`;
+
+  // Aggregate every headed class's per-state student counts into one
+  // school-wide-for-this-teacher pipeline view — the box grid the plugin's
+  // Result Pipeline card shows.
+  const pipelineCounts = new Map<string, number>();
+  for (const c of data.headed) for (const p of c.pipeline) pipelineCounts.set(p.state, (pipelineCounts.get(p.state) ?? 0) + p.students);
+  const hasPipeline = data.headed.length > 0 && pipelineCounts.size > 0;
 
   return <div className="school-dashboard">
     <div className="sd-heading">
@@ -70,6 +92,24 @@ export default function TeacherDashboard({ data }: { data: NonNullable<Awaited<R
           <p>Class teacher is an assignment the office gives, not part of the teacher role. Your subject assignments are in Record CA.</p>
         </div>}
       </section>
+
+      {hasPipeline && <section className="sd-panel">
+        <header><h2><PortalIcon name="results" />Result Pipeline</h2>{currentTerm ? <span className="sd-term">{currentTerm.title}</span> : null}</header>
+        <div className="sd-panel-body">
+          <div className="sd-pipeline-grid">
+            {PIPELINE_STAGES.map(({ state, label, color }) => (
+              <div key={state} className="sd-pipeline-box" style={{ background: `${color}11`, border: `1px solid ${color}33` }}>
+                <strong style={{ color }}>{pipelineCounts.get(state) ?? 0}</strong>
+                <span>{label}</span>
+              </div>
+            ))}
+          </div>
+          <div className="sd-pipeline-actions">
+            <Link className="sd-action sd-action--ghost" href="/portal/class-results">View Class Results</Link>
+            {canReview && <Link className="sd-action" href="/portal/review">Review Results</Link>}
+          </div>
+        </div>
+      </section>}
 
       <section className="sd-panel">
         <header><h2><PortalIcon name="check" />Marking queue</h2>{data.marking.outstanding ? <span className="sd-term">{data.marking.outstanding} waiting</span> : null}</header>

@@ -2,6 +2,7 @@ import { notFound } from 'next/navigation';
 import { requireSchoolSession } from '@/lib/session';
 import { settingsView, SettingsError } from '@/lib/settings/service';
 import { RangesEditor } from '../settings/PersonalForms';
+import '../settings/settings.css';
 
 export const dynamic = 'force-dynamic';
 
@@ -10,10 +11,13 @@ export default async function TeachingRemarks() {
   let data;
   try { data = await settingsView(actor); } catch (error) { if (error instanceof SettingsError) notFound(); throw error; }
   const initialRanges = data.ranges.find(r => r.role === 'class_teacher')?.ranges ?? [];
-  return <>
+  // See signature/page.tsx's comment: the .school-settings wrapper is what
+  // makes RangesEditor's .settings-* classes (card, table, save button)
+  // actually render instead of falling back to unstyled browser defaults.
+  return <div className="school-settings">
     <h1 className="page-title">Remarks</h1>
     {!data.roles.includes('class_teacher')
       ? <p className="note">You are not the class teacher of any class, so there are no report-card remarks for you to set up.</p>
       : <RangesEditor initialRanges={initialRanges}/>}
-  </>;
+  </div>;
 }

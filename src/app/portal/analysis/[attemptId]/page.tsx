@@ -21,7 +21,7 @@ export default async function ResponsePreviewPage({ params }: {
 
   return <>
     <h1 className="page-title">Responses — {attempt.studentName}</h1>
-    <section className="sa-card">
+    <section className="card sa-card">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 12 }}>
         <div>
           <p className="muted" style={{ margin: 0 }}>{attempt.admissionNumber} · {attempt.subjectName} · {attempt.typeLabel}</p>
@@ -43,7 +43,7 @@ export default async function ResponsePreviewPage({ params }: {
       </p>}
     </section>
 
-    <section className="sa-card">
+    <section className="card sa-card">
       <h2>Responses ({attempt.questions.length} questions)</h2>
       {attempt.questions.length === 0 ? <p className="muted">No questions found for this attempt.</p> : (
         <div style={{ display: 'grid', gap: 0 }}>

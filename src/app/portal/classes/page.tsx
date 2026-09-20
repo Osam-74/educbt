@@ -3,7 +3,9 @@ import '../school-table.css';
 import { requireSchoolSession } from '@/lib/session';
 import { listClasses } from '@/lib/queries';
 import { classesView } from '@/lib/school/classes';
+import { teacherDashboard } from '@/lib/teacher-dashboard';
 import { CreateClassesCard, ClassesTable } from './ClassesClient';
+import MyAssignments from './MyAssignments';
 
 export const dynamic = 'force-dynamic';
 
@@ -28,6 +30,22 @@ export default async function ClassesPage({
   const mine = (await searchParams).scope === 'mine';
 
   if (!['principal', 'vice_principal'].includes(actor.role) || mine) {
+    // A staff account (teacher, exam officer, or a wide role reaching this
+    // via ?scope=mine) gets the legacy teacher/classes.php experience: My
+    // Teaching Assignments, not the office's plain read-only class list.
+    // teacherDashboard already resolves every piece this view needs (its
+    // own forSchool read is cheap — the SAME query set '/portal' uses for
+    // the Teacher Dashboard) and returns null for anyone without a staffId.
+    const teaching = actor.staffId ? await teacherDashboard(actor, { mine: true }) : null;
+    if (teaching) {
+      return (
+        <>
+          <h1 className="page-title">My Teaching Assignments</h1>
+          <MyAssignments data={teaching} role={actor.role} />
+        </>
+      );
+    }
+
     const classes = await listClasses(actor, { mine });
 
     return (

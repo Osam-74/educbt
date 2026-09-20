@@ -5,6 +5,7 @@ import { guardianChildren } from '@/lib/results/family';
 
 import { schoolDashboard } from '@/lib/portal-dashboard';
 import { teacherDashboard } from '@/lib/teacher-dashboard';
+import { canManageResults } from '@/lib/results/config';
 import SchoolDashboard from './SchoolDashboard';
 import TeacherDashboard from './TeacherDashboard';
 import FamilyChildren from './children/FamilyChildren';
@@ -35,7 +36,7 @@ export default async function PortalHome({
   }
 
   const teaching = await teacherDashboard(actor, { mine });
-  if (teaching) return <TeacherDashboard data={teaching} />;
+  if (teaching) return <TeacherDashboard data={teaching} canReview={canManageResults(actor)} />;
 
   if (mine) {
     // ?scope=mine was requested but this actor holds no teaching assignment

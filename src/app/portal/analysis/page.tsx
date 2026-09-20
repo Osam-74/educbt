@@ -53,12 +53,12 @@ export default async function AnalysisPage({ searchParams }: {
         </form>
       </section>
 
-      {noConfig && <section className="sa-card">
+      {noConfig && <section className="card sa-card">
         <p className="note">Assessment components are not configured. Ask your school administrator to configure them in Settings.</p>
       </section>}
 
       {!noConfig && component && (
-        <section className="sa-card" style={{ marginTop: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
+        <section className="card sa-card" style={{ marginTop: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
           <h2 style={{ margin: 0 }}>{component.label}</h2>
           {result && !('noTerm' in result) && !('noConfig' in result) && !('noComponent' in result) && result.rows.length > 0 && (
             <PrintButton />
@@ -70,19 +70,19 @@ export default async function AnalysisPage({ searchParams }: {
         <p role="alert" className="error">This selection is unavailable. Check your class/subject assignment.</p>
       )}
       {!noConfig && (!parsed.success || !pair) && (
-        <section className="sa-card"><p className="note">Choose a class and subject to see results.</p></section>
+        <section className="card sa-card"><p className="note">Choose a class and subject to see results.</p></section>
       )}
       {result && 'noTerm' in result && (
-        <section className="sa-card"><p className="note">No current term is set, so results cannot be shown.</p></section>
+        <section className="card sa-card"><p className="note">No current term is set, so results cannot be shown.</p></section>
       )}
       {result && 'noComponent' in result && (
-        <section className="sa-card"><p className="note">That assessment is no longer configured. Pick another.</p></section>
+        <section className="card sa-card"><p className="note">That assessment is no longer configured. Pick another.</p></section>
       )}
 
       {result && !('noTerm' in result) && !('noConfig' in result) && !('noComponent' in result) && (
         <>
           {result.rows.length === 0 ? (
-            <section className="sa-card">
+            <section className="card sa-card">
               <p className="note">
                 {isExam ? 'No exam has been sat for this subject and class yet, or theory marking is still pending.'
                   : `No scores recorded for ${component?.label ?? 'this assessment'} yet.`}
@@ -96,7 +96,7 @@ export default async function AnalysisPage({ searchParams }: {
               <div className="stat"><b>{result.stats.passRate}%</b><span>Passed (&ge;40%)</span></div>
             </section>
 
-            <section className="sa-card">
+            <section className="card sa-card">
               <h2>Results, highest first</h2>
               <div className="sa-table-wrap">
                 <table className="sa-table">
@@ -130,7 +130,7 @@ export default async function AnalysisPage({ searchParams }: {
           </>}
 
           {isExam && result.hardestQuestions.length > 0 && (
-            <section className="sa-card">
+            <section className="card sa-card">
               <h2>Hardest questions</h2>
               <p className="muted" style={{ marginTop: -6 }}>
                 A question almost everyone missed usually says more about the teaching than the students — or the answer key is wrong.

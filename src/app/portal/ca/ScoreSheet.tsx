@@ -19,7 +19,7 @@ export function ScoreSheet({ classId, subjectId, sessionId, termId, components, 
   const [state, action, pending] = useActionState<SaveState, FormData>(saveCaSheet, { ok: false, message: '' });
   const anyEditable = students.some(s => s.editable);
 
-  return <form action={action} className="sa-card">
+  return <form action={action} className="card sa-card">
     <input type="hidden" name="classId" value={classId} />
     <input type="hidden" name="subjectId" value={subjectId} />
     <input type="hidden" name="sessionId" value={sessionId} />
