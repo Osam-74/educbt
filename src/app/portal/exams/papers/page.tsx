@@ -440,7 +440,7 @@ export default async function ExamPapersPage({
         />
       </section>
 
-      <section className="sd-panel sd-panel--wide" style={{ marginTop: 22 }}>
+      <section className="sd-panel sd-panel--wide" style={{ marginBottom: 22 }}>
         <header><h2><PortalIcon name="papers" />Papers ({papers.length})</h2></header>
         <div style={{ padding: '0 22px 20px' }}>
           {papers.length === 0 ? (
@@ -511,7 +511,9 @@ export default async function ExamPapersPage({
             </div>
           )}
         </div>
-      </section>      <section className="sd-panel sd-panel--wide" style={{ marginBottom: 22 }}>
+      </section>
+
+      <section className="sd-panel sd-panel--wide" style={{ marginBottom: 22 }}>
         <header><h2><PortalIcon name="tests" />Continuous assessment tests</h2></header>
         <div style={{ padding: '0 22px 20px' }}>
           {activeCaTests.length === 0 ? (

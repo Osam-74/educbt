@@ -464,6 +464,12 @@ fieldset > legend { font-size: 13px; font-weight: 600; color: var(--muted); marg
 .inbox-row__excerpt { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1 1 auto; min-width: 0; }
 .inbox-row__meta { flex: 0 0 auto; display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 12.5px; }
 .inbox-row__type, .inbox-row__time { white-space: nowrap; }
+/* The type chip ('New message', 'Result published', ...) is meant to be read at
+   a glance, not skipped like the timestamp beside it — var(--muted) on white is
+   only ~4.5:1, borderline for 12.5px text. Bump it to a darker, still-neutral
+   shade (~9:1) without touching --muted itself, which other, deliberately
+   secondary text (excerpts, captions) still relies on. */
+.inbox-row__type { color: #3f4a42; font-weight: 500; }
 .inbox-row .ps-badge { margin-left: 0; }
 
 @media (max-width: 640px) {
@@ -491,8 +497,8 @@ fieldset > legend { font-size: 13px; font-weight: 600; color: var(--muted); marg
 .thread-view { margin-top: 4px; }
 .thread-view__head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
 .message-list { list-style: none; margin: 0 0 16px; padding: 0; display: grid; gap: 10px; }
-.message { border: 1px solid var(--line); border-radius: 9px; padding: 10px 14px; background: var(--wash); max-width: 72ch; }
-.message.mine { background: #f0f6f1; border-color: #14532d; }
+.message { border: 1px solid var(--line); border-radius: 9px; padding: 10px 14px; background: var(--wash); max-width: 72ch; justify-self: start; }
+.message.mine { background: #f0f6f1; border-color: #14532d; justify-self: end; }
 .message p { margin: 4px 0; }
 .message strong { display: block; }
 .reply-form { margin-top: 4px; }

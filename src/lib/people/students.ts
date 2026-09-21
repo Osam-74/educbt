@@ -28,7 +28,7 @@
  */
 
 import { randomBytes } from 'node:crypto';
-import { and, eq, inArray, ne, sql } from 'drizzle-orm';
+import { and, eq, inArray, ne, or, sql } from 'drizzle-orm';
 import { schema, forSchool, type Tx } from '@/db';
 import type { Actor } from '@/lib/session';
 import { hashPassword } from '@/lib/auth/password';
@@ -861,6 +861,47 @@ async function linkGuardianWithinTx(
 
 // ── Subject registration ──────────────────────────────────────────────────────
 
+/**
+ * A junior class must never be offered (or auto-registered into) a
+ * senior-only subject, and vice versa — "English Language" (SS, code ENG)
+ * and "English Studies" (JSS, code ENG-J) are different rows for a reason.
+ * Subjects tagged 'both' (most vocational/elective subjects) are open to
+ * every stage. A class whose level itself is tagged 'both' — or when the
+ * student has no resolvable class/level yet — falls back to no filtering at
+ * all, matching the Subjects page's own "no stage chosen" behaviour, rather
+ * than silently hiding everything.
+ */
+async function studentClassStage(tx: Tx, studentId: number, sessionId: number): Promise<'junior' | 'senior' | 'both' | null> {
+  const [row] = await tx.select({ stage: schema.classLevels.stage })
+    .from(schema.enrollments)
+    .innerJoin(schema.classes, eq(schema.classes.id, schema.enrollments.classId))
+    .innerJoin(schema.classLevels, eq(schema.classLevels.id, schema.classes.levelId))
+    .where(and(
+      eq(schema.enrollments.studentId, studentId),
+      eq(schema.enrollments.sessionId, sessionId),
+      eq(schema.enrollments.status, 'active'),
+    ))
+    .limit(1);
+  return row?.stage ?? null;
+}
+
+async function classLevelStage(tx: Tx, classId: number): Promise<'junior' | 'senior' | 'both' | null> {
+  const [row] = await tx.select({ stage: schema.classLevels.stage })
+    .from(schema.classes)
+    .innerJoin(schema.classLevels, eq(schema.classLevels.id, schema.classes.levelId))
+    .where(eq(schema.classes.id, classId))
+    .limit(1);
+  return row?.stage ?? null;
+}
+
+/** Returns an extra `and()` condition restricting subjects to a stage, or
+ * `undefined` (no restriction) when the stage is 'both' or unresolved. */
+function subjectStageCondition(stage: 'junior' | 'senior' | 'both' | null) {
+  if (stage === 'junior') return or(eq(schema.subjects.stage, 'junior'), eq(schema.subjects.stage, 'both'));
+  if (stage === 'senior') return or(eq(schema.subjects.stage, 'senior'), eq(schema.subjects.stage, 'both'));
+  return undefined;
+}
+
 export type SubjectRegistrationView = {
   core: Array<{ id: number; name: string; code: string }>;
   electives: Array<{ id: number; name: string; code: string }>;
@@ -881,13 +922,18 @@ export async function subjectRegistrationView(actor: Actor, studentId: number): 
     const sessionId = await currentSessionId(tx, actor.schoolId);
     if (!sessionId) throw new StudentError('The school has no current academic session.');
 
+    const stage = await studentClassStage(tx, studentId, sessionId);
     const all = await tx.select({
       id: schema.subjects.id,
       name: schema.subjects.name,
       code: schema.subjects.code,
       isCompulsory: schema.subjects.isCompulsory,
     }).from(schema.subjects)
-      .where(and(eq(schema.subjects.schoolId, actor.schoolId), eq(schema.subjects.status, 'active')));
+      .where(and(
+        eq(schema.subjects.schoolId, actor.schoolId),
+        eq(schema.subjects.status, 'active'),
+        subjectStageCondition(stage),
+      ));
 
     const registeredRows = await tx.select({
       subjectId: schema.studentSubjects.subjectId,
@@ -946,11 +992,13 @@ export async function registerCoreForClass(actor: Actor, classId: number): Promi
     const sessionId = await currentSessionId(tx, actor.schoolId);
     if (!sessionId) throw new StudentError('The school has no current academic session.');
 
+    const stage = await classLevelStage(tx, classId);
     const coreSubjects = await tx.select({ id: schema.subjects.id }).from(schema.subjects)
       .where(and(
         eq(schema.subjects.schoolId, actor.schoolId),
         eq(schema.subjects.status, 'active'),
         eq(schema.subjects.isCompulsory, true),
+        subjectStageCondition(stage),
       ));
     const coreIds = coreSubjects.map((s) => Number(s.id));
     if (coreIds.length === 0) return { studentsUpdated: 0, coreCount: 0, alreadyComplete: 0 };
@@ -1028,11 +1076,13 @@ export async function classRegistrationRoster(actor: Actor, classId: number): Pr
     const sessionId = await currentSessionId(tx, actor.schoolId);
     if (!sessionId) return { rows: [], coreCount: 0, coreSubjects: [] };
 
+    const stage = await classLevelStage(tx, classId);
     const coreRows = await tx.select({ id: schema.subjects.id, name: schema.subjects.name }).from(schema.subjects)
       .where(and(
         eq(schema.subjects.schoolId, actor.schoolId),
         eq(schema.subjects.status, 'active'),
         eq(schema.subjects.isCompulsory, true),
+        subjectStageCondition(stage),
       ))
       .orderBy(schema.subjects.name);
 
@@ -1088,11 +1138,16 @@ export async function setStudentSubjects(
       )).limit(1);
     if (!enrolment) throw new StudentError('That student has no current enrolment. Place them in a class first.');
 
+    const stage = await studentClassStage(tx, studentId, sessionId);
     const all = await tx.select({
       id: schema.subjects.id,
       isCompulsory: schema.subjects.isCompulsory,
     }).from(schema.subjects)
-      .where(and(eq(schema.subjects.schoolId, actor.schoolId), eq(schema.subjects.status, 'active')));
+      .where(and(
+        eq(schema.subjects.schoolId, actor.schoolId),
+        eq(schema.subjects.status, 'active'),
+        subjectStageCondition(stage),
+      ));
     const allowedIds = new Set(all.map((s) => Number(s.id)));
 
     // Only electives are caller-chosen; a compulsory subject is not optional

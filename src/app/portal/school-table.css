@@ -147,7 +147,7 @@
 }
 .sa-grid label { display: block; margin-bottom: 5px; font-weight: 550; font-size: 13.5px; color: #16211c; }
 .sa-grid input[type='text'], .sa-grid input[type='email'], .sa-grid input[type='tel'],
-.sa-grid input[type='date'],
+.sa-grid input[type='date'], .sa-grid input[type='number'],
 .sa-grid select {
   width: 100%; padding: 9px 12px; border: 1px solid #d7dedb; border-radius: 9px;
   font: inherit; font-size: 14px; background: var(--white); color: #16211c; line-height: 1.4;

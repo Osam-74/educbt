@@ -157,7 +157,7 @@ export default async function MessagesPage({
       {open ? (
         <section className="card sa-card thread-view">
           <div className="thread-view__head">
-            <h2 style={{ margin: 0, fontSize: 16 }}>{open.subject}</h2>
+            <h2 style={{ margin: 0, fontSize: 16 }}><span className="muted" style={{ fontWeight: 500 }}>Subject:</span> {open.subject}</h2>
             {canCompose ? <a href="/portal/messages" className="sa-btn sa-btn--small">Compose new message</a> : null}
           </div>
           <ul className="message-list">
