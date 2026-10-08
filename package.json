@@ -18,6 +18,7 @@
     "db:seed": "tsx src/db/seed.ts",
     "db:verify": "tsx src/db/verify.ts",
     "db:provision-app-role": "tsx scripts/provision-app-role.ts",
+    "test:help": "tsx src/db/test-help-center.ts",
     "test:scope": "tsx src/db/test-scope.ts",
     "test:auth": "tsx src/db/test-auth.ts",
     "test:totp": "tsx src/db/test-totp.ts",
