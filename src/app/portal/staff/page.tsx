@@ -47,6 +47,7 @@ export default async function StaffPage() {
       type: schema.staffAssignments.assignmentType,
       levelName: schema.classLevels.name,
       levelId: schema.classes.levelId,
+      classId: schema.staffAssignments.classId,
       subjectName: schema.subjects.name,
       subjectId: schema.subjects.id,
     }).from(schema.staffAssignments)
@@ -69,7 +70,7 @@ export default async function StaffPage() {
       .where(eq(schema.classLevels.schoolId, actor.schoolId))
       .orderBy(asc(schema.classLevels.levelOrder));
 
-    const classRows = await tx.select({ id: schema.classes.id, levelId: schema.classes.levelId })
+    const classRows = await tx.select({ id: schema.classes.id, levelId: schema.classes.levelId, displayName: schema.classes.displayName, arm: schema.classes.arm })
       .from(schema.classes)
       .where(and(eq(schema.classes.schoolId, actor.schoolId), eq(schema.classes.status, 'active')));
 
@@ -150,6 +151,9 @@ export default async function StaffPage() {
     stage: l.stage,
     armCount: data.classRows.filter((c) => c.levelId === l.id).length,
     classIds: data.classRows.filter((c) => c.levelId === l.id).map((c) => Number(c.id)),
+    arms: data.classRows.filter((c) => c.levelId === l.id)
+      .map((c) => ({ id: Number(c.id), name: c.displayName }))
+      .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true })),
   }));
 
   // Pre-fill data for the builder: what each active teacher already holds
@@ -161,6 +165,7 @@ export default async function StaffPage() {
     data.dutyRows.map((d) => ({
       staffId: Number(d.staffId), type: d.type,
       levelId: d.levelId == null ? null : Number(d.levelId),
+      classId: d.classId == null ? null : Number(d.classId),
       subjectId: d.subjectId == null ? null : Number(d.subjectId),
     })),
     activeStaffIds,

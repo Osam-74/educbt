@@ -24,7 +24,7 @@ export type StaffRow = {
   subjects: Array<{ subject: string; levels: string[]; assignmentIds: number[] }>;
 };
 
-type LevelOption = { id: number; name: string; stage: string; armCount: number; classIds: number[] };
+type LevelOption = { id: number; name: string; stage: string; armCount: number; classIds: number[]; arms: Array<{ id: number; name: string }> };
 type SubjectOption = { id: number; name: string; code: string; stage: string };
 
 const ROLES: Array<{ value: string; label: string }> = [
@@ -165,11 +165,11 @@ export function AssignDutiesForm({ staffOptions, levels, subjects, existing }: {
   staffOptions: Array<{ id: number; name: string }>;
   levels: LevelOption[];
   subjects: SubjectOption[];
-  existing: Record<number, { classTeacherLevelIds: number[]; subjectTeacherLevelIds: number[]; subjectIds: number[] }>;
+  existing: Record<number, { classTeacherLevelIds: number[]; subjectTeacherLevelIds: number[]; subjectIds: number[]; classTeacherClassIds: number[]; subjectTeacherClassIds: number[] }>;
 }) {
   const [state, action, pending] = useActionState(staffAction, EMPTY);
   const [kind, setKind] = useState<'subject_teacher' | 'class_teacher'>('subject_teacher');
-  const [rows, setRows] = useState<Array<{ key: number; staffId: number; levelIds: number[]; subjectIds: number[]; prefill: string | null }>>([{ key: 0, staffId: 0, levelIds: [], subjectIds: [], prefill: null }]);
+  const [rows, setRows] = useState<Array<{ key: number; staffId: number; classIds: number[]; subjectIds: number[]; prefill: string | null }>>([{ key: 0, staffId: 0, classIds: [], subjectIds: [], prefill: null }]);
   const nextKey = useRef(1);
 
   const update = (key: number, patch: Partial<typeof rows[number]>) => {
@@ -188,65 +188,83 @@ export function AssignDutiesForm({ staffOptions, levels, subjects, existing }: {
   // carry-over — a subject-teacher's class still showing selected once you
   // switch to "Class teacher" — was the actual bug: the two duties were, in
   // effect, sharing one class list.
+  const levelOfClass = (classId: number) => levels.find((l) => l.classIds.includes(classId));
+  const armName = (classId: number) => levels.flatMap((l) => l.arms).find((a) => a.id === classId)?.name;
+
+  // Pre-fill is the EXACT arms a teacher already holds. A teacher on Maths in
+  // JSS 1A only is shown as JSS 1A only; they are never widened to JSS 1B/1C.
   const prefillFor = (staffId: number, forKind: 'subject_teacher' | 'class_teacher') => {
     const held = staffId ? existing[staffId] : undefined;
-    if (!held) return { levelIds: [] as number[], subjectIds: [] as number[], prefill: null as string | null };
+    if (!held) return { classIds: [] as number[], subjectIds: [] as number[], prefill: null as string | null };
     if (forKind === 'class_teacher') {
-      const levelIds = held.classTeacherLevelIds;
-      const names = levelIds.map((id) => levels.find((l) => l.id === id)?.name).filter(Boolean);
-      return { levelIds, subjectIds: [], prefill: names.length ? `Pre-filled: ${names.join(', ')}` : null };
+      const classIds = held.classTeacherClassIds;
+      const names = classIds.map(armName).filter(Boolean);
+      return { classIds, subjectIds: [], prefill: names.length ? `Pre-filled: ${names.join(', ')}` : null };
     }
-    const levelIds = held.subjectTeacherLevelIds;
+    const classIds = held.subjectTeacherClassIds;
     const subjectNames = held.subjectIds.map((id) => subjects.find((s) => s.id === id)?.name).filter(Boolean);
-    const levelNames = levelIds.map((id) => levels.find((l) => l.id === id)?.name).filter(Boolean);
     return {
-      levelIds, subjectIds: held.subjectIds,
-      prefill: (subjectNames.length || levelNames.length)
-        ? `Pre-filled: ${subjectNames.length} subject${subjectNames.length === 1 ? '' : 's'}, ${levelNames.length} class level${levelNames.length === 1 ? '' : 's'}`
+      classIds, subjectIds: held.subjectIds,
+      prefill: (subjectNames.length || classIds.length)
+        ? `Pre-filled: ${subjectNames.length} subject${subjectNames.length === 1 ? '' : 's'}, ${classIds.length} class${classIds.length === 1 ? '' : 'es'}`
         : null,
     };
   };
 
   const chooseTeacher = (key: number, staffId: number) => {
-    if (!staffId) { update(key, { staffId, levelIds: [], subjectIds: [], prefill: null }); return; }
+    if (!staffId) { update(key, { staffId, classIds: [], subjectIds: [], prefill: null }); return; }
     update(key, { staffId, ...prefillFor(staffId, kind) });
   };
 
   const changeKind = (next: 'subject_teacher' | 'class_teacher') => {
     setKind(next);
-    setRows((rs) => rs.map((r) => (r.staffId ? { ...r, ...prefillFor(r.staffId, next) } : { ...r, levelIds: [], subjectIds: [], prefill: null })));
+    setRows((rs) => rs.map((r) => (r.staffId ? { ...r, ...prefillFor(r.staffId, next) } : { ...r, classIds: [], subjectIds: [], prefill: null })));
   };
 
-  const toggleLevel = (key: number, levelId: number) => {
+  // A subject no longer offered by the stages of the chosen classes is
+  // deselected, exactly as the plugin's educbtNarrowSubjects does.
+  const stagesOf = (classIds: number[]) => classIds.map((id) => levelOfClass(id)?.stage).filter(Boolean);
+  const visibleSubjects = (classIds: number[]) => {
+    if (!classIds.length) return subjects;
+    const stages = stagesOf(classIds);
+    return subjects.filter((s) => s.stage === 'both' || stages.includes(s.stage));
+  };
+  const setClasses = (key: number, classIds: number[]) => {
     const row = rows.find((r) => r.key === key);
     if (!row) return;
-    const has = row.levelIds.includes(levelId);
-    const levelIds = has ? row.levelIds.filter((id) => id !== levelId) : [...row.levelIds, levelId];
-    // A subject no longer offered by the chosen levels is deselected, exactly
-    // as the plugin's educbtNarrowSubjects does.
-    const chosenStages = levelIds.map((id) => levels.find((l) => l.id === id)?.stage).filter(Boolean);
-    const subjectIds = levelIds.length
+    const stages = stagesOf(classIds);
+    const subjectIds = classIds.length
       ? row.subjectIds.filter((sid) => {
         const subject = subjects.find((s) => s.id === sid);
-        return subject && (subject.stage === 'both' || chosenStages.includes(subject.stage));
+        return subject && (subject.stage === 'both' || stages.includes(subject.stage));
       })
       : row.subjectIds;
-    update(key, { levelIds, subjectIds });
+    update(key, { classIds, subjectIds });
   };
-
-  const visibleSubjects = (levelIds: number[]) => {
-    if (!levelIds.length) return subjects;
-    const stages = levelIds.map((id) => levels.find((l) => l.id === id)?.stage);
-    return subjects.filter((s) => s.stage === 'both' || stages.includes(s.stage));
+  /** Tick or untick ONE arm. */
+  const toggleArm = (key: number, classId: number) => {
+    const row = rows.find((r) => r.key === key);
+    if (!row) return;
+    setClasses(key, row.classIds.includes(classId) ? row.classIds.filter((id) => id !== classId) : [...row.classIds, classId]);
+  };
+  /** Tick or untick a WHOLE level (every arm), the one-click shortcut. */
+  const toggleWholeLevel = (key: number, level: LevelOption) => {
+    const row = rows.find((r) => r.key === key);
+    if (!row) return;
+    const all = level.classIds.every((id) => row.classIds.includes(id));
+    setClasses(key, all
+      ? row.classIds.filter((id) => !level.classIds.includes(id))
+      : [...new Set([...row.classIds, ...level.classIds])]);
   };
 
   return (
     <form action={action} className="card sa-card">
       <h2>Assign teaching duties</h2>
       <p className="muted" style={{ marginTop: -6 }}>
-        Pick a teacher, then every subject and every class they take — a subject
-        teacher usually takes their subject right across a year group, so choose
-        them all at once. Add another row for the next teacher, then save once.
+        Pick a teacher, then every subject and every class they take. Tick a whole
+        year group, or only the arms they teach (for example Mathematics in JSS 1A
+        and 1B but not 1C). Several teachers can share the same subject and class:
+        add a row for each. Add another row for the next teacher, then save once.
       </p>
 
       <fieldset disabled={pending}>
@@ -287,27 +305,50 @@ export function AssignDutiesForm({ staffOptions, levels, subjects, existing }: {
               </div>
 
               <div className="sa-field">
-                <label>Classes <span className="muted">(choose all that apply)</span></label>
-                <ChipSelect
-                  options={levels.map((l) => ({ id: l.id, label: l.name, hint: l.armCount > 1 ? <span className="muted" style={{ fontSize: '.8rem' }}>({l.armCount} arms)</span> : undefined }))}
-                  selectedIds={row.levelIds}
-                  onToggle={(id) => toggleLevel(row.key, id)}
-                  placeholder="Click to select class levels…"
-                />
-                {/* A level expands to every arm's class id, as the plugin's
-                    data-class-ids did; the service assigns arms, not levels. */}
-                {row.levelIds.flatMap((lid) => levels.find((l) => l.id === lid)?.classIds ?? [])
-                  .map((cid) => <input key={`${row.key}-c-${cid}`} type="hidden" name={`row${row.key}.classIds`} value={cid} />)}
+                <label>Classes <span className="muted">(tick a whole year group, or just the arms you want)</span></label>
+                <div className="sa-arm-picker">
+                  {levels.map((l) => {
+                    const picked = l.classIds.filter((id) => row.classIds.includes(id)).length;
+                    const whole = l.classIds.length > 0 && picked === l.classIds.length;
+                    return (
+                      <div key={l.id} className="sa-arm-picker__level">
+                        <label className="sa-arm-picker__whole">
+                          <input
+                            type="checkbox" checked={whole}
+                            ref={(el) => { if (el) el.indeterminate = picked > 0 && !whole; }}
+                            onChange={() => toggleWholeLevel(row.key, l)}
+                          />
+                          <strong>{l.name}</strong>
+                          <span className="muted"> {l.arms.length > 1 ? `(all ${l.arms.length} arms)` : ''}</span>
+                        </label>
+                        {l.arms.length > 1 && (
+                          <div className="sa-arm-picker__arms">
+                            {l.arms.map((a) => (
+                              <label key={a.id} className="sa-arm-picker__arm">
+                                <input type="checkbox" checked={row.classIds.includes(a.id)} onChange={() => toggleArm(row.key, a.id)} />
+                                {a.name}
+                              </label>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                  {levels.length === 0 && <p className="muted">No classes have been created yet.</p>}
+                </div>
+                {/* Exactly the ticked arms are saved — nothing is widened to a
+                    whole year group unless every arm is ticked. */}
+                {row.classIds.map((cid) => <input key={`${row.key}-c-${cid}`} type="hidden" name={`row${row.key}.classIds`} value={cid} />)}
               </div>
 
               <div className="sa-field" hidden={kind === 'class_teacher'}>
                 <label>
                   Subjects <span className="muted">
-                    ({row.levelIds.length ? `${visibleSubjects(row.levelIds).length} offered by the chosen levels` : 'choose the classes first'})
+                    ({row.classIds.length ? `${visibleSubjects(row.classIds).length} offered by the chosen classes` : 'choose the classes first'})
                   </span>
                 </label>
                 <ChipSelect
-                  options={visibleSubjects(row.levelIds).map((s) => ({ id: s.id, label: s.name }))}
+                  options={visibleSubjects(row.classIds).map((s) => ({ id: s.id, label: s.name }))}
                   selectedIds={row.subjectIds}
                   onToggle={(id) => update(row.key, {
                     subjectIds: row.subjectIds.includes(id)
@@ -321,6 +362,20 @@ export function AssignDutiesForm({ staffOptions, levels, subjects, existing }: {
                 ))}
               </div>
 
+              {row.staffId > 0 && row.classIds.length > 0 && (kind === 'class_teacher' || row.subjectIds.length > 0) && (
+                <p className="sa-assign-summary" role="note">
+                  <strong>Saving will give</strong>{' '}
+                  {staffOptions.find((t) => t.id === row.staffId)?.name ?? 'this teacher'}{' '}
+                  {kind === 'class_teacher' ? 'as class teacher of ' : (
+                    <>{row.subjectIds.map((sid) => subjects.find((x) => x.id === sid)?.name).filter(Boolean).join(', ')} in </>
+                  )}
+                  {row.classIds.map(armName).filter(Boolean).join(', ')}
+                  {kind === 'subject_teacher' && row.subjectIds.length * row.classIds.length > 1
+                    ? ` (${row.subjectIds.length * row.classIds.length} assignments, every subject in every class listed)` : ''}.
+                  {' '}<span className="muted">Anything they already hold stays as it is.</span>
+                </p>
+              )}
+
               <button
                 type="button" className="sa-btn sa-btn--ghost"
                 onClick={() => setRows((rs) => rs.filter((r) => r.key !== row.key))}
@@ -332,7 +387,7 @@ export function AssignDutiesForm({ staffOptions, levels, subjects, existing }: {
 
         <button
           type="button" className="sa-btn"
-          onClick={() => setRows((rs) => [...rs, { key: nextKey.current++, staffId: 0, levelIds: [], subjectIds: [], prefill: null }])}
+          onClick={() => setRows((rs) => [...rs, { key: nextKey.current++, staffId: 0, classIds: [], subjectIds: [], prefill: null }])}
         >+ Add another teacher</button>
         <button type="submit" disabled={pending} className="sa-btn sa-btn--primary" style={{ marginLeft: 8 }}>
           {pending ? 'Saving…' : 'Save assignments'}

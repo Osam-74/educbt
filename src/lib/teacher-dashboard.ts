@@ -15,7 +15,12 @@ import { markingQueue } from '@/lib/exam/results';
  * staff_assignments rows of type class_teacher, exactly like the shell nav.
  */
 
-export type TeacherClassAssignment = { classId: number; className: string; students: number };
+export type TeacherClassAssignment = {
+  classId: number; className: string; students: number;
+  /** Students of this class registered for THIS subject in the current session
+   *  (electives mean this can be fewer than the whole class). */
+  registered: number;
+};
 export type TeacherSubject = { subjectId: number; subjectName: string; classes: TeacherClassAssignment[] };
 export type TeacherHeadedClass = { classId: number; className: string; students: number; pipeline: { state: string; students: number }[] };
 export type TeacherDuty = { paperId: number; scheduledAt: Date | null; subjectName: string; className: string | null };
@@ -75,6 +80,25 @@ export async function teacherDashboard(actor: Actor, opts: { mine?: boolean } = 
       .groupBy(schema.enrollments.classId);
     const sizeOf = new Map(classSizes.map(c => [c.classId, c.n]));
 
+    // Students actually taking each subject in each class this session.
+    const regRows = calendar.session ? await tx.select({
+      classId: schema.enrollments.classId,
+      subjectId: schema.studentSubjects.subjectId,
+      n: sql<number>`count(distinct ${schema.enrollments.studentId})`.mapWith(Number),
+    })
+      .from(schema.enrollments)
+      .innerJoin(schema.studentSubjects, and(
+        eq(schema.studentSubjects.studentId, schema.enrollments.studentId),
+        eq(schema.studentSubjects.sessionId, calendar.session.id),
+      ))
+      .where(and(
+        eq(schema.enrollments.schoolId, actor.schoolId),
+        eq(schema.enrollments.status, 'active'),
+        eq(schema.enrollments.sessionId, calendar.session.id),
+      ))
+      .groupBy(schema.enrollments.classId, schema.studentSubjects.subjectId) : [];
+    const registeredOf = new Map(regRows.map(r => [`${r.classId}:${r.subjectId}`, r.n]));
+
     // A class-teacher assignment is about heading a class, not teaching a
     // subject in it — it must never leak into the Record CA card.
     const subjectRows = held.filter(h => h.type === 'subject_teacher' && h.subjectId !== null && h.subjectName);
@@ -84,7 +108,7 @@ export async function teacherDashboard(actor: Actor, opts: { mine?: boolean } = 
     for (const row of subjectRows) {
       let entry = subjects.find(s => s.subjectId === row.subjectId);
       if (!entry) { entry = { subjectId: row.subjectId!, subjectName: row.subjectName!, classes: [] }; subjects.push(entry); }
-      entry.classes.push({ classId: row.classId!, className: row.className!, students: sizeOf.get(row.classId!) ?? 0 });
+      entry.classes.push({ classId: row.classId!, className: row.className!, students: sizeOf.get(row.classId!) ?? 0, registered: registeredOf.get(`${row.classId}:${row.subjectId}`) ?? 0 });
     }
     subjects.sort((a, b) => a.subjectName.localeCompare(b.subjectName));
 

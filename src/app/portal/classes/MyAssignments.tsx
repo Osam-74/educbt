@@ -36,13 +36,14 @@ export default function MyAssignments({ data, role }: {
         <h3 style={{ margin: '0 0 14px', fontSize: 16, fontWeight: 600, color: '#14532d' }}>{s.subjectName}</h3>
         <div className="sa-table-wrap">
           <table className="sa-table">
-            <thead><tr><th>Class</th><th>Students</th><th style={{ textAlign: 'right' }}>Action</th></tr></thead>
+            <thead><tr><th>Class</th><th>Taking this subject</th><th style={{ textAlign: 'right' }}>Action</th></tr></thead>
             <tbody>
               {s.classes.map((c) => (
                 <tr key={c.classId}>
                   <td><span className="sa-pill sa-pill--active" style={{ textTransform: 'none' }}>{c.className}</span></td>
-                  <td>{c.students} {c.students === 1 ? 'Student' : 'Students'}</td>
+                  <td>{c.registered} {c.registered === 1 ? 'student' : 'students'}{c.registered !== c.students && <span className="muted"> of {c.students} in class</span>}</td>
                   <td style={{ textAlign: 'right' }}>
+                    <a href={`/portal/exports/subject-list?classId=${c.classId}&subjectId=${s.subjectId}`} className="sa-btn" download>Download list</a>{' '}
                     <Link href={caHref(c.classId, s.subjectId)} className="sa-btn sa-btn--primary">Record CA</Link>
                   </td>
                 </tr>
@@ -64,6 +65,7 @@ export default function MyAssignments({ data, role }: {
         {data.headed.map((c) => (
           <div key={c.classId} style={{ padding: '10px 0', borderBottom: '1px solid #e2e8e4' }}>
             <strong>Class Teacher</strong> &bull; {c.className} — {c.students} {c.students === 1 ? 'student' : 'students'}
+            {' '}<a href={`/portal/exports/class-list?classId=${c.classId}`} className="sa-btn" download style={{ marginLeft: 10 }}>Download class list</a>
           </div>
         ))}
       </>}

@@ -223,3 +223,18 @@
 /* The plugin's warning note (educbt-portal.css:241) — shown above the
    stand-down form when the person still holds duties. */
 .sa-note--warn { background: #fef3c7; color: #92400e; padding: 10px 14px; border-radius: 9px; font-size: 13.5px; }
+
+/* Assign-duties class picker: tick a whole year group or just some arms. */
+.sa-arm-picker {
+  max-width: 520px; max-height: 260px; overflow-y: auto;
+  border: 1px solid var(--line, #d8dcd4); border-radius: 8px; background: #fff;
+  padding: 6px 12px;
+}
+.sa-arm-picker__level { padding: 8px 0; border-bottom: 1px solid #eef2ef; }
+.sa-arm-picker__level:last-child { border-bottom: 0; }
+.sa-arm-picker__whole { display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 14px; }
+.sa-arm-picker__arms { display: flex; flex-wrap: wrap; gap: 6px 14px; margin: 6px 0 0 26px; }
+.sa-arm-picker__arm { display: inline-flex; align-items: center; gap: 6px; font-size: 13.5px; cursor: pointer; }
+.sa-arm-picker input[type="checkbox"] { width: auto; margin: 0; accent-color: #14532d; }
+
+.sa-assign-summary { grid-column: 1 / -1; margin: 4px 0 0; padding: 8px 12px; background: #f3f5ef; border-left: 3px solid #14532d; border-radius: 6px; font-size: 13.5px; }

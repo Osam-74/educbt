@@ -776,8 +776,13 @@ export async function dropAssignment(actor: Actor, assignmentId: number): Promis
 
 // ── Assignment builder pre-fill ──────────────────────────────────────────────
 
-export type DutyRow = { staffId: number; type: string; levelId: number | null; subjectId: number | null };
-export type AssignmentPrefill = { classTeacherLevelIds: number[]; subjectTeacherLevelIds: number[]; subjectIds: number[] };
+export type DutyRow = { staffId: number; type: string; levelId: number | null; subjectId: number | null; classId?: number | null };
+export type AssignmentPrefill = {
+  classTeacherLevelIds: number[]; subjectTeacherLevelIds: number[]; subjectIds: number[];
+  /** The exact arms (classes) held, so a teacher who takes Maths in JSS 1A
+   *  only is shown as JSS 1A only and never widened to the whole level. */
+  classTeacherClassIds: number[]; subjectTeacherClassIds: number[];
+};
 
 /**
  * What each active teacher already holds, for the "Assign teaching duties"
@@ -795,13 +800,21 @@ export function buildAssignmentPrefill(dutyRows: DutyRow[], activeStaffIds: numb
   const activeSet = new Set(activeStaffIds);
   const result: Record<number, AssignmentPrefill> = {};
   for (const staffId of activeStaffIds) {
-    result[staffId] = { classTeacherLevelIds: [], subjectTeacherLevelIds: [], subjectIds: [] };
+    result[staffId] = { classTeacherLevelIds: [], subjectTeacherLevelIds: [], subjectIds: [], classTeacherClassIds: [], subjectTeacherClassIds: [] };
   }
+  const classTeacherClassSets = new Map<number, Set<number>>();
+  const subjectTeacherClassSets = new Map<number, Set<number>>();
   const classTeacherSets = new Map<number, Set<number>>();
   const subjectTeacherSets = new Map<number, Set<number>>();
   const subjectSets = new Map<number, Set<number>>();
   for (const d of dutyRows) {
     if (!activeSet.has(d.staffId)) continue;
+    if (d.classId != null) {
+      const bucket = d.type === 'class_teacher' ? classTeacherClassSets : subjectTeacherClassSets;
+      const set = bucket.get(d.staffId) ?? new Set<number>();
+      set.add(d.classId);
+      bucket.set(d.staffId, set);
+    }
     if (d.type === 'class_teacher') {
       if (d.levelId != null) {
         const set = classTeacherSets.get(d.staffId) ?? new Set<number>();
@@ -826,6 +839,8 @@ export function buildAssignmentPrefill(dutyRows: DutyRow[], activeStaffIds: numb
       classTeacherLevelIds: [...(classTeacherSets.get(staffId) ?? [])],
       subjectTeacherLevelIds: [...(subjectTeacherSets.get(staffId) ?? [])],
       subjectIds: [...(subjectSets.get(staffId) ?? [])],
+      classTeacherClassIds: [...(classTeacherClassSets.get(staffId) ?? [])],
+      subjectTeacherClassIds: [...(subjectTeacherClassSets.get(staffId) ?? [])],
     };
   }
   return result;
