@@ -108,7 +108,8 @@ export default function TeacherDashboard({ data, canReview }: { data: NonNullabl
             ))}
           </div>
           <div className="sd-pipeline-actions">
-            <Link className="sd-action sd-action--ghost" href="/portal/class-results">View Class Results</Link>
+            {/* A teacher-facing class results page is not built yet (legacy teacher/results.php).
+                The old button pointed at /portal/class-results, which does not exist and 404'd. */}
             {canReview && <Link className="sd-action" href="/portal/review">Review Results</Link>}
           </div>
         </div>

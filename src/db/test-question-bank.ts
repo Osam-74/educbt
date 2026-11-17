@@ -160,7 +160,11 @@ async function main() {
           await page.screenshot({ path: 'baseline-logs/question-bank-desktop.png', fullPage: true });
         });
         await check('theory is disabled outside a terminal examination', async () => {
-          await page.locator('#qs-subject').selectOption({ label: /English/ });
+          // selectOption only accepts a string label, not a RegExp: find the option by its text, select by value.
+          const english = await page.locator('#qs-subject option').evaluateAll(
+            (os: Element[]) => (os as HTMLOptionElement[]).find((o) => /English/.test(o.textContent ?? ''))?.value ?? '');
+          assert(english !== '', 'an English subject option exists');
+          await page.locator('#qs-subject').selectOption(english);
           await page.locator('#qs-class').selectOption({ index: 1 });
           await page.waitForURL(/setId=/);
           assert(await page.getByRole('button', { name: 'Theory', exact: true }).isDisabled());
