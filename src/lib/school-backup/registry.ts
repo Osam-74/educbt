@@ -147,8 +147,13 @@ export const PLATFORM_TABLES: Record<string, string> = {
  * password_hash and totp_secret are credentials. A restored user must set a new password
  * and re-enrol two-factor, so a leaked backup file can never sign anyone in.
  */
+export const UNUSABLE_PASSWORD_PREFIX = '!restored-no-password!';
+
 export const USER_STRIP: Record<string, unknown> = {
-  password_hash: null,
+  // users.password_hash is NOT NULL, so a restored login carries an unusable placeholder (made unique
+  // per user in remapRow). It is not a valid argon2 string, so verifyPassword() answers "wrong
+  // password" for every input. The user cannot sign in until the office issues a password.
+  password_hash: UNUSABLE_PASSWORD_PREFIX,
   totp_secret: null,
   totp_enabled: false,
   must_change_password: true,
