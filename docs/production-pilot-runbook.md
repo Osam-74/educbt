@@ -72,7 +72,7 @@ in this document — variable *names* only.
 | `DATABASE_URL` | Dev fallback only — in production the app requires `DATABASE_URL_APP` and never reads this. Do not set it. |
 | `DATABASE_URL_UNPOOLED` | Owner credential. Scripts/migrations only — never expose it to the app runtime. |
 | `INNGEST_DEV` | Switches the SDK to a local dev server. Must be unset. |
-| `INNGEST_EVENT_KEY` | Not needed — the app only *receives* scheduled work; no outbound events yet. |
+| `INNGEST_EVENT_KEY` | **Required for school restore.** The scheduled jobs only receive work, but restoring a school from a backup *sends* an event to Inngest Cloud. Create it in the Inngest dashboard → Environment → Keys → Event Keys. Without it the restore page says the restore has not started. |
 
 ### 3.4 GitHub repository secrets (already configured — used by Actions, not by the app)
 `DATABASE_URL_UNPOOLED`, `EDUCBT_APP_PASSWORD`, `DATABASE_URL_APP`,
