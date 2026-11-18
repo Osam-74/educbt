@@ -6,7 +6,7 @@
  * student is worse than a missing one). This file is where that is decided, in one place.
  */
 import { randomBytes } from 'node:crypto';
-import { DATA_TABLES, USER_STRIP, UNUSABLE_PASSWORD_PREFIX, type TableSpec } from './registry';
+import { DATA_TABLES, USER_STRIP, UNUSABLE_PASSWORD_PREFIX, ARGON2ID_HASH, type TableSpec } from './registry';
 import type { BackupDocument } from './format';
 
 export class RestoreIntegrityError extends Error {}
@@ -47,7 +47,7 @@ export function rewritePhotoPath(value: unknown, tokenMap: Map<string, string>):
 export function remapRow(
   spec: TableSpec,
   row: Record<string, unknown>,
-  ctx: { newSchoolId: number; ids: IdMap; photoTokens: Map<string, string>; takenEmails?: ReadonlySet<string> },
+  ctx: { newSchoolId: number; ids: IdMap; photoTokens: Map<string, string>; takenEmails?: ReadonlySet<string>; credentials?: 'none' | 'password-hashes' },
 ): Record<string, unknown> {
   const out: Record<string, unknown> = { ...row };
 
@@ -79,6 +79,17 @@ export function remapRow(
   if (spec.table === 'users') {
     Object.assign(out, USER_STRIP);
     out.password_hash = UNUSABLE_PASSWORD_PREFIX + randomBytes(16).toString('hex'); // unique, never verifiable
+    // A file that declares password hashes may keep them, but ONLY a genuine Argon2id hash. A missing,
+    // hand-edited or weak value (plaintext, md5, anything else) falls back to the unusable placeholder,
+    // so a tampered file cannot smuggle in a credential that is weaker than the app would ever create.
+    // Two-factor secrets, lock-out state and the like were reset by USER_STRIP above either way.
+    if (ctx.credentials === 'password-hashes') {
+      const kept = row.password_hash;
+      if (typeof kept === 'string' && ARGON2ID_HASH.test(kept)) {
+        out.password_hash = kept;
+        if (typeof row.must_change_password === 'boolean') out.must_change_password = row.must_change_password;
+      }
+    }
     // A restored sign-in must never carry a credential, and an email already used by a live account
     // elsewhere is cleared instead of colliding (login_id still works).
     const email = typeof out.email === 'string' ? out.email.toLowerCase() : null;

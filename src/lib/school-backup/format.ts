@@ -31,6 +31,14 @@ export type BackupDocument = {
   version: number;
   createdAt: string;
   app: { name: 'EduCBT'; schemaTables: number };
+  /**
+   * What sign-in material the file carries.
+   *   'none'            no credentials: every login must be issued a password after a restore (default)
+   *   'password-hashes' each user's Argon2id password hash, so people keep their current passwords.
+   *                     The file is then a SENSITIVE credential store and must be kept as one.
+   * Two-factor secrets, recovery codes, sessions and invite links are never carried in either mode.
+   */
+  credentials: 'none' | 'password-hashes';
   school: Record<string, unknown>;
   tables: Record<string, Array<Record<string, unknown>>>;
   uploads: Record<string, { mimeType: string; base64: string }>;
@@ -101,15 +109,21 @@ export function decode(file: Buffer): BackupDocument {
     if (doc.counts?.[t] !== rows.length) throw new BackupFormatError(`Table "${t}" says it has ${doc.counts?.[t]} rows but contains ${rows.length}. The file is incomplete.`);
   }
 
+  // Verify the document EXACTLY as it was written, before any normalising: the checksum covers the
+  // bytes the exporter produced, including a file from before the `credentials` field existed.
   const { checksum, ...rest } = doc;
   if (checksumOf(rest as Omit<BackupDocument, 'checksum'>) !== checksum) {
     throw new BackupFormatError('The backup failed its integrity check: it was changed or damaged after it was created. It will not be restored.');
   }
+  // Only now: a file made before the field existed carried no credentials, and anything unrecognised
+  // is treated the same way. Only the exact value 'password-hashes' ever turns hashes on.
+  if (doc.credentials !== 'password-hashes') (doc as { credentials: string }).credentials = 'none';
   return doc;
 }
 
 /** A safe download name: no path characters, includes the date. */
-export function backupFileName(schoolName: string, when: Date = new Date()): string {
+export function backupFileName(schoolName: string, when: Date = new Date(), withPasswords = false): string {
   const slug = schoolName.normalize('NFKD').replace(/[^A-Za-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 50) || 'school';
-  return `${slug}-backup-${when.toISOString().slice(0, 10)}.educbt-school.gz`;
+  // A file that carries password hashes says so in its name, so it is not mistaken for a safe one.
+  return `${slug}-backup-${when.toISOString().slice(0, 10)}${withPasswords ? '-WITH-PASSWORDS' : ''}.educbt-school.gz`;
 }

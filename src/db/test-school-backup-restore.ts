@@ -239,7 +239,7 @@ async function main() {
     await check('a file whose links are broken is refused midway and rolls back EVERYTHING', async () => {
       const { buildDocument } = await import('@/lib/school-backup/format');
       const doc = decode(exported.file);
-      const broken = buildDocument({ createdAt: doc.createdAt, app: doc.app, school: doc.school, uploads: doc.uploads,
+      const broken = buildDocument({ createdAt: doc.createdAt, app: doc.app, credentials: doc.credentials, school: doc.school, uploads: doc.uploads,
         tables: { ...doc.tables, enrollments: doc.tables.enrollments!.map((e) => ({ ...e, class_id: 999999 })) } });
       await assert.rejects(() => restoreSchool({ actorUserId: Number(admin!.id), file: encode(broken), code: 'Y' + suffix }), /not in the backup/);
       await nothingLeft();
@@ -247,7 +247,7 @@ async function main() {
     await check('a backup with no principal is refused', async () => {
       const { buildDocument } = await import('@/lib/school-backup/format');
       const doc = decode(exported.file);
-      const noPrincipal = buildDocument({ createdAt: doc.createdAt, app: doc.app, school: doc.school, uploads: doc.uploads,
+      const noPrincipal = buildDocument({ createdAt: doc.createdAt, app: doc.app, credentials: doc.credentials, school: doc.school, uploads: doc.uploads,
         tables: { ...doc.tables, users: doc.tables.users!.filter((u) => u.role !== 'principal') } });
       await assert.rejects(() => restoreSchool({ actorUserId: Number(admin!.id), file: encode(noPrincipal), code: 'Z' + suffix }), /no principal/);
       await nothingLeft();

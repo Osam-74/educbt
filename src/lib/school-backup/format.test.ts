@@ -14,7 +14,7 @@ const rejects = (fn: () => unknown, pattern: RegExp) => assert.throws(fn, (e: un
 
 const sample = () => buildDocument({
   createdAt: '2026-11-17T10:00:00.000Z',
-  app: { name: 'EduCBT', schemaTables: 48 },
+  credentials: 'none', app: { name: 'EduCBT', schemaTables: 48 },
   school: { name: 'Greenfield College', address: '1 Palm Road' },
   tables: {
     students: [{ id: 1, first_name: 'Ada', last_name: 'Bello' }, { id: 2, first_name: 'Chidi', last_name: 'Okoro' }],

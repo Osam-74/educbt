@@ -38,6 +38,8 @@ export type RestoreResult = {
   school: { id: number; name: string; code: string; subdomain: string | null };
   principal: { loginId: string; name: string };
   temporaryPassword: string | null;
+  /** 'password-hashes': every user kept their own password. 'none': nobody can sign in until issued one. */
+  credentials: 'none' | 'password-hashes';
   counts: Record<string, number>;
   skipped: string[];
 };
@@ -61,7 +63,10 @@ export async function restoreSchool(input: RestoreInput): Promise<RestoreResult>
   if (!principalUser) throw new RestoreIntegrityError('The backup has no principal account, so nobody could sign in to the restored school.');
 
   // Hashed OUTSIDE the transaction: Argon2 must not hold a pooled connection hostage.
-  const issue = (input.principalPassword ?? 'issue') === 'issue';
+  // When the file carries the users' own password hashes the principal keeps theirs: issuing a
+  // temporary one would lock them out of an account that already works.
+  const keepsOwnPasswords = doc.credentials === 'password-hashes';
+  const issue = !keepsOwnPasswords && (input.principalPassword ?? 'issue') === 'issue';
   const temporaryPassword = issue ? generateInitialPassword(12) : null;
   const passwordHash = temporaryPassword ? await hashPassword(temporaryPassword) : null;
 
@@ -122,7 +127,7 @@ export async function restoreSchool(input: RestoreInput): Promise<RestoreResult>
       const hasId = Object.values(spec.columns).some((r) => r.kind === 'pk');
 
       for (const source of rows) {
-        const row = remapRow(spec, source, { newSchoolId, ids, photoTokens, takenEmails: taken });
+        const row = remapRow(spec, source, { newSchoolId, ids, photoTokens, takenEmails: taken, credentials: doc.credentials });
 
         if (spec.table === 'question_vault') row.payload = remapVaultPayload(source.payload, ids, newSchoolId);
         if (spec.table === 'questions' && source.parent_id != null) questionParents.push({ oldId: Number(source.id), oldParent: Number(source.parent_id) });
@@ -161,6 +166,9 @@ export async function restoreSchool(input: RestoreInput): Promise<RestoreResult>
     if (principalId === undefined) throw new RestoreIntegrityError('The principal account could not be restored.');
     if (passwordHash) {
       await tx.execute(sql`update users set password_hash = ${passwordHash}, must_change_password = true, status = 'active' where id = ${principalId} and school_id = ${newSchoolId}`);
+    } else if (keepsOwnPasswords) {
+      // Their own hash (and must-change flag) was restored with the row; just make sure the account is open.
+      await tx.execute(sql`update users set status = 'active' where id = ${principalId} and school_id = ${newSchoolId}`);
     } else {
       await tx.execute(sql`update users set must_change_password = true, status = 'active' where id = ${principalId} and school_id = ${newSchoolId}`);
     }
@@ -179,7 +187,7 @@ export async function restoreSchool(input: RestoreInput): Promise<RestoreResult>
     return {
       school: { id: newSchoolId, name: schoolName, code: String(school!.code), subdomain: (school!.subdomain as string | null) ?? null },
       principal: { loginId: String(pu!.login_id), name: principalName },
-      temporaryPassword, counts, skipped,
+      temporaryPassword, credentials: doc.credentials, counts, skipped,
     };
   });
 }

@@ -165,6 +165,16 @@ export const USER_STRIP: Record<string, unknown> = {
   email_verified_at: null,
 };
 
+/**
+ * When a backup is taken WITH password hashes, these are the only users columns that change meaning:
+ * the hash and the must-change flag are kept as they were. Everything else in USER_STRIP (two-factor
+ * secret, lock-out state, last login, verified email) is still reset.
+ */
+export const USER_KEEP_WITH_PASSWORDS = ['password_hash', 'must_change_password'] as const;
+
+/** A genuine Argon2id hash: the only password material a restore will ever accept from a file. */
+export const ARGON2ID_HASH = /^\$argon2id\$v=\d+\$m=\d+,t=\d+,p=\d+\$[A-Za-z0-9+/]+\$[A-Za-z0-9+/]+$/;
+
 /** Columns on `schools` that identify the OLD school and must not be carried into the new one. */
 export const SCHOOL_STRIP = ['id', 'code', 'subdomain', 'custom_domain', 'id_prefix', 'status', 'created_at', 'updated_at'] as const;
 

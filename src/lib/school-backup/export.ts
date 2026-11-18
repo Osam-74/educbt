@@ -8,13 +8,13 @@
 import { sql } from 'drizzle-orm';
 import { forSchool } from '@/db';
 import {
-  DATA_TABLES, SCHOOL_STRIP, USER_STRIP, allClassifiedTables,
+  DATA_TABLES, SCHOOL_STRIP, USER_STRIP, USER_KEEP_WITH_PASSWORDS, allClassifiedTables,
 } from './registry';
 import { buildDocument, encode, backupFileName, type BackupDocument } from './format';
 
 const PHOTO_PATH = /^\/api\/photos\/([A-Za-z0-9_-]{10,64})$/;
 
-export type ExportResult = { file: Buffer; fileName: string; counts: Record<string, number>; uploads: number };
+export type ExportResult = { file: Buffer; fileName: string; counts: Record<string, number>; uploads: number; credentials: 'none' | 'password-hashes' };
 
 /** Binary columns are written as base64 text so the document stays JSON. */
 function jsonSafe(value: unknown): unknown {
@@ -30,7 +30,13 @@ function cleanRow(row: Record<string, unknown>): Record<string, unknown> {
   return out;
 }
 
-export async function exportSchool(schoolId: number): Promise<ExportResult> {
+export type ExportOptions = {
+  /** Keep each user's Argon2id password hash so people keep their passwords. Default false: the file carries no credentials. */
+  includePasswords?: boolean;
+};
+
+export async function exportSchool(schoolId: number, options: ExportOptions = {}): Promise<ExportResult> {
+  const includePasswords = options.includePasswords === true;
   const { doc } = await forSchool(schoolId, async (tx) => {
     const schoolRows = await tx.execute(sql`select * from schools where id = ${schoolId}`);
     const school = (schoolRows as unknown as Array<Record<string, unknown>>)[0];
@@ -63,7 +69,12 @@ export async function exportSchool(schoolId: number): Promise<ExportResult> {
 
       tables[spec.table] = rows.map((r) => {
         const row = cleanRow(r);
-        if (spec.table === 'users') for (const c of Object.keys(USER_STRIP)) delete row[c];
+        if (spec.table === 'users') {
+          for (const c of Object.keys(USER_STRIP)) {
+            if (includePasswords && (USER_KEEP_WITH_PASSWORDS as readonly string[]).includes(c)) continue;
+            delete row[c];
+          }
+        }
         for (const [col, rule] of Object.entries(spec.columns)) {
           if (rule.kind === 'strip') delete row[col];
           // The driver hands bigint back as a string. Ids and references are written as numbers so a
@@ -90,6 +101,7 @@ export async function exportSchool(schoolId: number): Promise<ExportResult> {
     const doc: BackupDocument = buildDocument({
       createdAt: new Date().toISOString(),
       app: { name: 'EduCBT', schemaTables: allClassifiedTables().length },
+      credentials: includePasswords ? 'password-hashes' : 'none',
       school: schoolBody,
       tables,
       uploads,
@@ -100,9 +112,10 @@ export async function exportSchool(schoolId: number): Promise<ExportResult> {
   const file = encode(doc);
   return {
     file,
-    fileName: backupFileName(String(doc.school.name ?? 'school')),
+    fileName: backupFileName(String(doc.school.name ?? 'school'), new Date(), includePasswords),
     counts: doc.counts,
     uploads: Object.keys(doc.uploads).length,
+    credentials: doc.credentials,
   };
 }
 

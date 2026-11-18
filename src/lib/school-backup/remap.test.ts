@@ -97,7 +97,7 @@ check('PHOTOS: a path to a photo that is NOT in the backup is dropped, never kep
 });
 
 check('PHOTOS: every photo gets its own new, unguessable token', () => {
-  const doc = buildDocument({ createdAt: 'x', app: { name: 'EduCBT', schemaTables: 1 }, school: {}, tables: {}, uploads: { a1111111111: { mimeType: 'image/png', base64: '' }, b2222222222: { mimeType: 'image/png', base64: '' } } });
+  const doc = buildDocument({ createdAt: 'x', credentials: 'none', app: { name: 'EduCBT', schemaTables: 1 }, school: {}, tables: {}, uploads: { a1111111111: { mimeType: 'image/png', base64: '' }, b2222222222: { mimeType: 'image/png', base64: '' } } });
   const plan = planPhotoTokens(doc);
   assert.equal(plan.size, 2);
   const [x, y] = [plan.get('a1111111111')!, plan.get('b2222222222')!];
@@ -142,9 +142,9 @@ check('VAULT: ids embedded in a safety copy are rewritten so "restore this set" 
 });
 
 check('a file containing a table this version cannot restore is refused', () => {
-  const ok = buildDocument({ createdAt: 'x', app: { name: 'EduCBT', schemaTables: 1 }, school: {}, tables: { students: [] }, uploads: {} });
+  const ok = buildDocument({ createdAt: 'x', credentials: 'none', app: { name: 'EduCBT', schemaTables: 1 }, school: {}, tables: { students: [] }, uploads: {} });
   assert.doesNotThrow(() => assertKnownTables(ok));
-  const bad = buildDocument({ createdAt: 'x', app: { name: 'EduCBT', schemaTables: 1 }, school: {}, tables: { students: [], mystery_table: [] }, uploads: {} });
+  const bad = buildDocument({ createdAt: 'x', credentials: 'none', app: { name: 'EduCBT', schemaTables: 1 }, school: {}, tables: { students: [], mystery_table: [] }, uploads: {} });
   assert.throws(() => assertKnownTables(bad), /mystery_table/);
 });
 

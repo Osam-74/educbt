@@ -20,6 +20,7 @@ async function main() {
   const { exportSchool } = await import('@/lib/school-backup/export');
   const up = await import('@/lib/school-backup/upload');
   const { runRestoreJob, friendlyRestoreError } = await import('@/lib/school-backup/job');
+  const { hashPassword, verifyPassword } = await import('@/lib/auth/password');
 
   const owner = postgres(process.env.DATABASE_URL_UNPOOLED!, { max: 1, onnotice: () => {} });
   const db = drizzle(owner, { schema });
@@ -150,6 +151,25 @@ async function main() {
       assert.ok(!text.includes('password') && !text.includes('temporary'), 'the job row must not mention a password');
       const [p] = await q(`select password_hash from users where school_id = $1 and role = 'principal'`, [r!.restored_school_id]);
       assert.ok(String(p!.password_hash).startsWith('!restored-no-password!'), 'principal has no usable password until one is issued');
+    });
+    await check('JOB: a file WITH password hashes keeps everyone\'s password and still stores no password in the job row', async () => {
+      const realHash = await hashPassword('Old-password-2026');
+      await owner`update users set password_hash = ${realHash}, must_change_password = false where school_id = ${sourceId} and role = 'principal'`;
+      const withPw = await exportSchool(sourceId, { includePasswords: true });
+      const file2 = withPw.file;
+      const code = 'PJ' + suffix;
+      const { jobId } = await up.startUpload(actor, { fileName: withPw.fileName, totalBytes: file2.length, totalChunks: Math.ceil(file2.length / PIECE), sha256: sha(file2), code, subdomain: code.toLowerCase() });
+      jobIds.push(jobId);
+      const parts = slices(file2, PIECE); for (let i = 0; i < parts.length; i++) await up.addChunk(actor, jobId, i, parts[i]!);
+      await up.completeUpload(actor, jobId);
+      const out = await runRestoreJob(jobId, actor);
+      assert.equal(out.ok, true);
+      const s = await statusOf(jobId); schoolIds.push(Number(s.r));
+      const [p] = await q(`select password_hash, must_change_password from users where school_id = $1 and role = 'principal'`, [s.r]);
+      assert.equal(await verifyPassword(String(p!.password_hash), 'Old-password-2026'), true, 'the principal must keep the password they had');
+      const [row] = await q(`select * from school_backup_jobs where id = $1`, [jobId]);
+      assert.ok(!JSON.stringify(row).includes('argon2'), 'a password hash must never sit in a job row');
+      assert.equal(await chunksOf(jobId), 0);
     });
     await check('JOB: running the same job again does NOT restore twice (idempotent)', async () => {
       const [r] = await q(`select id from school_backup_jobs where status = 'succeeded' and new_school_code = $1`, ['JB' + suffix]);
