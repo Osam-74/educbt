@@ -5,8 +5,8 @@
  * that school even if this code had a bug. Credentials are removed here, at the source, so
  * they never exist in memory beside the rest of the export, let alone in the file.
  */
-import { sql } from 'drizzle-orm';
-import { forSchool } from '@/db';
+import { eq, sql } from 'drizzle-orm';
+import { asPlatformAdmin, forSchool, schema } from '@/db';
 import {
   DATA_TABLES, SCHOOL_STRIP, USER_STRIP, USER_KEEP_WITH_PASSWORDS, allClassifiedTables,
 } from './registry';
@@ -123,4 +123,24 @@ export async function exportSchool(schoolId: number, options: ExportOptions = {}
 export function photoToken(path: unknown): string | null {
   if (typeof path !== 'string') return null;
   return PHOTO_PATH.exec(path)?.[1] ?? null;
+}
+
+/**
+ * The operator-facing entry point: take a backup AND leave a durable record that it happened.
+ *
+ * A backup is a complete copy of a school's student records. asPlatformAdmin() writes the audit entry
+ * (who, when, why) before any work, and a second, school-scoped entry is added so the school's own
+ * activity log shows that a platform operator took a copy, and whether passwords were included.
+ */
+export async function exportSchoolAudited(actorUserId: number, schoolId: number, options: ExportOptions = {}): Promise<ExportResult> {
+  const withPasswords = options.includePasswords === true;
+  await asPlatformAdmin(actorUserId, `Take a backup of school #${schoolId}${withPasswords ? ' including password hashes' : ''}`, async (tx) => {
+    const [exists] = await tx.select({ id: schema.schools.id }).from(schema.schools).where(eq(schema.schools.id, schoolId)).limit(1);
+    if (!exists) throw new Error('That school does not exist.');
+    await tx.insert(schema.auditLog).values({
+      schoolId, actorUserId, actorRole: 'platform_admin', action: 'school.backup_taken', entityType: 'schools', entityId: schoolId,
+      after: { includesPasswordHashes: withPasswords } as never,
+    });
+  });
+  return exportSchool(schoolId, options);
 }

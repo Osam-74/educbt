@@ -132,6 +132,34 @@ export async function cancelJob(actorUserId: number, jobId: number): Promise<voi
   });
 }
 
+/** A restore that has shown no sign of life for this long is treated as dead (a server restart mid-run). */
+export const STALE_RESTORE_MINUTES = 30;
+
+export async function getJob(actorUserId: number, jobId: number): Promise<JobView | null> {
+  return (await listJobs(actorUserId, 50)).find((j) => j.id === jobId) ?? null;
+}
+
+/**
+ * Mark a restore that never finished as failed so the operator can start again.
+ *
+ * Safe because the restore is ONE transaction: it either committed completely (the job would say
+ * 'succeeded') or rolled back completely, so a job still 'restoring' after STALE_RESTORE_MINUTES
+ * produced nothing. A restore that is genuinely still running is refused.
+ */
+export async function failStaleRestore(actorUserId: number, jobId: number): Promise<void> {
+  const changed = await asPlatformAdmin(actorUserId, `Fail stale restore job ${jobId}`, async (tx) => {
+    const rows = (await tx.execute(sql`
+      update school_backup_jobs
+         set status = 'failed', updated_at = now(),
+             error_message = 'The restore stopped before it finished (the server was restarted). Nothing was restored. Upload the file again.'
+       where id = ${jobId} and status = 'restoring' and updated_at < now() - make_interval(mins => ${STALE_RESTORE_MINUTES})
+       returning id`)) as unknown as Array<{ id: number }>;
+    if (rows.length) await tx.delete(schema.schoolBackupChunks).where(eq(schema.schoolBackupChunks.jobId, jobId));
+    return rows.length;
+  });
+  if (!changed) throw new UploadError(`That restore is either not running or is still within its ${STALE_RESTORE_MINUTES} minute allowance.`);
+}
+
 export async function listJobs(actorUserId: number, limit = 20): Promise<JobView[]> {
   return asPlatformAdmin(actorUserId, 'List school restore jobs', async (tx) => {
     const rows = (await tx.execute(sql`

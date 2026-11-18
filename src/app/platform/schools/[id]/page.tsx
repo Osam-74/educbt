@@ -6,6 +6,7 @@ import { bestSchoolUrl } from '@/lib/platform/tenant-url';
 import { reactivateSchoolAction, suspendSchoolAction } from './actions';
 import { PaIcon } from '../../icons';
 import { CopyButton } from '../../CopyButton';
+import { BackupDownload } from './BackupDownload';
 
 export const dynamic = 'force-dynamic';
 
@@ -201,6 +202,10 @@ export default async function SchoolDetailPage({
           Schools are never deleted from this screen — a school&apos;s history is preserved
           even after it stops using the platform.
         </p>
+      </section>
+
+      <section className="pa-card pa-card-pad" id="backup" style={{ marginTop: 16 }}>
+        <BackupDownload schoolId={school.id} schoolName={school.name} />
       </section>
     </div>
   );

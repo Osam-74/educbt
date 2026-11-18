@@ -37,10 +37,15 @@ export default async function SchoolsPage({
           <h1>Schools</h1>
           <p>Directory of all registered institutions, administrators and web access subdomains.</p>
         </div>
-        <Link href="/platform/schools/new" id="schools-add-new-btn" className="pa-btn pa-btn--primary">
-          <PaIcon name="plus" width={15} height={15} />
-          <span>New school</span>
-        </Link>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <Link href="/platform/schools/restore" id="schools-restore-btn" className="pa-btn">
+            <span>Restore from backup</span>
+          </Link>
+          <Link href="/platform/schools/new" id="schools-add-new-btn" className="pa-btn pa-btn--primary">
+            <PaIcon name="plus" width={15} height={15} />
+            <span>New school</span>
+          </Link>
+        </div>
       </div>
 
       <div className="pa-glass pa-filter-bar">
