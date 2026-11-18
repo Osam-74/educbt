@@ -1,0 +1,62 @@
+[
+    {
+        "style": "wp-bcrypt",
+        "password": "Sch00l!Pass",
+        "hash": "$wp$2y$10$nT0ULkWqmk24K6zMGf0jLOxyMX8lKlLjBPHJYa3p3.vwl4c8yFTqG"
+    },
+    {
+        "style": "bcrypt",
+        "password": "Sch00l!Pass",
+        "hash": "$2y$10$eXTbPoekfj2CB.5OujCbl.Nt7TMSMkLpf5nIwgP122GykY6vRZyNG"
+    },
+    {
+        "style": "phpass",
+        "password": "Sch00l!Pass",
+        "hash": "$P$B8FLuA9n7dlnNnxkuTDDDT77x1xXuW1"
+    },
+    {
+        "style": "md5",
+        "password": "Sch00l!Pass",
+        "hash": "9469cc2d18acc28946afb1ce15be1888"
+    },
+    {
+        "style": "wp-bcrypt",
+        "password": "pässwörd-ñ-日本-12",
+        "hash": "$wp$2y$10$TrMfMQnatCk3NdDkrlT3SORgJenZFM0OLs4jRBy61m3twnI46h\/Dq"
+    },
+    {
+        "style": "bcrypt",
+        "password": "pässwörd-ñ-日本-12",
+        "hash": "$2y$10$wKJnToB1wYxcjgpxKpJxhulM.m5HZlZ8qihR6OpaRhKQTZStJAb1i"
+    },
+    {
+        "style": "phpass",
+        "password": "pässwörd-ñ-日本-12",
+        "hash": "$P$BTOyomxF38.osLaNrQIUtpEa4KAwn00"
+    },
+    {
+        "style": "md5",
+        "password": "pässwörd-ñ-日本-12",
+        "hash": "d0f019c3ed27d4753fd7a2f59e563a67"
+    },
+    {
+        "style": "wp-bcrypt",
+        "password": "LongPassw0rd!LongPassw0rd!LongPassw0rd!LongPassw0rd!LongPassw0rd!LongPassw0rd!LongPassw0rd!LongPassw0rd!",
+        "hash": "$wp$2y$10$WArwY\/G39SnZ3rh4Tep3\/.BXgfS6BUt7Yjg.5OLbYFuPJd7KTVFau"
+    },
+    {
+        "style": "bcrypt",
+        "password": "LongPassw0rd!LongPassw0rd!LongPassw0rd!LongPassw0rd!LongPassw0rd!LongPassw0rd!LongPassw0rd!LongPassw0rd!",
+        "hash": "$2y$10$VyM2qBBh.\/gl0\/WUYO7yxeJjpitv.\/cPgRpdvmoGP9O\/xPkVDhZNK"
+    },
+    {
+        "style": "phpass",
+        "password": "LongPassw0rd!LongPassw0rd!LongPassw0rd!LongPassw0rd!LongPassw0rd!LongPassw0rd!LongPassw0rd!LongPassw0rd!",
+        "hash": "$P$Br4bemBb8Z7I7MNFk1rJJ0mvCPvzV.1"
+    },
+    {
+        "style": "md5",
+        "password": "LongPassw0rd!LongPassw0rd!LongPassw0rd!LongPassw0rd!LongPassw0rd!LongPassw0rd!LongPassw0rd!LongPassw0rd!",
+        "hash": "3b3f7db17f3ab8a1ead717e698911cb6"
+    }
+]

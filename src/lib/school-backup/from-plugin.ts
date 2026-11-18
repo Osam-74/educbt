@@ -14,6 +14,7 @@
  * reported as "not yet translated", never guessed at.
  */
 import { buildDocument, type BackupDocument } from './format';
+import { isCarryableLegacyHash } from '@/lib/auth/legacy-password';
 
 type Row = Record<string, unknown>;
 export type PluginBackup = {
@@ -23,6 +24,14 @@ export type PluginBackup = {
   school: Row;
   tables: Record<string, Row[]>;
   uploads?: Record<string, { mimeType: string; base64: string }>;
+  /**
+   * WordPress sign-in material, keyed by WordPress user id. Present only when the person who exported the
+   * school chose to carry passwords. Each entry is what the person types and the hash behind it:
+   *   login  the WordPress user_login (what the person may type today)   email  their address on the account
+   *   hash   user_pass, exactly as WordPress stores it
+   * The file is then a sensitive credential store, like a SaaS backup that keeps passwords.
+   */
+  wpUsers?: Record<string, { login?: string | null; email?: string | null; hash?: string | null }>;
 };
 
 export type TranslateReport = {
@@ -31,6 +40,8 @@ export type TranslateReport = {
   notes: string[];
   /** plugin tables present in the file that this version does not translate yet */
   notTranslated: string[];
+  /** how many people arrive with their own password, and how many have none to carry (and why) */
+  passwords: { carried: number; none: number };
 };
 
 export class PluginBackupError extends Error {}
@@ -138,8 +149,19 @@ export function translatePluginBackup(plugin: PluginBackup): { document: BackupD
   // file, so each staff member / student gets a fresh SaaS login and nobody keeps a WordPress password.
   const userRows: Row[] = [];
   let nextUser = 1;
-  const newUser = (role: string, loginId: string): number => {
-    const id = nextUser++; userRows.push({ id, school_id: 0, role, login_id: loginId, status: 'active' }); return id;
+  const wp = plugin.wpUsers ?? {};
+  const carryPasswords = plugin.credentials === 'password-hashes';
+  let carried = 0, none = 0;
+  const newUser = (role: string, loginId: string, wpUserId?: unknown, email?: string | null): number => {
+    const id = nextUser++;
+    const w = wp[String(link(wpUserId) ?? '')];
+    const row: Row = { id, school_id: 0, role, login_id: loginId, status: 'active', email: str(email) ?? str(w?.email) };
+    if (carryPasswords && w && isCarryableLegacyHash(w.hash)) {
+      // The person's own WordPress hash travels as it is, so their password still works. They are not forced
+      // to change it; the first correct sign-in upgrades it silently and they are offered a new one.
+      row.password_hash = w.hash; row.must_change_password = false; row.password_carried_at = new Date().toISOString(); carried++;
+    } else none++;
+    userRows.push(row); return id;
   };
   const takenLogins = new Set<string>();
   const uniqueLogin = (base: string): string => {
@@ -153,7 +175,7 @@ export function translatePluginBackup(plugin: PluginBackup): { document: BackupD
     const slug = String(r.role_slug ?? '');
     let role = STAFF_ROLE[slug];
     if (!role) { role = 'teacher'; notes.push(`Staff member ${str(r.first_name) ?? ''} ${str(r.last_name) ?? ''} had the role "${slug || 'none'}", which the platform does not know, so they were added as a teacher.`); }
-    const userId = newUser(role, uniqueLogin(str(r.staff_number) ?? `staff${r.id}`));
+    const userId = newUser(role, uniqueLogin(str(r.staff_number) ?? `staff${r.id}`), r.wp_user_id, str(r.email));
     staffRows.push({ id: num(r.id), school_id: 0, user_id: userId, staff_number: str(r.staff_number) ?? `STF${r.id}`, first_name: str(r.first_name) ?? '-',
       last_name: str(r.last_name) ?? '-', title: str(r.title), gender: str(r.gender), email: str(r.email), phone: str(r.phone), photo_url: str(r.photo), role,
       status: STAFF_STATUS[String(r.status ?? 'active')] ?? 'active' });
@@ -168,7 +190,7 @@ export function translatePluginBackup(plugin: PluginBackup): { document: BackupD
     if (!adm) { notes.push(`A student (${str(r.first_name) ?? ''} ${str(r.last_name) ?? ''}) has no admission number, so they were left out.`); continue; }
     const status = String(r.status ?? 'active');
     if (!STUDENT_STATUS.has(status)) notes.push(`${adm}: unknown status "${status}", set to active.`);
-    const userId = newUser('student', uniqueLogin(adm));
+    const userId = newUser('student', uniqueLogin(adm), r.wp_user_id);
     const [first, last] = [str(r.first_name), str(r.last_name)];
     const full = str(r.full_name);
     studentRows.push({ id: num(r.id), school_id: 0, user_id: userId, admission_number: adm,
@@ -183,7 +205,7 @@ export function translatePluginBackup(plugin: PluginBackup): { document: BackupD
   const guardianRows: Row[] = [];
   for (const r of rows('guardians')) {
     const name = [str(r.first_name), str(r.last_name)].filter(Boolean).join(' ') || 'Guardian ' + r.id;
-    const userId = newUser('parent', uniqueLogin(str(r.email) ?? `parent${r.id}`));
+    const userId = newUser('parent', uniqueLogin(str(r.email) ?? `parent${r.id}`), r.wp_user_id, str(r.email));
     guardianRows.push({ id: num(r.id), school_id: 0, user_id: userId, full_name: name, email: str(r.email), phone: str(r.phone),
       invite_status: 'none', invite_token: null });
   }
@@ -231,6 +253,6 @@ export function translatePluginBackup(plugin: PluginBackup): { document: BackupD
     principal_name: str(s.principal_name), logo_url: str(s.logo), principal_photo_url: str(s.principal_photo), settings: {} };
 
   const document = buildDocument({ createdAt: new Date().toISOString(), app: { name: 'EduCBT', schemaTables: Object.keys(out).length },
-    credentials: 'none', school, tables: out, uploads: plugin.uploads ?? {} });
-  return { document, report: { translated, notes: [...new Set(notes)], notTranslated } };
+    credentials: carried > 0 ? 'wordpress-hashes' : 'none', school, tables: out, uploads: plugin.uploads ?? {} });
+  return { document, report: { translated, notes: [...new Set(notes)], notTranslated, passwords: { carried, none } } };
 }

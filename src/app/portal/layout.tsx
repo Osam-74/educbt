@@ -7,6 +7,9 @@ import { portalCalendar } from '@/lib/portal-dashboard';
 import { unreadCount } from '@/lib/comms/notifications';
 import { and } from 'drizzle-orm';
 import { signOut } from '@/lib/auth';
+import { revalidatePath } from 'next/cache';
+import PasswordOffer from './PasswordOffer';
+import { shouldOfferNewPassword, dismissPasswordOffer } from '@/lib/auth/password-offer';
 
 /**
  * Every portal page shows per-user data, so none of them may be cached.
@@ -49,9 +52,17 @@ export default async function PortalLayout({ children }: { children: React.React
     await signOut({ redirectTo: '/sign-in' });
   }
 
+  async function keepPassword() {
+    'use server';
+    const inner = await requireSchoolSession();
+    await dismissPasswordOffer({ id: inner.userId, schoolId: inner.schoolId });
+    revalidatePath('/portal', 'layout');
+  }
+  const offer = await shouldOfferNewPassword({ id: actor.userId, schoolId: actor.schoolId });
+
   const calendar = await portalCalendar(actor);
   const assignments = actor.staffId ? await forSchool(actor.schoolId, tx => tx.select({ type: schema.staffAssignments.assignmentType }).from(schema.staffAssignments).where(and(eq(schema.staffAssignments.staffId, actor.staffId!), eq(schema.staffAssignments.status, 'active')))) : [];
   return <PortalShell school={school?.name ?? 'School'} displayName={displayName} role={actor.role} unread={unread}
     sessionTitle={calendar.session?.title ?? 'No current session'} termTitle={calendar.term?.title ?? 'No current term'}
-    teaching={assignments.length > 0} classTeacher={assignments.some(a => a.type === 'class_teacher')} signOut={endSession}>{children}</PortalShell>;
+    teaching={assignments.length > 0} classTeacher={assignments.some(a => a.type === 'class_teacher')} signOut={endSession}>{offer ? <PasswordOffer keepPassword={keepPassword} /> : null}{children}</PortalShell>;
 }

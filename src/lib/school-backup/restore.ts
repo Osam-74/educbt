@@ -39,7 +39,7 @@ export type RestoreResult = {
   principal: { loginId: string; name: string };
   temporaryPassword: string | null;
   /** 'password-hashes': every user kept their own password. 'none': nobody can sign in until issued one. */
-  credentials: 'none' | 'password-hashes';
+  credentials: 'none' | 'password-hashes' | 'wordpress-hashes';
   counts: Record<string, number>;
   skipped: string[];
 };
@@ -65,7 +65,7 @@ export async function restoreSchool(input: RestoreInput): Promise<RestoreResult>
   // Hashed OUTSIDE the transaction: Argon2 must not hold a pooled connection hostage.
   // When the file carries the users' own password hashes the principal keeps theirs: issuing a
   // temporary one would lock them out of an account that already works.
-  const keepsOwnPasswords = doc.credentials === 'password-hashes';
+  const keepsOwnPasswords = doc.credentials === 'password-hashes' || doc.credentials === 'wordpress-hashes';
   const issue = !keepsOwnPasswords && (input.principalPassword ?? 'issue') === 'issue';
   const temporaryPassword = issue ? generateInitialPassword(12) : null;
   const passwordHash = temporaryPassword ? await hashPassword(temporaryPassword) : null;

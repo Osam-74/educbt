@@ -56,6 +56,12 @@ export const users = pgTable('users', {
   totpSecret: text('totp_secret'),
   totpEnabled: boolean('totp_enabled').default(false).notNull(),
 
+  // A school moved over from the WordPress plugin arrives carrying each person's old password hash. This is set
+  // while that hash is still in place; the first correct sign-in replaces it with Argon2id and clears this.
+  passwordCarriedAt: timestamp('password_carried_at', { withTimezone: true }),
+  // Set when the person chooses to keep their password after being offered a new one (never offered again).
+  passwordPromptDismissedAt: timestamp('password_prompt_dismissed_at', { withTimezone: true }),
+
   status: userStatus('status').default('active').notNull(),
 
   failedAttempts: bigint('failed_attempts', { mode: 'number' }).default(0).notNull(),

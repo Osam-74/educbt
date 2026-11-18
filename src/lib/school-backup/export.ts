@@ -14,7 +14,7 @@ import { buildDocument, encode, backupFileName, type BackupDocument } from './fo
 
 const PHOTO_PATH = /^\/api\/photos\/([A-Za-z0-9_-]{10,64})$/;
 
-export type ExportResult = { file: Buffer; fileName: string; counts: Record<string, number>; uploads: number; credentials: 'none' | 'password-hashes' };
+export type ExportResult = { file: Buffer; fileName: string; counts: Record<string, number>; uploads: number; credentials: 'none' | 'password-hashes' | 'wordpress-hashes' };
 
 /** Binary columns are written as base64 text so the document stays JSON. */
 function jsonSafe(value: unknown): unknown {

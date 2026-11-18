@@ -7,6 +7,7 @@
  */
 import { randomBytes } from 'node:crypto';
 import { DATA_TABLES, USER_STRIP, UNUSABLE_PASSWORD_PREFIX, ARGON2ID_HASH, type TableSpec } from './registry';
+import { isCarryableLegacyHash } from '@/lib/auth/legacy-password';
 import type { BackupDocument } from './format';
 
 export class RestoreIntegrityError extends Error {}
@@ -47,7 +48,7 @@ export function rewritePhotoPath(value: unknown, tokenMap: Map<string, string>):
 export function remapRow(
   spec: TableSpec,
   row: Record<string, unknown>,
-  ctx: { newSchoolId: number; ids: IdMap; photoTokens: Map<string, string>; takenEmails?: ReadonlySet<string>; credentials?: 'none' | 'password-hashes' },
+  ctx: { newSchoolId: number; ids: IdMap; photoTokens: Map<string, string>; takenEmails?: ReadonlySet<string>; credentials?: 'none' | 'password-hashes' | 'wordpress-hashes' },
 ): Record<string, unknown> {
   const out: Record<string, unknown> = { ...row };
 
@@ -88,6 +89,18 @@ export function remapRow(
       if (typeof kept === 'string' && ARGON2ID_HASH.test(kept)) {
         out.password_hash = kept;
         if (typeof row.must_change_password === 'boolean') out.must_change_password = row.must_change_password;
+      }
+    }
+    // A file made by the plugin translator may carry WordPress hashes, and ONLY those: a recognised WordPress
+    // style (never plaintext, never a stripped or invented value). A SaaS backup can never reach this branch,
+    // because only the translator writes 'wordpress-hashes', so a tampered SaaS file stays limited to Argon2id.
+    // The person is not forced to change anything: sign-in verifies the hash and upgrades it silently.
+    if (ctx.credentials === 'wordpress-hashes') {
+      const kept = row.password_hash;
+      if (isCarryableLegacyHash(kept)) {
+        out.password_hash = kept; out.must_change_password = false; out.password_carried_at = new Date().toISOString();
+      } else if (typeof kept === 'string' && ARGON2ID_HASH.test(kept)) {
+        out.password_hash = kept; out.must_change_password = false;
       }
     }
     // A restored sign-in must never carry a credential, and an email already used by a live account

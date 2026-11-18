@@ -1,4 +1,5 @@
 {
+ "credentials": "password-hashes",
  "format": "educbt-wp-school-backup",
  "school": {
   "academic_settings": null,
@@ -1067,5 +1068,22 @@
   ]
  },
  "uploads": {},
- "version": 1
+ "version": 1,
+ "wpUsers": {
+  "10": {
+   "email": "dss001-stf-008@staff.invalid",
+   "hash": "$P$BFVS1uq3aJq2e7Qv3B4jct5kOt0C7f/",
+   "login": "DSS001.STF.008"
+  },
+  "2": {
+   "email": "student@demosecondary.edu",
+   "hash": "$wp$2y$10$oCiLYf8oa.yAWURJkzsLm.TAOqrHa6XVk.1nT0cGG1tVZ2x5zoNFu",
+   "login": "DEMO2024001"
+  },
+  "9": {
+   "email": "dss001-stf-007@staff.invalid",
+   "hash": "$2y$10$2lJrv7VKEJJSKQwYGOL.nOiFkfL7Q4ooMmkF5m2kWzvXsDmHArU36",
+   "login": "DSS001.STF.007"
+  }
+ }
 }

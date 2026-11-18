@@ -14,6 +14,7 @@
 import { eq } from 'drizzle-orm';
 import { db, schema, forSchool, asPlatformAdmin } from '@/db';
 import { hashPassword, verifyPassword } from '@/lib/auth/password';
+import { legacyStyleOf, verifyLegacyPassword } from '@/lib/auth/legacy-password';
 
 export class PasswordChangeError extends Error {}
 
@@ -55,7 +56,11 @@ export async function changeOwnPassword(
 
   if (!user) throw new PasswordChangeError('Account not found.');
 
-  const ok = await verifyPassword(user.passwordHash, current);
+  // A person who arrived from the WordPress plugin may still hold their old hash (for example a short password
+  // that could not be upgraded); their correct current password must be accepted just the same.
+  const ok = legacyStyleOf(user.passwordHash) !== null
+    ? await verifyLegacyPassword(user.passwordHash, current)
+    : await verifyPassword(user.passwordHash, current);
   if (!ok) throw new PasswordChangeError('Your current password is not correct.');
 
   // Argon2 runs OUTSIDE the transaction — hashing must never hold the
@@ -66,7 +71,7 @@ export async function changeOwnPassword(
     await forSchool(schoolId, async (tx) => {
       await tx
         .update(schema.users)
-        .set({ passwordHash, mustChangePassword: false })
+        .set({ passwordHash, mustChangePassword: false, passwordCarriedAt: null })
         .where(eq(schema.users.id, userId));
 
       await tx.insert(schema.auditLog).values({
@@ -82,7 +87,7 @@ export async function changeOwnPassword(
     await asPlatformAdmin(userId, 'Platform account password change', async (tx) => {
       await tx
         .update(schema.users)
-        .set({ passwordHash, mustChangePassword: false })
+        .set({ passwordHash, mustChangePassword: false, passwordCarriedAt: null })
         .where(eq(schema.users.id, userId));
 
       await tx.insert(schema.auditLog).values({

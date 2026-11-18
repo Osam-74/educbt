@@ -36,9 +36,11 @@ export type BackupDocument = {
    *   'none'            no credentials: every login must be issued a password after a restore (default)
    *   'password-hashes' each user's Argon2id password hash, so people keep their current passwords.
    *                     The file is then a SENSITIVE credential store and must be kept as one.
+   *   'wordpress-hashes' made ONLY by the plugin translator: each person's WordPress password hash, which the
+   *                     sign-in verifies as it is and replaces with Argon2id at their first correct sign-in.
    * Two-factor secrets, recovery codes, sessions and invite links are never carried in either mode.
    */
-  credentials: 'none' | 'password-hashes';
+  credentials: 'none' | 'password-hashes' | 'wordpress-hashes';
   school: Record<string, unknown>;
   tables: Record<string, Array<Record<string, unknown>>>;
   uploads: Record<string, { mimeType: string; base64: string }>;
@@ -117,7 +119,7 @@ export function decode(file: Buffer): BackupDocument {
   }
   // Only now: a file made before the field existed carried no credentials, and anything unrecognised
   // is treated the same way. Only the exact value 'password-hashes' ever turns hashes on.
-  if (doc.credentials !== 'password-hashes') (doc as { credentials: string }).credentials = 'none';
+  if (doc.credentials !== 'password-hashes' && doc.credentials !== 'wordpress-hashes') (doc as { credentials: string }).credentials = 'none';
   return doc;
 }
 

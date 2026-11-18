@@ -30,7 +30,8 @@ import { and, eq, isNull, sql } from 'drizzle-orm';
 import { createHash } from 'node:crypto';
 import { z } from 'zod';
 import { db, schema, forSchool } from '@/db';
-import { verifyPassword } from '@/lib/auth/password';
+import { hashPassword, verifyPassword } from '@/lib/auth/password';
+import { legacyStyleOf, verifyLegacyPassword } from '@/lib/auth/legacy-password';
 import { verifyTotp } from '@/lib/auth/totp';
 import { checkLoginThrottle, lockoutUntil } from '@/lib/auth/throttle';
 import type { SessionUser } from '@/lib/auth/session-store';
@@ -158,7 +159,15 @@ export async function authenticateCredentials(raw: SignInInput): Promise<Credent
     throw new Error('This account is not active. Please contact the school office.');
   }
 
-  const ok = await verifyPassword(user.passwordHash, password);
+  // A person from a school moved over from the WordPress plugin still has their old WordPress hash. It is
+  // verified as it is; on success the password is re-hashed with Argon2id so the account becomes ordinary.
+  // Anything that is not a recognised WordPress hash goes the normal Argon2id route, unchanged.
+  const carried = legacyStyleOf(user.passwordHash) !== null;
+  const ok = carried
+    ? await verifyLegacyPassword(user.passwordHash, password)
+    : await verifyPassword(user.passwordHash, password);
+
+  if (ok && carried) await upgradeCarriedHash(user, password, schoolId ?? null);
 
   if (!ok) {
     const attempts = user.failedAttempts + 1;
@@ -178,6 +187,32 @@ export async function authenticateCredentials(raw: SignInInput): Promise<Credent
   }
 
   return { user: await finaliseSuccess(user, schoolId ?? null), secondFactorRequired: false };
+}
+
+/**
+ * Replace a carried WordPress hash with an Argon2id one. Argon2 runs OUTSIDE the transaction (the runtime
+ * pool is max:1). The update only applies while the stored hash is still the one that was just verified, so a
+ * password changed in the meantime is never overwritten. A failure here must not fail the sign-in: the person
+ * proved their password, and the upgrade simply happens at their next sign-in.
+ */
+async function upgradeCarriedHash(
+  user: typeof schema.users.$inferSelect,
+  password: string,
+  schoolId: number | null,
+): Promise<void> {
+  // WordPress has no minimum length, but the platform's Argon2id helper insists on 8. Such a person simply keeps
+  // their carried hash and keeps signing in through the legacy path until they choose a new password.
+  if (password.length < 8) return;
+  try {
+    // password_carried_at is KEPT: it is what makes the optional "set a new password" offer appear. It is
+    // cleared when the person dismisses the offer or really changes their password.
+    const patch = { passwordHash: await hashPassword(password) };
+    const guard = and(eq(schema.users.id, user.id), eq(schema.users.passwordHash, user.passwordHash));
+    if (schoolId) await forSchool(schoolId, async (tx) => tx.update(schema.users).set(patch).where(guard));
+    else await db.update(schema.users).set(patch).where(guard);
+  } catch {
+    /* sign-in already succeeded; the upgrade is retried next time */
+  }
 }
 
 /** Count a failed attempt into the lockout counters, tenant-scoped. */

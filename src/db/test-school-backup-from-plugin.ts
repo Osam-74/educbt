@@ -20,6 +20,9 @@ async function main() {
   const { translatePluginBackup, PluginBackupError } = await import('@/lib/school-backup/from-plugin');
   const { restoreSchool } = await import('@/lib/school-backup/restore');
   const { encode, decode } = await import('@/lib/school-backup/format');
+  const { authenticateCredentials } = await import('@/lib/auth/credentials');
+  const { verifyPassword } = await import('@/lib/auth/password');
+  const known: Record<string, string> = JSON.parse(readFileSync(new URL('../lib/school-backup/fixtures/plugin-demo-passwords.json', import.meta.url), 'utf8'));
   const owner = postgres(process.env.DATABASE_URL_UNPOOLED!, { max: 1, onnotice: () => {} });
   const db = drizzle(owner, { schema });
   const schoolIds: number[] = [];
@@ -40,7 +43,7 @@ async function main() {
 
     await check('the translated file is a valid SaaS backup (checksum, format, counts)', () => {
       const again = decode(encode(document));
-      assert.equal(again.checksum, document.checksum); assert.equal(again.credentials, 'none');
+      assert.equal(again.checksum, document.checksum); assert.equal(again.credentials, 'wordpress-hashes', 'the declaration must survive a save and re-open');
     });
     await check('every plugin row of slice 1 arrives: sessions, terms, levels, classes, subjects, staff, students, enrolments, duties', async () => {
       const p = plugin.tables;
@@ -95,10 +98,60 @@ async function main() {
     await check('the current session and term flags survive', async () => {
       assert.equal((await q('select 1 from academic_sessions where school_id = $1 and is_current', [sid])).length, 1);
     });
-    await check('nobody keeps a WordPress credential: every login arrives with no usable password and must set one', async () => {
-      const users = await q<{ role: string; must_change_password: boolean; totp_enabled: boolean }>('select role, must_change_password, totp_enabled from users where school_id = $1', [sid]);
-      assert.ok(users.length >= plugin.tables.staff.length + plugin.tables.students.length);
-      assert.ok(users.every((u) => !u.totp_enabled));
+    await check('the file declares that it carries WordPress passwords, and the report counts them', () => {
+      assert.equal(document.credentials, 'wordpress-hashes');
+      assert.equal(report.passwords.carried, 3); assert.equal(report.passwords.none, 15 - 3);
+    });
+    const who = async (wpId: string) => {
+      const w = plugin.wpUsers[wpId]; const isStudent = plugin.tables.students.find((x: Row) => String(x.wp_user_id) === wpId);
+      const staffRow = plugin.tables.staff.find((x: Row) => String(x.wp_user_id) === wpId);
+      return { loginId: String(isStudent ? isStudent.admission_number : staffRow!.staff_number), pw: known[wpId]!, hash: String(w.hash) };
+    };
+    await check('people with a WordPress account arrive holding their OWN hash, not forced to change it', async () => {
+      for (const id of ['2', '9', '10']) {
+        const p = await who(id);
+        const [u] = await q<{ password_hash: string; must_change_password: boolean; password_carried_at: string | null }>('select password_hash, must_change_password, password_carried_at from users where school_id = $1 and lower(login_id) = lower($2)', [sid, p.loginId]);
+        assert.ok(u, 'user exists ' + p.loginId); assert.equal(u!.password_hash, p.hash); assert.equal(u!.must_change_password, false); assert.ok(u!.password_carried_at);
+      }
+    });
+    await check('each person signs in with the SAME password they used on WordPress (modern, plain-bcrypt and phpass hashes)', async () => {
+      for (const id of ['2', '9', '10']) {
+        const p = await who(id);
+        const r = await authenticateCredentials({ loginId: p.loginId, password: p.pw, schoolId: sid });
+        assert.equal(r.user.loginId.toLowerCase(), p.loginId.toLowerCase()); assert.equal(r.user.mustChangePassword, false);
+      }
+    });
+    await check('after that first sign-in the stored hash is Argon2id, still the same password, and the carry marker stays for the offer', async () => {
+      for (const id of ['2', '9', '10']) {
+        const p = await who(id);
+        const [u] = await q<{ password_hash: string; password_carried_at: string | null }>('select password_hash, password_carried_at from users where school_id = $1 and lower(login_id) = lower($2)', [sid, p.loginId]);
+        assert.ok(u!.password_hash.startsWith('$argon2id$'), 'upgraded for ' + p.loginId); assert.ok(u!.password_carried_at, 'the marker stays, so the optional new-password offer can still appear');
+        assert.equal(await verifyPassword(u!.password_hash, p.pw), true);
+        const again = await authenticateCredentials({ loginId: p.loginId, password: p.pw, schoolId: sid }); assert.equal(again.user.mustChangePassword, false);
+      }
+    });
+    await check('a wrong password is refused and the WordPress hash is NOT touched', async () => {
+      // person 9 was upgraded above; use a fresh restore to test an untouched carried account
+      const second = await restoreSchool({ actorUserId: admin!.id, file: encode(document), code: 'FROMWP2-' + suffix, subdomain: 'fromwp2' + suffix.toLowerCase(), principalPassword: 'defer' });
+      schoolIds.push(second.school.id);
+      const p = await who('2');
+      await assert.rejects(authenticateCredentials({ loginId: p.loginId, password: p.pw + 'x', schoolId: second.school.id }));
+      const [u] = await q<{ password_hash: string }>('select password_hash from users where school_id = $1 and lower(login_id) = lower($2)', [second.school.id, p.loginId]);
+      assert.equal(u!.password_hash, p.hash, 'a failed sign-in must leave the carried hash exactly as it was');
+    });
+    await check('people with no WordPress account get no usable password (never an invented one)', async () => {
+      const rows = await q<{ password_hash: string }>("select password_hash from users where school_id = $1 and password_hash like '!restored-no-password!%'", [sid]);
+      assert.equal(rows.length, 15 - 3);
+    });
+    await check('the same carried hash cannot sign in to a DIFFERENT school or a different person', async () => {
+      const p = await who('2');
+      await assert.rejects(authenticateCredentials({ loginId: p.loginId, password: p.pw, schoolId: 999999 }));
+      const other = await who('9');
+      await assert.rejects(authenticateCredentials({ loginId: other.loginId, password: p.pw, schoolId: sid }));
+    });
+    await check('no two-factor secret, lock-out or invite credential crosses over', async () => {
+      const u = await q<{ totp_enabled: boolean; totp_secret: string | null; failed_attempts: number }>('select totp_enabled, totp_secret, failed_attempts from users where school_id = $1', [sid]);
+      assert.ok(u.every((x) => !x.totp_enabled && x.totp_secret === null));
     });
     await check('every login belongs to the new school and the roles are valid', async () => {
       const roles = new Set((await q<{ role: string }>('select distinct role from users where school_id = $1', [sid])).map((r) => r.role));
@@ -109,7 +162,7 @@ async function main() {
       assert.deepEqual(report.notTranslated, []);
     });
     await check('nothing leaked into any other school', async () => {
-      const other = await q<{ n: number }>('select count(*)::int as n from students where school_id <> $1 and admission_number = any($2)', [sid, plugin.tables.students.map((s: Row) => s.admission_number)]);
+      const other = await q<{ n: number }>('select count(*)::int as n from students where school_id <> all($1::bigint[]) and admission_number = any($2)', [schoolIds, plugin.tables.students.map((s: Row) => s.admission_number)]);
       assert.equal(Number(other[0]!.n), 0, 'an admission number from the plugin appeared in another school');
     });
     await check('a file that is not a plugin backup is refused, not guessed at', () => {
@@ -133,6 +186,56 @@ async function main() {
       const t = translatePluginBackup(noAdm);
       assert.equal(t.document.tables.students!.length, plugin.tables.students.length - 1);
       assert.ok(t.report.notes.some((n) => /no admission number/.test(n)));
+    });
+    await check('the optional new-password offer: shown to carried people only, survives the silent upgrade, ends on Keep or a real change, never touches anyone else', async () => {
+      const { shouldOfferNewPassword, dismissPasswordOffer } = await import('@/lib/auth/password-offer');
+      const { changeOwnPassword } = await import('@/lib/auth/change-password');
+      const third = await restoreSchool({ actorUserId: admin!.id, file: encode(document), code: 'FROMWP3-' + suffix, subdomain: 'fromwp3' + suffix.toLowerCase(), principalPassword: 'defer' });
+      schoolIds.push(third.school.id); const s3 = third.school.id;
+      const idOf = async (wpId: string) => { const p = await who(wpId); const [u] = await q<{ id: string }>('select id from users where school_id = $1 and lower(login_id) = lower($2)', [s3, p.loginId]); return { id: Number(u!.id), ...p }; };
+      const [a, b, c] = [await idOf('2'), await idOf('9'), await idOf('10')];
+      const [noPw] = await q<{ id: string }>("select id from users where school_id = $1 and password_hash like '!restored-no-password!%' limit 1", [s3]);
+      assert.equal(await shouldOfferNewPassword({ id: a.id, schoolId: s3 }), true, 'offered to a carried person');
+      assert.equal(await shouldOfferNewPassword({ id: Number(noPw!.id), schoolId: s3 }), false, 'not offered to someone with no carried password');
+      await authenticateCredentials({ loginId: a.loginId, password: a.pw, schoolId: s3 });  // silent upgrade to Argon2id
+      assert.equal(await shouldOfferNewPassword({ id: a.id, schoolId: s3 }), true, 'still offered after the silent upgrade');
+      await dismissPasswordOffer({ id: a.id, schoolId: s3 });
+      assert.equal(await shouldOfferNewPassword({ id: a.id, schoolId: s3 }), false, 'Keep my password ends the offer');
+      assert.equal(await shouldOfferNewPassword({ id: b.id, schoolId: s3 }), true, 'one person keeping theirs does not affect another');
+      await authenticateCredentials({ loginId: b.loginId, password: b.pw, schoolId: s3 });
+      await changeOwnPassword({ id: b.id, schoolId: s3 }, b.pw, 'Brand-New-Pass-42');
+      assert.equal(await shouldOfferNewPassword({ id: b.id, schoolId: s3 }), false, 'choosing a new password ends the offer');
+      await authenticateCredentials({ loginId: b.loginId, password: 'Brand-New-Pass-42', schoolId: s3 });
+      await assert.rejects(authenticateCredentials({ loginId: b.loginId, password: b.pw, schoolId: s3 }), 'the old WordPress password stops working');
+      // someone from ANOTHER school cannot dismiss this person's offer
+      await dismissPasswordOffer({ id: c.id, schoolId: schoolIds[0]! });
+      assert.equal(await shouldOfferNewPassword({ id: c.id, schoolId: s3 }), true, 'a different school cannot dismiss it');
+      // a carried person who changes their password BEFORE ever signing in with the old one (legacy hash still stored)
+      await changeOwnPassword({ id: c.id, schoolId: s3 }, c.pw, 'Another-New-Pass-77');
+      assert.equal(await shouldOfferNewPassword({ id: c.id, schoolId: s3 }), false);
+    });
+    const carriedOf = async (doc: unknown, tag: string) => {
+      const r = await restoreSchool({ actorUserId: admin!.id, file: encode(doc as never), code: `T${tag}-` + suffix, subdomain: `t${tag}` + suffix.toLowerCase(), principalPassword: 'defer' });
+      schoolIds.push(r.school.id);
+      return q<{ login_id: string; password_hash: string }>('select login_id, password_hash from users where school_id = $1', [r.school.id]);
+    };
+    const usable = (h: string) => !h.startsWith('!restored-no-password!');
+    await check('TAMPERING: plaintext, md5-of-nothing and invented values in a plugin file never become a usable password', async () => {
+      const t = translatePluginBackup(fixture()); const doc = JSON.parse(JSON.stringify(t.document));
+      const users = doc.tables.users as Row[]; const withHash = users.filter((u) => u.password_hash);
+      assert.equal(withHash.length, 3);
+      withHash[0]!.password_hash = 'plaintext-password'; withHash[1]!.password_hash = '*'; withHash[2]!.password_hash = '5f4dcc3b5aa765d61d8327deb882cf9'; // 31 chars: not a real md5
+      const { buildDocument } = await import('@/lib/school-backup/format');
+      const rows = await carriedOf(buildDocument({ credentials: 'wordpress-hashes', school: doc.school, tables: doc.tables, uploads: {} } as never), 'tp');
+      for (const u of withHash) assert.equal(usable(rows.find((r) => r.login_id === u.login_id)!.password_hash), false, u.login_id + ' must not be usable');
+    });
+    await check('TAMPERING: a WordPress hash inside an ordinary SaaS backup (credentials not wordpress-hashes) is discarded', async () => {
+      const t = translatePluginBackup(fixture()); const doc = JSON.parse(JSON.stringify(t.document));
+      const { buildDocument } = await import('@/lib/school-backup/format');
+      for (const mode of ['password-hashes', 'none']) {
+        const rows = await carriedOf(buildDocument({ credentials: mode, school: doc.school, tables: doc.tables, uploads: {} } as never), 'tm' + mode.slice(0, 2));
+        assert.equal(rows.filter((r) => usable(r.password_hash)).length, 0, `no WordPress hash may survive under credentials=${mode}`);
+      }
     });
     console.log(`${count} plugin-to-SaaS checks passed.`);
   } finally {
