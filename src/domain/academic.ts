@@ -16,7 +16,15 @@
 // Grading
 // ════════════════════════════════════════════════════════════════════════════
 
-export type Band = { min: number; grade: string; remark: string };
+export type Band = {
+  min: number; grade: string; remark: string;
+  /**
+   * Whether this grade counts as a pass. OPTIONAL on purpose: a band without it means "the school did not say",
+   * and every existing school keeps deciding pass/fail by its pass mark exactly as before. Schools moved over
+   * from the WordPress plugin carry an explicit flag per band, and that is used when present.
+   */
+  pass?: boolean;
+};
 
 export type GradingScale = {
   /**
@@ -49,9 +57,23 @@ export const WAEC_NINE_POINT: GradingScale = {
   ],
 };
 
+/**
+ * The lowest minimum of any band the school marked as a pass, or null when the scale carries no pass flags.
+ * Used only to suggest a default pass mark for a school that never set one, never to override a saved rule.
+ * Fails closed: a scale that marks nothing as a pass gives null, not 100.
+ */
+export function passMarkFromScale(scale: GradingScale | undefined | null): number | null {
+  if (!scale) return null;
+  const passing = scale.bands.filter(b => b.pass === true).map(b => b.min);
+  if (passing.length === 0) return null;
+  return Math.min(...passing);
+}
+
 export type GradeOutcome = {
   grade: string;
   remark: string;
+  /** Only present when the band that matched carries an explicit pass flag. Absent means "use the pass mark". */
+  passed?: boolean;
   /** Written onto the result so the grade can always be explained later. */
   scaleId: string;
   scaleVersion: number;
@@ -66,6 +88,7 @@ export function gradeFor(total: number, scale: GradingScale = WAEC_NINE_POINT): 
   return {
     grade: band?.grade ?? 'F9',
     remark: band?.remark ?? 'Fail',
+    ...(band && typeof band.pass === 'boolean' ? { passed: band.pass } : {}),
     scaleId: scale.id,
     scaleVersion: scale.version,
   };

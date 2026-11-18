@@ -71,6 +71,7 @@ export const DATA_TABLES: TableSpec[] = [
   { table: 'portal_uploads', about: 'Uploaded photos (stored in the database)', columns: { id: pk, school_id: school, token: { kind: 'strip', value: '__new_token__' } } },
   { table: 'staff_signatures', about: 'Signatures printed on report cards', columns: { id: pk, school_id: school, staff_id: ref('staff') } },
   { table: 'staff_remark_ranges', about: 'Report remark ranges set by staff', columns: { id: pk, school_id: school, staff_id: ref('staff') } },
+  { table: 'school_remark_ranges', about: 'Report remark ranges shared by the whole school', columns: { id: pk, school_id: school } },
 
   // ── Exams and questions ───────────────────────────────────────────────────
   { table: 'exam_series', about: 'CA tests and examination series',
@@ -84,6 +85,7 @@ export const DATA_TABLES: TableSpec[] = [
   { table: 'questions', about: 'Questions',
     columns: { id: pk, school_id: school, question_set_id: ref('question_sets'), passage_id: ref('passages', true), parent_id: ref('questions', true), reviewed_by: ref('users', true) } },
   { table: 'question_options', about: 'Answer options', columns: { id: pk, school_id: school, question_id: ref('questions') } },
+  { table: 'question_parts', about: 'Labelled parts of theory questions', columns: { id: pk, school_id: school, question_id: ref('questions') } },
   { table: 'question_vault', about: 'Safety copies of question sets', columns: { id: pk, school_id: school, question_set_id: ref('question_sets', true) } },
   { table: 'exam_papers', about: 'Scheduled exam papers',
     columns: { id: pk, school_id: school, series_id: ref('exam_series', true), subject_id: ref('subjects'), level_id: ref('class_levels', true),
@@ -103,6 +105,9 @@ export const DATA_TABLES: TableSpec[] = [
   { table: 'grading_scale_versions', about: 'Grading scales as they were used', columns: { id: pk, school_id: school } },
   { table: 'report_remarks', about: 'Remarks on report cards',
     columns: { id: pk, school_id: school, student_id: ref('students'), session_id: ref('academic_sessions'), term_id: ref('terms'), staff_id: ref('staff', true) } },
+  { table: 'term_summaries', about: 'Term remarks, attendance and approval for each student',
+    columns: { id: pk, school_id: school, student_id: ref('students'), session_id: ref('academic_sessions'), term_id: ref('terms'), class_id: ref('classes', true),
+      submitted_by: ref('users', true), approved_by: ref('users', true) } },
   { table: 'promotion_batches', about: 'Promotion runs',
     columns: { id: pk, school_id: school, from_session_id: ref('academic_sessions'), to_session_id: ref('academic_sessions'), level_id: ref('class_levels'),
       created_by: ref('users', true), committed_by: ref('users', true), reversed_by: ref('users', true) } },

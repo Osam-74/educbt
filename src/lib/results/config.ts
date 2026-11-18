@@ -14,7 +14,7 @@ const configSchema = z.object({
     && rows.filter(r => r.isExam).length === 1 && Math.abs(rows.reduce((s, r) => s + r.maxScore, 0) - 100) < 1e-8),
   gradingScale: z.object({
     id: z.string().trim().min(1).max(50), name: z.string().trim().min(1).max(100), version: id,
-    bands: z.array(z.object({ min: mark, grade: z.string().trim().min(1).max(10), remark: z.string().max(100) }))
+    bands: z.array(z.object({ min: mark, grade: z.string().trim().min(1).max(10), remark: z.string().max(100), pass: z.boolean().optional() }))
       .min(1).max(30).refine(b => b.some(r => r.min === 0) && new Set(b.map(r => r.min)).size === b.length),
   }),
   rankingPolicy: z.object({ tiePolicy: z.enum(['competition', 'dense', 'ordinal']),

@@ -79,6 +79,14 @@ async function main() {
     await db.insert(schema.assessmentScores).values({ schoolId, studentId: student!.id, subjectId: subject!.id, sessionId: session!.id, termId: term!.id, componentKey: 'ca1', score: '12.25', maxScore: '20' });
     await db.insert(schema.subjectResults).values({ schoolId, studentId: student!.id, subjectId: subject!.id, sessionId: session!.id, termId: term!.id, total: '77.50', grade: 'A' });
     await db.insert(schema.announcements).values({ schoolId, authorUserId: pUser!.id, audience: 'class', audienceRef: klass!.id, subject: 'Hello', body: 'Welcome' });
+    // Plugin-parity tables: term remarks and approval trail, theory part marks, school-wide remark wording.
+    await db.insert(schema.termSummaries).values({ schoolId, studentId: student!.id, sessionId: session!.id, termId: term!.id, classId: klass!.id,
+      classTeacherRemark: 'Hardworking pupil', principalRemark: 'Keep it up', daysPresent: 58, daysTotal: 60, subjectsOffered: 9, totalScore: '612.50',
+      averageScore: '68.06', classPosition: 3, classSize: 31, status: 'published', submittedBy: tUser!.id, approvedBy: pUser!.id });
+    await db.insert(schema.questionParts).values([
+      { schoolId, questionId: q1!.id, label: 'a', text: 'Define osmosis.', marks: '2.00', sequence: 1 },
+      { schoolId, questionId: q1!.id, label: 'b', text: 'Give one example in plants.', marks: '3.00', sequence: 2 }]);
+    await db.insert(schema.schoolRemarkRanges).values({ schoolId, role: 'principal', minAvg: '70', maxAvg: '100', remark: 'Excellent result', sortOrder: 1 });
     await db.update(schema.schools).set({ settings: { css: 'x', questionBank: { seriesId: Number(series!.id) } }, logoUrl: '/api/photos/' + photoToken }).where(eq(schema.schools.id, schoolId));
     return { schoolId, code, photoToken, studentId: Number(student!.id), classId: Number(klass!.id), seriesId: Number(series!.id), principalLogin: 'PRN-' + tag };
   }
@@ -130,6 +138,29 @@ async function main() {
           assert.equal(leak[0]!.n, 0, `${f.child}.${attname} points into another school`);
         }
       }
+    });
+    await check('PARITY: term remarks, attendance, snapshot and approval trail survive exactly', async () => {
+      const r = (await q(`select t.*, s.admission_number, u1.login_id as submitter, u2.login_id as approver from term_summaries t
+        join students s on s.id = t.student_id left join users u1 on u1.id = t.submitted_by left join users u2 on u2.id = t.approved_by where t.school_id = $1`, [NEW]));
+      assert.equal(r.length, 1);
+      const x = r[0]!;
+      assert.equal(x.class_teacher_remark, 'Hardworking pupil'); assert.equal(x.principal_remark, 'Keep it up');
+      assert.equal(x.days_present, 58); assert.equal(x.days_total, 60); assert.equal(x.subjects_offered, 9);
+      assert.equal(String(x.total_score), '612.50'); assert.equal(String(x.average_score), '68.06');
+      assert.equal(x.class_position, 3); assert.equal(x.class_size, 31); assert.equal(x.status, 'published');
+      // Linked to the RESTORED student, and to the restored teacher and principal logins (not the old ones).
+      assert.equal(x.admission_number, 'ADM/' + A.code.slice(1)); assert.ok(x.submitter && x.approver);
+      assert.notEqual(Number(x.student_id), A.studentId);
+    });
+    await check('PARITY: theory parts keep their labels, text, marks and order, on the RESTORED question', async () => {
+      const r = await q(`select p.label, p.text, p.marks::text as marks, p.sequence, q.question_text, q.school_id as qschool from question_parts p
+        join questions q on q.id = p.question_id where p.school_id = $1 order by p.sequence`, [NEW]);
+      assert.deepEqual(r.map(x => [x.label, x.text, x.marks, x.sequence]), [['a', 'Define osmosis.', '2.00', 1], ['b', 'Give one example in plants.', '3.00', 2]]);
+      assert.ok(r.every(x => Number(x.qschool) === NEW && x.question_text === 'Cell wall?'));
+    });
+    await check('PARITY: school-wide remark wording survives', async () => {
+      const r = await q('select role, min_avg::text as lo, max_avg::text as hi, remark, status from school_remark_ranges where school_id = $1', [NEW]);
+      assert.deepEqual(r.map(x => [x.role, x.lo, x.hi, x.remark, x.status]), [['principal', '70.00', '100.00', 'Excellent result', 'active']]);
     });
     await check('LINKS: results and scores point at the SAME student and subject (by name), not just any', async () => {
       const r = await q(`select s.first_name, s.last_name, sub.name as subject, r.total::text as total from subject_results r join students s on s.id = r.student_id join subjects sub on sub.id = r.subject_id where r.school_id = $1`, [NEW]);

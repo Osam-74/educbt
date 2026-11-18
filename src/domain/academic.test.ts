@@ -9,7 +9,7 @@
  */
 
 import {
-  gradeFor, WAEC_NINE_POINT, computeTotal, rank, DEFAULT_RANKING, ordinal as ordinalPosition,
+  gradeFor, passMarkFromScale, WAEC_NINE_POINT, computeTotal, rank, DEFAULT_RANKING, ordinal as ordinalPosition,
   canTransition, requiresReason, isVisibleToFamily, isEditable,
   type GradingScale, type RankingPolicy,
 } from './academic';
@@ -194,6 +194,29 @@ check('ordinal: 111th keeps the teen exception', ordinalPosition(111) === '111th
 check('ordinal: zero is a stated absence, not 0th', ordinalPosition(0) === '—');
 check('ordinal: negative is a stated absence', ordinalPosition(-1) === '—');
 check('ordinal: fractional positions are refused, not rounded', ordinalPosition(1.5) === '—');
+
+// ── Optional per-band pass flag (plugin parity) ──────────────────────────────
+// A school moved over from the WordPress plugin says explicitly which grades pass. A school that never said
+// must behave exactly as before: no `passed` at all, so the pass-mark rule decides.
+const flagged: GradingScale = { id: 'plugin-5', name: 'Plugin scale', version: 1, bands: [
+  { min: 70, grade: 'A', remark: 'Excellent', pass: true },
+  { min: 50, grade: 'C', remark: 'Credit', pass: true },
+  { min: 45, grade: 'D', remark: 'Pass mark but counted a fail here', pass: false },
+  { min: 0, grade: 'F', remark: 'Fail', pass: false },
+] };
+check('a flagged band reports passed=true', gradeFor(80, flagged).passed === true);
+check('a flagged band reports passed=false', gradeFor(10, flagged).passed === false);
+check('the flag is the school\'s word even when it disagrees with a 40 pass mark (45 is a fail here)', gradeFor(46, flagged).passed === false);
+check('flagged scale still grades by minimum, inclusive at the boundary', gradeFor(50, flagged).grade === 'C' && gradeFor(49.99, flagged).grade === 'D');
+check('BACKWARD COMPATIBLE: the built-in scale never reports passed (pass mark decides, as before)', !('passed' in gradeFor(80)) && !('passed' in gradeFor(10)));
+check('BACKWARD COMPATIBLE: grade, remark and scale id unchanged on an unflagged scale', JSON.stringify(gradeFor(66)) === JSON.stringify({ grade: 'B3', remark: 'Good', scaleId: 'waec-9', scaleVersion: 1 }));
+const mixed: GradingScale = { id: 'm', name: 'm', version: 1, bands: [{ min: 50, grade: 'P', remark: 'p', pass: true }, { min: 0, grade: 'X', remark: 'x' }] };
+check('a band with no flag in a partly flagged scale reports nothing', !('passed' in gradeFor(10, mixed)) && gradeFor(60, mixed).passed === true);
+
+check('pass mark from a flagged scale is the lowest passing band minimum (50, not 70, not the 45 fail band)', passMarkFromScale(flagged) === 50);
+check('pass mark from a scale with no flags is null (the school keeps its default)', passMarkFromScale(WAEC_NINE_POINT) === null);
+check('pass mark from a scale that passes nothing is null, never 100 (fails closed)', passMarkFromScale({ id: 'n', name: 'n', version: 1, bands: [{ min: 0, grade: 'F', remark: 'f', pass: false }] }) === null);
+check('pass mark with no scale at all is null', passMarkFromScale(undefined) === null && passMarkFromScale(null) === null);
 
 console.log(failures === 0
   ? '\nDomain rules hold — verified with no database.'

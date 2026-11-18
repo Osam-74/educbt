@@ -407,6 +407,36 @@ async function main() {
     assert.ok(log, 'the rule change is audited');
   });
 
+  await check('PARITY: with no saved rule, a pass mark is derived from the grading scale pass flags; a saved rule wins; no flags keeps 40', async () => {
+    const [before] = await db.select().from(schema.schools).where(eq(schema.schools.id, F.schoolId));
+    const original = before!.settings as Record<string, unknown>;
+    const full = (bands: Array<Record<string, unknown>>) => ({ ...original,
+      assessmentComponents: [{ key: 'ca1', label: 'CA', maxScore: 40, isExam: false }, { key: 'exam', label: 'Exam', maxScore: 60, isExam: true }],
+      gradingScale: { id: 'plugin-5', name: 'Plugin scale', version: 1, bands },
+      rankingPolicy: { tiePolicy: 'competition', tiebreakers: ['exam'], rankIncomplete: false } });
+    try {
+      // Flagged scale: 50 is the lowest passing band. F.l2 has no saved rule, so it gets 50 and keeps every other default.
+      await db.update(schema.schools).set({ settings: full([{ min: 70, grade: 'A', remark: 'a', pass: true }, { min: 50, grade: 'C', remark: 'c', pass: true },
+        { min: 45, grade: 'D', remark: 'd', pass: false }, { min: 0, grade: 'F', remark: 'f', pass: false }]) }).where(eq(schema.schools.id, F.schoolId));
+      const derived = await promotion.promotionRulesFor(A, F.l2);
+      assert.equal(derived.passMark, 50);
+      assert.deepEqual({ ...derived, passMark: 40 }, promotion.defaultRules(), 'only the pass mark is derived');
+      // A rule the principal saved is never overridden by the scale.
+      assert.equal((await promotion.promotionRulesFor(A, F.l1)).passMark, 45);
+      // A valid scale with no pass flags: unchanged, 40.
+      await db.update(schema.schools).set({ settings: full([{ min: 50, grade: 'C', remark: 'c' }, { min: 0, grade: 'F', remark: 'f' }]) }).where(eq(schema.schools.id, F.schoolId));
+      assert.deepEqual(await promotion.promotionRulesFor(A, F.l2), promotion.defaultRules());
+      // A scale that passes nothing fails closed to the default, never to 100.
+      await db.update(schema.schools).set({ settings: full([{ min: 0, grade: 'F', remark: 'f', pass: false }]) }).where(eq(schema.schools.id, F.schoolId));
+      assert.deepEqual(await promotion.promotionRulesFor(A, F.l2), promotion.defaultRules());
+      // Incomplete settings (the fixture's own) do not crash and keep the default.
+      await db.update(schema.schools).set({ settings: { assessmentComponents: [] } }).where(eq(schema.schools.id, F.schoolId));
+      assert.deepEqual(await promotion.promotionRulesFor(A, F.l2), promotion.defaultRules());
+    } finally {
+      await db.update(schema.schools).set({ settings: original }).where(eq(schema.schools.id, F.schoolId));
+    }
+  });
+
   await rejects('individual search is denied to teachers', () =>
     promotion.searchPromotionStudents(T, 'PROMO'), 'Only the principal or vice principal');
   await check('the individual-move search matches admission number and name', async () => {

@@ -379,6 +379,25 @@ DROP POLICY IF EXISTS tenant_isolation ON report_remarks;
 CREATE POLICY tenant_isolation ON report_remarks
  USING (school_id = current_school_id() OR is_platform_admin())
  WITH CHECK (school_id = current_school_id() OR is_platform_admin());
+-- Plugin parity tables (migration 0027): school-scoped like every other school table.
+ALTER TABLE term_summaries ENABLE ROW LEVEL SECURITY;
+ALTER TABLE term_summaries FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON term_summaries;
+CREATE POLICY tenant_isolation ON term_summaries
+  USING (school_id = current_school_id() OR is_platform_admin())
+  WITH CHECK (school_id = current_school_id() OR is_platform_admin());
+ALTER TABLE question_parts ENABLE ROW LEVEL SECURITY;
+ALTER TABLE question_parts FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON question_parts;
+CREATE POLICY tenant_isolation ON question_parts
+  USING (school_id = current_school_id() OR is_platform_admin())
+  WITH CHECK (school_id = current_school_id() OR is_platform_admin());
+ALTER TABLE school_remark_ranges ENABLE ROW LEVEL SECURITY;
+ALTER TABLE school_remark_ranges FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON school_remark_ranges;
+CREATE POLICY tenant_isolation ON school_remark_ranges
+  USING (school_id = current_school_id() OR is_platform_admin())
+  WITH CHECK (school_id = current_school_id() OR is_platform_admin());
 ALTER TABLE grading_scale_versions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE grading_scale_versions FORCE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS grading_read ON grading_scale_versions;

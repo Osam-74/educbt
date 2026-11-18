@@ -36,6 +36,8 @@ import { z } from 'zod';
 import { forSchool, schema, type Tx } from '@/db';
 import type { Actor } from '@/lib/session';
 import { notifyPromotionApproved } from '@/lib/comms/events';
+import { passMarkFromScale } from '@/domain/academic';
+import { resultConfig } from '@/lib/results/config';
 
 export class PromotionError extends Error {}
 const fail = (message: string): never => { throw new PromotionError(message); };
@@ -684,7 +686,12 @@ export async function promotionRulesFor(actor: Actor, levelId: number) {
 async function storedRules(tx: Tx, schoolId: number, levelId: number): Promise<PromotionRules> {
   const [school] = await tx.select({ settings: schema.schools.settings }).from(schema.schools).where(eq(schema.schools.id, schoolId));
   const stored = ((school?.settings as { promotionRules?: StoredRules } | undefined)?.promotionRules ?? {})[String(levelId)];
-  return stored ? promotionRulesSchema.parse({ ...defaultRules(), ...stored }) : defaultRules();
+  if (stored) return promotionRulesSchema.parse({ ...defaultRules(), ...stored });
+  // No rule saved for this level: a school whose grading scale says which grades pass (for example one moved
+  // over from the WordPress plugin) gets that as its default pass mark. A saved rule always wins, and a school
+  // whose scale has no pass flags keeps the long-standing default of 40.
+  const scaleMark = passMarkFromScale(resultConfig((school?.settings ?? {}) as Record<string, unknown>)?.gradingScale);
+  return scaleMark === null ? defaultRules() : promotionRulesSchema.parse({ passMark: scaleMark });
 }
 
 export async function savePromotionRules(actor: Actor, levelId: number, input: unknown) {
