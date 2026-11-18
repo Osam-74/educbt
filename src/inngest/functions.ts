@@ -36,6 +36,7 @@ import { inngest } from './client';
 import { purgeExpiredSessions } from '@/lib/jobs/session-cleanup';
 import { sweepAllExpiredAttempts } from '@/lib/jobs/exam-sweep';
 import { drainAllQueuedEmails } from '@/lib/jobs/email-drain';
+import { runRestoreJob } from '@/lib/school-backup/job';
 
 function log(fields: Record<string, unknown>) {
   // Structured single-line JSON — greppable now, shippable to Sentry later.
@@ -118,4 +119,28 @@ export const drainEmailQueueJob = inngest.createFunction(
   },
 );
 
-export const jobs = [sweepExpiredAttemptsJob, purgeExpiredSessionsJob, drainEmailQueueJob];
+
+/**
+ * Restore a school from an uploaded backup. Event-driven (sent by the upload route once every piece
+ * has arrived and verified), not scheduled. retries: 0 on purpose: the restore is all-or-nothing and
+ * records its own failure, and an automatic retry of a half-understood failure could only repeat it.
+ * concurrency 1: two restores never compete for the same database at once.
+ */
+export const restoreSchoolJob = inngest.createFunction(
+  {
+    id: 'restore-school-from-backup',
+    name: 'Restore a school from an uploaded backup',
+    concurrency: 1,
+    retries: 0,
+    triggers: [{ event: 'school-backup/restore.requested' }],
+  },
+  async ({ event }) => {
+    const { jobId, actorUserId } = event.data as { jobId: number; actorUserId: number };
+    log({ job: 'restore-school-from-backup', status: 'start', jobId });
+    const outcome = await runRestoreJob(Number(jobId), Number(actorUserId));
+    log({ job: 'restore-school-from-backup', status: outcome.ok ? 'end' : 'failed', jobId, ...(outcome.ok ? { schoolId: outcome.schoolId } : {}) });
+    return outcome;
+  },
+);
+
+export const jobs = [sweepExpiredAttemptsJob, purgeExpiredSessionsJob, drainEmailQueueJob, restoreSchoolJob];

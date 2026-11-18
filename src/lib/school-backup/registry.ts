@@ -140,6 +140,8 @@ export const EXCLUDED_TABLES: Record<string, string> = {
 /** Not owned by any school. */
 export const PLATFORM_TABLES: Record<string, string> = {
   platform_settings: 'Platform-wide branding, not part of any school.',
+  school_backup_jobs: 'Platform-level restore progress. Has no school_id, and a backup must never contain other backups.',
+  school_backup_chunks: 'Temporary pieces of an uploaded backup, deleted when the restore ends.',
 };
 
 /**

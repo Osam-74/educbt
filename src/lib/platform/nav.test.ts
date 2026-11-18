@@ -23,6 +23,13 @@ const activeSet = (pathname: string) => ({
   managers: isNavItemActive('/platform/managers', pathname),
 });
 
+// ── Restore a school (/platform/schools/restore) ────────────────────────────
+{
+  const a = activeSet('/platform/schools/restore');
+  check('Schools active, and only Schools, on /platform/schools/restore', a.schools && !a.newSchool && !a.dashboard && !a.account && !a.branding && !a.managers);
+  check('page name on /platform/schools/restore', pageNameFor('/platform/schools/restore') === 'Restore a school');
+}
+
 // ── The reported bug, precisely ──────────────────────────────────────────────
 {
   const a = activeSet('/platform/schools/new');

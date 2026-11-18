@@ -26,12 +26,18 @@ export type RestoreInput = {
   code: string;
   subdomain?: string | null;
   name?: string;
+  /**
+   * 'issue'  (default): generate a temporary password for the restored principal and return it.
+   * 'defer': set nothing and return none. Used by the background job, which must never park a
+   *          password in a job row; the operator issues one afterwards with issuePrincipalPassword().
+   */
+  principalPassword?: 'issue' | 'defer';
 };
 
 export type RestoreResult = {
   school: { id: number; name: string; code: string; subdomain: string | null };
   principal: { loginId: string; name: string };
-  temporaryPassword: string;
+  temporaryPassword: string | null;
   counts: Record<string, number>;
   skipped: string[];
 };
@@ -55,8 +61,9 @@ export async function restoreSchool(input: RestoreInput): Promise<RestoreResult>
   if (!principalUser) throw new RestoreIntegrityError('The backup has no principal account, so nobody could sign in to the restored school.');
 
   // Hashed OUTSIDE the transaction: Argon2 must not hold a pooled connection hostage.
-  const temporaryPassword = generateInitialPassword(12);
-  const passwordHash = await hashPassword(temporaryPassword);
+  const issue = (input.principalPassword ?? 'issue') === 'issue';
+  const temporaryPassword = issue ? generateInitialPassword(12) : null;
+  const passwordHash = temporaryPassword ? await hashPassword(temporaryPassword) : null;
 
   const schoolName = (input.name ?? String(doc.school.name ?? '')).trim();
   if (!schoolName) throw new RestoreIntegrityError('The backup has no school name and none was supplied.');
@@ -152,7 +159,11 @@ export async function restoreSchool(input: RestoreInput): Promise<RestoreResult>
     // 7. The principal: the restored account gets a fresh temporary password and must change it.
     const principalId = ids.get('users', Number(principalUser.id));
     if (principalId === undefined) throw new RestoreIntegrityError('The principal account could not be restored.');
-    await tx.execute(sql`update users set password_hash = ${passwordHash}, must_change_password = true, status = 'active' where id = ${principalId} and school_id = ${newSchoolId}`);
+    if (passwordHash) {
+      await tx.execute(sql`update users set password_hash = ${passwordHash}, must_change_password = true, status = 'active' where id = ${principalId} and school_id = ${newSchoolId}`);
+    } else {
+      await tx.execute(sql`update users set must_change_password = true, status = 'active' where id = ${principalId} and school_id = ${newSchoolId}`);
+    }
     const [pu] = (await tx.execute(sql`select login_id from users where id = ${principalId}`)) as unknown as Array<{ login_id: string }>;
     const principalStaff = (doc.tables.staff ?? []).find((s) => Number(s.user_id) === Number(principalUser.id));
     const principalName = principalStaff ? `${principalStaff.first_name} ${principalStaff.last_name}` : String(doc.school.principal_name ?? 'Principal');

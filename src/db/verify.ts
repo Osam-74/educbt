@@ -156,9 +156,19 @@ async function main() {
     const hashes = await owner<{ password_hash: string }[]>`
       SELECT password_hash FROM users LIMIT 20`;
 
+    // One deliberate exception: a login restored from a school backup carries a unique, unusable
+    // placeholder (src/lib/school-backup/registry.ts) until the office issues a password. It is not a
+    // password hash and verifyPassword() rejects every input against it. Anything else that is not
+    // argon2id (plaintext, md5, a stray string) still fails.
+    const isArgon2id = (h: string) => h.startsWith('$argon2id$');
+    const isRestorePlaceholder = (h: string) => h.startsWith('!restored-no-password!') && h.length > 30;
     check(
-      'all passwords are argon2id',
-      hashes.length > 0 && hashes.every((h) => h.password_hash.startsWith('$argon2id$')),
+      'all passwords are argon2id (or an unusable restore placeholder)',
+      hashes.length > 0 && hashes.every((h) => isArgon2id(h.password_hash) || isRestorePlaceholder(h.password_hash)),
+    );
+    check(
+      'at least one real argon2id password exists (placeholders alone would mean nobody can sign in)',
+      hashes.some((h) => isArgon2id(h.password_hash)),
     );
 
     // ── Schema invariants ────────────────────────────────────────────────────

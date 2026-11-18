@@ -502,3 +502,24 @@ DROP POLICY IF EXISTS branding_platform_admin_write ON platform_settings;
 CREATE POLICY branding_platform_admin_write ON platform_settings
   FOR ALL
   WITH CHECK (is_platform_admin());
+
+-- ── School restore uploads (no school_id; platform-admin only) ───────────────
+-- school_backup_jobs / school_backup_chunks hold an uploaded backup, which is an entire school's
+-- data in slices. Unlike platform_settings there is NO public read: the only policy is
+-- platform-admin, for reads and writes alike. The app role sees nothing unless the transaction was
+-- elevated through asPlatformAdmin() (which writes the audit entry).
+ALTER TABLE school_backup_jobs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE school_backup_jobs FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS platform_admin_only ON school_backup_jobs;
+CREATE POLICY platform_admin_only ON school_backup_jobs
+  FOR ALL
+  USING (is_platform_admin())
+  WITH CHECK (is_platform_admin());
+
+ALTER TABLE school_backup_chunks ENABLE ROW LEVEL SECURITY;
+ALTER TABLE school_backup_chunks FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS platform_admin_only ON school_backup_chunks;
+CREATE POLICY platform_admin_only ON school_backup_chunks
+  FOR ALL
+  USING (is_platform_admin())
+  WITH CHECK (is_platform_admin());

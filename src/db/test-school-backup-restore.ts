@@ -185,8 +185,8 @@ async function main() {
     });
     await check('the principal gets a working temporary password that must be changed', async () => {
       const [p] = await q(`select password_hash, must_change_password from users where school_id = $1 and role = 'principal'`, [NEW]);
-      assert.equal(result.principal.loginId, A.principalLogin); assert.ok(result.temporaryPassword.length >= 12);
-      assert.equal(await verifyPassword(String(p!.password_hash), result.temporaryPassword), true);
+      assert.equal(result.principal.loginId, A.principalLogin); assert.ok(result.temporaryPassword && result.temporaryPassword.length >= 12);
+      assert.equal(await verifyPassword(String(p!.password_hash), result.temporaryPassword!), true);
       assert.equal(p!.must_change_password, true);
     });
     await check('a restored non-principal login can NOT sign in with any password (placeholder never verifies)', async () => {
@@ -251,6 +251,14 @@ async function main() {
         tables: { ...doc.tables, users: doc.tables.users!.filter((u) => u.role !== 'principal') } });
       await assert.rejects(() => restoreSchool({ actorUserId: Number(admin!.id), file: encode(noPrincipal), code: 'Z' + suffix }), /no principal/);
       await nothingLeft();
+    });
+    await check('deferred mode (background job): NO password is generated or stored for the principal', async () => {
+      const d = await restoreSchool({ actorUserId: Number(admin!.id), file: exported.file, code: 'D' + suffix, subdomain: ('d' + suffix).toLowerCase(), principalPassword: 'defer' });
+      schoolIds.push(d.school.id);
+      assert.equal(d.temporaryPassword, null);
+      const [p] = await q(`select password_hash, must_change_password from users where school_id = $1 and role = 'principal'`, [d.school.id]);
+      assert.ok(String(p!.password_hash).startsWith('!restored-no-password!'), 'principal must have no usable password until one is issued');
+      assert.equal(p!.must_change_password, true);
     });
     await check('the same backup can be restored twice (two independent copies)', async () => {
       const again = await restoreSchool({ actorUserId: Number(admin!.id), file: exported.file, code: 'M' + suffix, subdomain: ('m' + suffix).toLowerCase() });

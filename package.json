@@ -50,6 +50,7 @@
     "test:school-backup-export": "tsx src/db/test-school-backup-export.ts",
     "test:school-backup-remap": "tsx src/lib/school-backup/remap.test.ts",
     "test:school-backup-restore": "tsx src/db/test-school-backup-restore.ts",
+    "test:school-backup-upload": "tsx src/db/test-school-backup-upload.ts",
     "test:timetable": "tsx src/db/test-timetable.ts",
     "test:promotion": "tsx src/db/test-promotion.ts",
     "bootstrap:platform-admin": "tsx scripts/bootstrap-platform-admin.ts",
