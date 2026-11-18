@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { authoringConfig, authoringScopeSchema, collectionIsOpen, collectionSchema, validateQuestion } from './authoring-validation';
+import { authoringConfig, authoringScopeSchema, collectionIsOpen, collectionSchema, validateQuestion, validateQuestionParts } from './authoring-validation';
 let count = 0;
 function check(name: string, run: () => void) { run(); console.log('PASS  ' + name); count++; }
 const question = { text: 'Which number is even?', marks: 1, options: [{ text: 'Two', isCorrect: true }, { text: 'Three', isCorrect: false }] };
@@ -28,4 +28,18 @@ check('configured quotas retained', () => assert.equal(authoringConfig({ questio
 check('invalid quota rejected', () => assert.throws(() => collectionSchema.parse({ objective: -1, theory: 4, seriesId: null })));
 check('malformed configuration fails closed', () => assert.equal(authoringConfig({ questionBank: { seriesId: 'invalid' } }).seriesId, null));
 check('foreign/nonpositive scope ids rejected before query', () => assert.throws(() => authoringScopeSchema.parse({ sessionId: 0 })));
+// ── Theory question parts (plugin parity) ───────────────────────────────────
+const parts = [{ label: 'a', text: 'Define osmosis.', marks: 2 }, { label: 'b', text: 'Give one example in plants.', marks: 3 }];
+check('parts that add up to the question are accepted as given', () => assert.deepEqual(validateQuestionParts(parts, 5, 'theory'), parts));
+check('no parts means no parts, so a question behaves exactly as before', () => { assert.deepEqual(validateQuestionParts(undefined, 5, 'theory'), []); assert.deepEqual(validateQuestionParts(null, 5, 'objective'), []); assert.deepEqual(validateQuestionParts([], 5, 'objective'), []); });
+check('parts that add up to less are refused with the real numbers', () => assert.throws(() => validateQuestionParts([parts[0]], 5, 'theory'), /add up to 2 but the question is worth 5/));
+check('parts that add up to more are refused', () => assert.throws(() => validateQuestionParts([{ ...parts[0]!, marks: 4 }, parts[1]!], 5, 'theory'), /add up to 7/));
+check('decimal marks that drift in floating point still add up (0.1 + 0.2 against 0.3)', () => assert.equal(validateQuestionParts([{ label: 'a', text: 'x', marks: 0.1 }, { label: 'b', text: 'y', marks: 0.2 }], 0.3, 'theory').length, 2));
+check('a real shortfall of one cent is still refused', () => assert.throws(() => validateQuestionParts([{ label: 'a', text: 'x', marks: 0.1 }, { label: 'b', text: 'y', marks: 0.19 }], 0.3, 'theory'), /add up to 0.29/));
+check('duplicate labels are refused, case-insensitively', () => assert.throws(() => validateQuestionParts([parts[0]!, { ...parts[1]!, label: 'A' }], 5, 'theory'), /different label/));
+check('objective questions cannot carry parts', () => assert.throws(() => validateQuestionParts(parts, 5, 'objective'), /Only theory/));
+check('a part with no text, no label, zero or negative marks is refused', () => { for (const bad of [{ ...parts[0]!, text: ' ' }, { ...parts[0]!, label: '' }, { ...parts[0]!, marks: 0 }, { ...parts[0]!, marks: -1 }]) assert.throws(() => validateQuestionParts([bad, parts[1]!], 5, 'theory')); });
+check('more than ten parts are refused', () => assert.throws(() => validateQuestionParts(Array.from({ length: 11 }, (_, i) => ({ label: 'p' + i, text: 't', marks: 1 })), 11, 'theory'), /at most 10/));
+check('part marks with three decimals are refused', () => assert.throws(() => validateQuestionParts([{ label: 'a', text: 'x', marks: 1.005 }], 1.005, 'theory')));
+
 console.log(`${count} authoring validation checks passed`);

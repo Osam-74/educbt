@@ -20,6 +20,32 @@ export const questionInputSchema = z.object({
   noShuffle: z.boolean().optional(), markingGuide: z.string().trim().max(20000).nullable().optional(),
   options: z.array(z.object({ text: z.string().trim().max(5000), isCorrect: z.boolean() })).max(10).optional(),
 });
+export const questionPartSchema = z.object({
+  label: z.string().trim().min(1, 'Give each part a label such as a or b.').max(10),
+  text: z.string().trim().min(1, 'Write the text of each part.').max(10000),
+  marks: z.number().finite().positive().max(9999.99).refine(v => Math.abs(v * 100 - Math.round(v * 100)) < 1e-7, 'Use at most two decimal places for marks.'),
+});
+export type QuestionPartInput = z.infer<typeof questionPartSchema>;
+
+/**
+ * The labelled parts of a theory question, such as (a) 2 marks and (b) 3 marks. Parts describe how a question's
+ * marks are split; marking still awards one score for the whole question. Returns the cleaned parts, or an empty
+ * list when none were given (the question then behaves exactly as it always has).
+ */
+export function validateQuestionParts(parts: unknown, questionMarks: number, type: 'objective' | 'theory'): QuestionPartInput[] {
+  if (parts === undefined || parts === null) return [];
+  const list = z.array(questionPartSchema).max(10, 'A question can have at most 10 parts.').parse(parts);
+  if (list.length === 0) return [];
+  if (type !== 'theory') throw new Error('Only theory questions can have parts.');
+  const labels = list.map(p => p.label.toLocaleLowerCase('en'));
+  if (new Set(labels).size !== labels.length) throw new Error('Each part needs a different label.');
+  // Whole cents, so 0.1 + 0.2 style float drift can never reject (or admit) a split.
+  const cents = list.reduce((sum, p) => sum + Math.round(p.marks * 100), 0);
+  if (cents !== Math.round(questionMarks * 100)) {
+    throw new Error(`The parts add up to ${cents / 100} but the question is worth ${questionMarks}. Make them match.`);
+  }
+  return list;
+}
 export function validateQuestion(input: unknown, type: 'objective' | 'theory') {
   const value = questionInputSchema.parse(input);
   if (type === 'objective') {

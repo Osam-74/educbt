@@ -27,9 +27,16 @@ export async function reportExtras(tx: Tx, schoolId: number, studentId: number, 
   const signatures = await tx.select().from(schema.staffSignatures).where(eq(schema.staffSignatures.schoolId, schoolId));
   const remarks = await tx.select().from(schema.reportRemarks).where(and(eq(schema.reportRemarks.studentId, studentId),
     eq(schema.reportRemarks.sessionId, sessionId), eq(schema.reportRemarks.termId, termId)));
+  // A school moved over from the WordPress plugin keeps its old remarks in term_summaries. They show only where no
+  // report_remarks row exists, so a remark written or generated here always wins over an imported one.
+  const [imported] = await tx.select().from(schema.termSummaries).where(and(eq(schema.termSummaries.schoolId, schoolId),
+    eq(schema.termSummaries.studentId, studentId), eq(schema.termSummaries.termId, termId)));
+  const importedText = (v: string | undefined) => (v && v.trim() ? v : null);
   return { signatures: { principal: signatures.find(s => s.role === 'principal' && s.staffId === staff.principal) ?? null,
     class_teacher: signatures.find(s => s.role === 'class_teacher' && s.staffId === staff.class_teacher) ?? null },
-    remarks: { principal: remarks.find(r => r.role === 'principal')?.remark ?? null, class_teacher: remarks.find(r => r.role === 'class_teacher')?.remark ?? null } };
+    remarks: { principal: remarks.find(r => r.role === 'principal')?.remark ?? importedText(imported?.principalRemark),
+      class_teacher: remarks.find(r => r.role === 'class_teacher')?.remark ?? importedText(imported?.classTeacherRemark) },
+    attendance: imported && imported.daysTotal > 0 ? { present: imported.daysPresent, total: imported.daysTotal } : null };
 }
 /** Snapshot suggestions at compilation. Published sheets never consult live ranges.
  * Manual overrides survive recompilation. Incomplete students get no suggestion.

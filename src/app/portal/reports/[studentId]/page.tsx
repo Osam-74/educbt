@@ -449,6 +449,7 @@ export default async function ReportCard({
             <div className="doc__stat"><b>{num(totalMarks)}</b><span>Total Score</span></div>
             <div className="doc__stat"><b>{average}</b><span>Average</span></div>
             <div className="doc__stat"><b>{ordinal(classPosition)}</b><span>Position in Class</span></div>
+            {data.extras?.attendance ? <div className="doc__stat"><b>{data.extras.attendance.present}/{data.extras.attendance.total}</b><span>Days Present</span></div> : null}
           </div>
 
           <div className="doc__remarks">

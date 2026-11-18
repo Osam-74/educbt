@@ -70,6 +70,42 @@ async function main() {
     await check('incomplete paired set returns shortfall', async () => assert.equal((await submitSet(teacher, set.id)).success, false));
     const theory = await findOrCreateSet(teacher, { ...a.scope, examType: 'theory' });
     await addQuestion(teacher, theory.id, { text: 'Explain what even numbers are.', marks: 5 });
+    // Plugin parity: labelled parts of a theory question.
+    const partsIn = [{ label: 'a', text: 'Define an even number.', marks: 2 }, { label: 'b', text: 'Give two examples.', marks: 3 }];
+    const partsOf = async (qid: number) => (await db.select().from(schema.questionParts).where(eq(schema.questionParts.questionId, qid))).sort((x, y) => x.sequence - y.sequence);
+    let withParts!: { id: number };
+    await check('PARITY: a theory question saves its parts with the question, in order, with exact marks', async () => {
+      withParts = await addQuestion(teacher, theory.id, { text: 'Answer both parts on even numbers.', marks: 5, parts: partsIn }) as { id: number };
+      const rows = await partsOf(Number(withParts.id));
+      assert.deepEqual(rows.map(r => [r.label, r.text, r.marks, r.sequence, Number(r.schoolId)]), [['a', 'Define an even number.', '2.00', 1, a.schoolId], ['b', 'Give two examples.', '3.00', 2, a.schoolId]]);
+    });
+    await check('PARITY: parts that do not add up are refused and NOTHING is saved (no half-made question)', async () => {
+      const before = (await db.select().from(schema.questions).where(eq(schema.questions.questionSetId, theory.id))).length;
+      await assert.rejects(addQuestion(teacher, theory.id, { text: 'A question with a bad split.', marks: 5, parts: [partsIn[0]!] }), /add up to 2 but the question is worth 5/);
+      const after = (await db.select().from(schema.questions).where(eq(schema.questions.questionSetId, theory.id))).length;
+      assert.equal(after, before);
+    });
+    await check('PARITY: an objective question cannot carry parts, and saves nothing', async () => {
+      await assert.rejects(addQuestion(teacher, set.id, { ...input, text: 'Which of these is odd?', parts: partsIn }), /Only theory/);
+    });
+    await check('PARITY: a theory question without parts behaves exactly as before', async () => {
+      const [plain] = (await db.select().from(schema.questions).where(eq(schema.questions.questionText, 'Explain what even numbers are.')));
+      assert.equal((await partsOf(Number(plain!.id))).length, 0);
+    });
+    await check('PARITY: parts survive a vault snapshot, a deletion and a restore, under fresh ids and the same question', async () => {
+      const { snapshotSet, restoreSet } = await import('@/lib/exam/vault');
+      const snap = await snapshotSet(a.schoolId, Number(theory.id), 'manual');
+      assert.equal(snap.stored, true);
+      const originalIds = (await partsOf(Number(withParts.id))).map(r => Number(r.id));
+      await db.delete(schema.questionParts).where(eq(schema.questionParts.questionId, withParts.id));
+      await db.delete(schema.questions).where(eq(schema.questions.questionSetId, theory.id));
+      const out = await restoreSet(a.schoolId, Number(theory.id));
+      assert.ok(out.restored >= 2 && !out.error);
+      const rows = await partsOf(Number(withParts.id));
+      assert.deepEqual(rows.map(r => [r.label, r.marks]), [['a', '2.00'], ['b', '3.00']]);
+      assert.ok(rows.every(r => !originalIds.includes(Number(r.id))), 'restored parts get fresh ids');
+      assert.deepEqual(await partsOf(Number(withParts.id)).then(r => r.length), 2);
+    });
     await check('complete pair submits', async () => assert.equal((await submitSet(teacher, set.id)).success, true));
     await check('submitted set cannot be edited', () => assert.rejects(addQuestion(teacher, set.id, { ...input, text: 'Another valid question?' }), /submitted/));
     await check('teacher cannot approve own work', () => assert.rejects(reviewSet(teacher, set.id, 'approve', ''), /exam office/));

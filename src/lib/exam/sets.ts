@@ -23,7 +23,7 @@ import { forSchool, schema, type Tx } from '@/db';
 import type { Actor } from '@/lib/session';
 import { isSchoolWide } from '@/lib/queries';
 import { authoringActor, authoringLock, permittedScope, permittedCollection, editableSetAccess } from './authoring-access';
-import { validateQuestion, authoringConfig } from './authoring-validation';
+import { validateQuestion, validateQuestionParts, authoringConfig } from './authoring-validation';
 
 export type SetScope = {
   sessionId: number;
@@ -127,6 +127,8 @@ export async function addQuestion(
     noShuffle?: boolean;
     markingGuide?: string | null;
     options?: Array<{ text: string; isCorrect: boolean }>;
+    /** Optional labelled parts of a theory question; their marks must add up to `marks`. */
+    parts?: Array<{ label: string; text: string; marks: number }>;
   },
 ) {
   return forSchool(actor.schoolId, async (tx) => {
@@ -139,6 +141,7 @@ export async function addQuestion(
 
     if (!set) throw new Error('Question set not found.');
     await editableSetAccess(tx, actor, set);
+    const parts = validateQuestionParts(input.parts, input.marks, set.examType);
     input = validateQuestion(input, set.examType);
     const [duplicate] = await tx.select({ id: schema.questions.id }).from(schema.questions).where(and(
       eq(schema.questions.questionSetId, setId), eq(schema.questions.status, 'active'),
@@ -213,8 +216,14 @@ export async function addQuestion(
       await tx.insert(schema.questionOptions).values(rows);
     }
 
+    if (parts.length > 0) {
+      await tx.insert(schema.questionParts).values(parts.map((p, i) => ({
+        schoolId: actor.schoolId, questionId: Number(question!.id), label: p.label, text: p.text, marks: String(p.marks), sequence: i + 1,
+      })));
+    }
+
     await tx.insert(schema.auditLog).values({ schoolId: actor.schoolId, actorUserId: actor.userId, actorRole: actor.role,
-      action: 'question.created', entityType: 'questions', entityId: question!.id, after: { setId, marks: input.marks } });
+      action: 'question.created', entityType: 'questions', entityId: question!.id, after: { setId, marks: input.marks, parts: parts.length } });
     return question!;
   });
 }

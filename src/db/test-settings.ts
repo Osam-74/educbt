@@ -97,6 +97,35 @@ async function main() {
     await check('manual remark survives compilation snapshot', async () => { await saveManualRemark(principal, remarkScope); await forSchool(a.schoolId, tx => snapshotRemarks(tx, principal, a.scope, [a.student.id])); const extras = await forSchool(a.schoolId, tx => reportExtras(tx, a.schoolId, a.student.id, a.session.id, a.terms[0]!.id, a.classroom.id)); assert.equal(extras.remarks.principal, remarkScope.remark); });
     await check('class teacher can override own student remark before review', () => saveManualRemark(a.actors.teacher!, { ...remarkScope, role: 'class_teacher', remark: 'Contributes thoughtfully in class.' }));
     await check('foreign student manual remark denied', () => assert.rejects(saveManualRemark(a.actors.teacher!, { ...remarkScope, studentId: b.student.id, role: 'class_teacher' })));
+    // Plugin parity: remarks and attendance imported from a WordPress school live in term_summaries.
+    const termId = a.terms[0]!.id;
+    const imp = { schoolId: a.schoolId, studentId: a.student.id, sessionId: a.session.id, termId, classTeacherRemark: 'Imported teacher words', principalRemark: 'Imported principal words', daysPresent: 55, daysTotal: 60 };
+    await check('PARITY: a term summary with no live remark fills the report remark and attendance', async () => {
+      await forSchool(a.schoolId, tx => tx.delete(schema.reportRemarks).where(eq(schema.reportRemarks.studentId, a.student.id)));
+      await forSchool(a.schoolId, tx => tx.insert(schema.termSummaries).values(imp));
+      const x = await forSchool(a.schoolId, tx => reportExtras(tx, a.schoolId, a.student.id, a.session.id, termId, a.scope.classId));
+      assert.equal(x.remarks.principal, 'Imported principal words'); assert.equal(x.remarks.class_teacher, 'Imported teacher words');
+      assert.deepEqual(x.attendance, { present: 55, total: 60 });
+    });
+    await check('PARITY: a live remark always wins over an imported one, per role', async () => {
+      await saveManualRemark(principal, { ...remarkScope, remark: 'Written here today' });
+      const x = await forSchool(a.schoolId, tx => reportExtras(tx, a.schoolId, a.student.id, a.session.id, termId, a.scope.classId));
+      assert.equal(x.remarks.principal, 'Written here today'); assert.equal(x.remarks.class_teacher, 'Imported teacher words');
+    });
+    await check('PARITY: blank imported remarks and zero attendance show nothing (no empty 0/0)', async () => {
+      await forSchool(a.schoolId, tx => tx.delete(schema.reportRemarks).where(eq(schema.reportRemarks.studentId, a.student.id)));
+      await forSchool(a.schoolId, tx => tx.update(schema.termSummaries).set({ classTeacherRemark: '  ', principalRemark: '', daysPresent: 0, daysTotal: 0 }).where(eq(schema.termSummaries.studentId, a.student.id)));
+      const x = await forSchool(a.schoolId, tx => reportExtras(tx, a.schoolId, a.student.id, a.session.id, termId, a.scope.classId));
+      assert.equal(x.remarks.principal, null); assert.equal(x.remarks.class_teacher, null); assert.equal(x.attendance, null);
+    });
+    await check('PARITY: another school can never read this school\'s term summary', async () => {
+      await forSchool(a.schoolId, tx => tx.update(schema.termSummaries).set({ principalRemark: 'Private to school A', daysPresent: 9, daysTotal: 10 }).where(eq(schema.termSummaries.studentId, a.student.id)));
+      const seenByB = await forSchool(b.schoolId, tx => tx.select().from(schema.termSummaries));
+      assert.equal(seenByB.length, 0);
+      const x = await forSchool(b.schoolId, tx => reportExtras(tx, b.schoolId, a.student.id, a.session.id, termId, a.scope.classId));
+      assert.equal(x.remarks.principal, null); assert.equal(x.attendance, null);
+    });
+    await forSchool(a.schoolId, tx => tx.delete(schema.termSummaries).where(eq(schema.termSummaries.studentId, a.student.id)));
     for (const state of ['reviewed', 'published', 'locked'] as const) {
       await db.update(schema.subjectResults).set({ state }).where(eq(schema.subjectResults.schoolId, a.schoolId));
       await check(state + ' report blocks remark changes', () => assert.rejects(saveManualRemark(principal, remarkScope)));

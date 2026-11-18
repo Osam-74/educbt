@@ -39,6 +39,8 @@ type Snapshot = {
   questions: Array<{
     row: Record<string, unknown>;
     options: Array<Record<string, unknown>>;
+    /** Labelled parts of a theory question. Absent in snapshots taken before parts existed, which restore as before. */
+    parts?: Array<Record<string, unknown>>;
   }>;
 };
 
@@ -67,6 +69,15 @@ export async function snapshotSet(
     const optionRows = await tx.select().from(schema.questionOptions)
       .where(inArray(schema.questionOptions.questionId, rows.map((r) => Number(r.id))));
 
+    const partRows = await tx.select().from(schema.questionParts)
+      .where(inArray(schema.questionParts.questionId, rows.map((r) => Number(r.id))));
+    const partsByQuestion = new Map<number, Array<Record<string, unknown>>>();
+    for (const p of partRows) {
+      const list = partsByQuestion.get(Number(p.questionId)) ?? [];
+      list.push(p as unknown as Record<string, unknown>);
+      partsByQuestion.set(Number(p.questionId), list);
+    }
+
     const optionsByQuestion = new Map<number, Array<Record<string, unknown>>>();
 
     for (const o of optionRows) {
@@ -88,7 +99,8 @@ export async function snapshotSet(
         };
       }
 
-      questions.push({ row: row as unknown as Record<string, unknown>, options: opts });
+      const parts = partsByQuestion.get(Number(row.id)) ?? [];
+      questions.push({ row: row as unknown as Record<string, unknown>, options: opts, ...(parts.length > 0 ? { parts } : {}) });
     }
 
     await tx.insert(questionVault).values({
@@ -115,6 +127,19 @@ export async function snapshotSet(
  * the live copy may have been edited since the snapshot, and overwriting it
  * would undo that work.
  */
+/**
+ * A snapshot is stored as JSON, so every timestamp comes back as an ISO string. Drizzle's timestamp columns
+ * need a Date, so convert the *_at / *At columns back before inserting. Anything that is not a real ISO date
+ * is left untouched rather than guessed at.
+ */
+function reviveDates(row: Record<string, unknown>): Record<string, unknown> {
+  const iso = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})$/;
+  for (const [key, value] of Object.entries(row)) {
+    if (typeof value === 'string' && iso.test(value) && !Number.isNaN(Date.parse(value))) row[key] = new Date(value);
+  }
+  return row;
+}
+
 export async function restoreSet(
   schoolId: number,
   setId: number,
@@ -144,7 +169,7 @@ export async function restoreSet(
       if (live) { skipped++; continue; }
 
       // The question keeps its id: papers and results point at it.
-      const row = { ...item.row } as Record<string, unknown>;
+      const row = reviveDates({ ...item.row } as Record<string, unknown>);
       delete row.updatedAt;
 
       await tx.insert(schema.questions).values(row as never);
@@ -153,11 +178,21 @@ export async function restoreSet(
       // rows and failed the whole restore — nothing references an option by id,
       // so there is no reason to preserve one.
       for (const opt of item.options) {
-        const o = { ...opt } as Record<string, unknown>;
+        const o = reviveDates({ ...opt } as Record<string, unknown>);
         delete o.id;
         o.questionId = qid;
 
         await tx.insert(schema.questionOptions).values(o as never);
+      }
+
+      // Parts, like options, get fresh ids: nothing refers to a part by id.
+      for (const part of item.parts ?? []) {
+        const pt = reviveDates({ ...part } as Record<string, unknown>);
+        delete pt.id;
+        delete pt.updatedAt;
+        pt.questionId = qid;
+
+        await tx.insert(schema.questionParts).values(pt as never);
       }
 
       restored++;
