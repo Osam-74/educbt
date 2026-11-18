@@ -1,0 +1,12 @@
+.remarks-card { margin-bottom: 28px; }
+.remarks-classes { display: flex; gap: 8px; flex-wrap: wrap; margin: 4px 0 12px; }
+.remarks-classes a { padding: 6px 12px; border: 1px solid #cbd5d0; border-radius: 999px; font-size: 13.5px; text-decoration: none; color: inherit; }
+.remarks-classes a[aria-current='page'] { background: #1f5d3f; color: #fff; border-color: #1f5d3f; }
+.remarks-sub { margin: 0 0 8px; font-size: 15.5px; font-weight: 660; }
+.remarks-table th[scope='row'] { white-space: nowrap; vertical-align: top; font-weight: 600; }
+.notes-form { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 8px 10px; }
+.notes-form textarea { flex: 1 1 280px; min-width: 220px; font: inherit; padding: 7px 9px; }
+.notes-form input[type='number'] { width: 84px; font: inherit; padding: 7px 9px; }
+.notes-ok { color: #1f5d3f; font-size: 13.5px; align-self: center; }
+.notes-error { color: #b42318; font-size: 13.5px; align-self: center; }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }

@@ -4,7 +4,7 @@ import { ZodError } from 'zod';
 import { requireSchoolSession } from '@/lib/session';
 import { createSession, saveAcademic, saveProfile, saveRanges, saveSignature, saveTerm, selectPeriod, SettingsError } from '@/lib/settings/service';
 import { normalizeImage } from '@/lib/settings/images';
-import { saveManualRemark } from '@/lib/settings/remarks';
+import { saveManualRemark, saveTermNotes } from '@/lib/settings/remarks';
 
 export type SettingsState = { ok: boolean; message: string };
 export async function settingsAction(_previous: SettingsState, form: FormData): Promise<SettingsState> {
@@ -28,6 +28,9 @@ export async function settingsAction(_previous: SettingsState, form: FormData): 
       case 'signature': await saveSignature(actor, value, image); break;
       case 'ranges': await saveRanges(actor, String(form.get('role')), value); break;
       case 'remark': await saveManualRemark(actor, value); break;
+      // The row's own inputs carry the remark and days; the hidden payload only names the pupil and term.
+      case 'termNotes': await saveTermNotes(actor, { studentId: Number(value.studentId), sessionId: Number(value.sessionId), termId: Number(value.termId),
+        remark: String(form.get('remark') ?? ''), present: String(form.get('present') ?? '').trim() === '' ? NaN : form.get('present'), total: String(form.get('total') ?? '').trim() === '' ? NaN : form.get('total') }); break;
       default: throw new SettingsError('Unknown settings operation.');
     }
     revalidatePath('/portal', 'layout');
