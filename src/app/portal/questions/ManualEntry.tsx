@@ -1,4 +1,5 @@
 import { saveManualQuestion, handInSet } from './actions';
+import TheoryParts from './TheoryParts';
 
 /**
  * Manual Entry (legacy parity: the entry form under Region B when Method =
@@ -12,7 +13,7 @@ export default function ManualEntry({
   returnParams,
 }: {
   set: { id: number; examType: string; status: string; minRequired: number; defaultMarks: string; reviewerComment: string | null };
-  questions: Array<{ id: number; text: string; marks: string; approvalStatus: string; reviewerComment: string | null }>;
+  questions: Array<{ id: number; text: string; marks: string; approvalStatus: string; reviewerComment: string | null; parts?: Array<{ label: string; text: string; marks: string }> }>;
   returnParams: string;
 }) {
   const editable = set.status === 'draft' || set.status === 'returned';
@@ -55,8 +56,10 @@ export default function ManualEntry({
           ) : null}
 
           <label htmlFor="marks">Marks</label>
-          <input id="marks" name="marks" type="number" min="1" step="1"
+          <input id="marks" name="marks" type="number" min={set.examType === 'theory' ? '0.01' : '1'} step={set.examType === 'theory' ? '0.01' : '1'}
             defaultValue={set.examType === 'objective' ? Number(set.defaultMarks) : 1} style={{ maxWidth: 100 }} />
+
+          {set.examType === 'theory' ? <TheoryParts marksInputId="marks" /> : null}
 
           <button type="submit" className="sd-action">Save question</button>
         </form>
@@ -72,6 +75,11 @@ export default function ManualEntry({
               <li key={q.id}>
                 <span>{q.text}</span>
                 <span className="muted"> · {Number(q.marks)} mark{Number(q.marks) === 1 ? '' : 's'}</span>
+                {q.parts && q.parts.length > 0 ? (
+                  <ul className="muted" style={{ margin: '4px 0 0 18px', listStyle: 'none', padding: 0 }}>
+                    {q.parts.map(p => <li key={p.label}>({p.label}) {p.text} <span>· {Number(p.marks)} mark{Number(p.marks) === 1 ? '' : 's'}</span></li>)}
+                  </ul>
+                ) : null}
                 {q.approvalStatus === 'revision' ? (
                   <div className="note" style={{ marginTop: 6 }}>Sent back{q.reviewerComment ? `: ${q.reviewerComment}` : ''}</div>
                 ) : null}

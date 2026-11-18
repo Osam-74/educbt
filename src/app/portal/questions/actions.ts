@@ -7,8 +7,11 @@ import { snapshotSet } from '@/lib/exam/vault';
 import type { ParsedRow } from './parsers';
 
 function backToQuestions(params: URLSearchParams, error?: string, ok?: string) {
-  if (error) params.set('error', error); else params.delete('error');
-  if (ok) params.set('ok', ok); else params.delete('ok');
+  // A message the caller already placed on params is kept (earlier this deleted it, so no teacher ever saw a
+  // refusal or a "saved" note); passing one here replaces it. The hidden returnParams field is built without
+  // error/ok, so nothing stale is carried from the previous request.
+  if (error) params.set('error', error);
+  if (ok) params.set('ok', ok);
   redirect(`/portal/questions?${params.toString()}`);
 }
 
@@ -100,12 +103,23 @@ export async function saveManualQuestion(form: FormData) {
     isCorrect: String(form.get('correct') ?? '') === k,
   }));
 
+  // Optional theory parts arrive as part_label_N / part_text_N / part_marks_N. Rows left entirely blank are
+  // ignored; a half-filled row is passed on so the service can say exactly what is wrong.
+  const parts: Array<{ label: string; text: string; marks: number }> = [];
+  for (const key of [...form.keys()].filter(k => /^part_label_\d+$/.test(k))) {
+    const n = key.slice('part_label_'.length);
+    const label = String(form.get(key) ?? '').trim(), partText = String(form.get(`part_text_${n}`) ?? '').trim(), marks = String(form.get(`part_marks_${n}`) ?? '').trim();
+    if (!label && !partText && !marks) continue;
+    parts.push({ label, text: partText, marks: Number(marks) });
+  }
+
   try {
     await addQuestion(actor, setId, {
       text,
       marks: Number(form.get('marks') ?? 1) || 1,
       instructions: String(form.get('instructions') ?? '').trim() || null,
       options,
+      ...(parts.length > 0 ? { parts } : {}),
     });
   } catch (e) {
     returnParams.set('error', e instanceof Error ? e.message : 'That question could not be saved.');

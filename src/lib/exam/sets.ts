@@ -18,7 +18,7 @@
  *      before review.
  */
 
-import { and, eq, count, asc, sql } from 'drizzle-orm';
+import { and, eq, count, asc, sql, inArray } from 'drizzle-orm';
 import { forSchool, schema, type Tx } from '@/db';
 import type { Actor } from '@/lib/session';
 import { isSchoolWide } from '@/lib/queries';
@@ -673,6 +673,10 @@ export async function setWithQuestions(actor: Actor, setId: number) {
       .where(and(eq(schema.questions.questionSetId, setId), eq(schema.questions.status, 'active')))
       .orderBy(asc(schema.questions.sequence));
 
-    return { set, questions };
+    const partRows = questions.length === 0 ? [] : await tx.select().from(schema.questionParts)
+      .where(and(eq(schema.questionParts.schoolId, actor.schoolId), inArray(schema.questionParts.questionId, questions.map(q => Number(q.id)))))
+      .orderBy(asc(schema.questionParts.sequence));
+    return { set, questions: questions.map(q => ({ ...q,
+      parts: partRows.filter(r => Number(r.questionId) === Number(q.id)).map(r => ({ label: r.label, text: r.text, marks: r.marks })) })) };
   });
 }
