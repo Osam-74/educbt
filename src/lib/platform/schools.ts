@@ -1137,3 +1137,64 @@ function mapDuplicate(error: unknown): Error {
   }
   return new DuplicateValueError('form', 'A required detail is already in use. Please review and try again.');
 }
+
+// ── Issue a principal's password ────────────────────────────────────────────
+
+export type PrincipalPasswordIssue = { loginId: string; name: string; temporaryPassword: string };
+
+/**
+ * Give a school's principal a new temporary password.
+ *
+ * Needed after a school is restored from a backup made WITHOUT passwords: every restored login has
+ * an unusable placeholder, and the principal is the one person who can then set up everyone else.
+ * Also the right tool for a principal who is simply locked out.
+ *
+ * The password is returned ONCE and never stored in clear (only its Argon2id hash). Existing sessions
+ * are revoked and any lock-out is cleared, so the credential really is replaced. Refuses a school that
+ * is not active: issuing a credential for a suspended school would hand out access the platform
+ * administrator deliberately withdrew.
+ */
+export async function issuePrincipalPassword(actor: PlatformActor, schoolId: number): Promise<PrincipalPasswordIssue> {
+  assertPlatformAdmin(actor);
+  if (!Number.isInteger(schoolId) || schoolId <= 0) throw new NotFoundError();
+
+  // Hashed OUTSIDE the transaction: Argon2 must not hold a pooled connection while it works.
+  const temporaryPassword = generateInitialPassword(12);
+  const passwordHash = await hashPassword(temporaryPassword);
+
+  return asPlatformAdmin(actor.userId, `Issue a new principal password for school #${schoolId}`, async (tx) => {
+    const [school] = await tx.select({ id: schema.schools.id, status: schema.schools.status })
+      .from(schema.schools).where(eq(schema.schools.id, schoolId)).limit(1);
+    if (!school) throw new NotFoundError();
+    if (school.status !== 'active') {
+      throw new OnboardingValidationError({ school: 'A password cannot be issued for a school that is not active. Reactivate it first.' });
+    }
+
+    const principals = await tx.select({ id: schema.users.id, loginId: schema.users.loginId })
+      .from(schema.users)
+      .where(and(eq(schema.users.schoolId, schoolId), eq(schema.users.role, 'principal'), eq(schema.users.status, 'active')))
+      .orderBy(schema.users.id);
+    if (principals.length === 0) {
+      throw new OnboardingValidationError({ principal: 'This school has no active principal account. Create one first.' });
+    }
+    // More than one is unusual but possible after a replacement; the OLDEST active one is the school's principal.
+    const target = principals[0]!;
+
+    await tx.update(schema.users).set({ passwordHash, mustChangePassword: true, failedAttempts: 0, lockedUntil: null })
+      .where(and(eq(schema.users.id, target.id), eq(schema.users.schoolId, schoolId)));
+    await tx.delete(schema.sessions).where(eq(schema.sessions.userId, target.id));
+
+    const [staff] = await tx.select({ firstName: schema.staff.firstName, lastName: schema.staff.lastName })
+      .from(schema.staff).where(and(eq(schema.staff.userId, target.id), eq(schema.staff.schoolId, schoolId))).limit(1);
+
+    await tx.insert(schema.auditLog).values({
+      schoolId, actorUserId: actor.userId, actorRole: 'platform_admin', action: 'school.principal_password_issued',
+      entityType: 'users', entityId: target.id,
+      // The password itself is NEVER written anywhere, including here.
+      after: { temporaryPasswordIssued: true, sessionsRevoked: true } as never,
+    });
+
+    return { loginId: target.loginId, name: staff ? `${staff.firstName} ${staff.lastName}` : 'Principal', temporaryPassword };
+  });
+}
+

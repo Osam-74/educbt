@@ -35,6 +35,8 @@ export function RestoreUploader() {
   const [message, setMessage] = useState<string | null>(null);
   const [job, setJob] = useState<JobStatus | null>(null);
   const jobId = useRef<number | null>(null);
+  const [waitedMs, setWaitedMs] = useState(0);
+  const [retrying, setRetrying] = useState(false);
   const aborted = useRef(false);
 
   const busy = phase === 'hashing' || phase === 'uploading' || phase === 'finishing' || phase === 'restoring';
@@ -55,8 +57,22 @@ export function RestoreUploader() {
       setTimeout(tick, 2500);
     };
     const t = setTimeout(tick, 1500);
-    return () => { stop = true; clearTimeout(t); };
+    const began = Date.now();
+    const clock = setInterval(() => setWaitedMs(Date.now() - began), 1000);
+    return () => { stop = true; clearTimeout(t); clearInterval(clock); };
   }, [phase]);
+
+  // A job that is verified but never picked up means the background service is not receiving the signal.
+  const stuckQueued = phase === 'restoring' && job?.status === 'queued' && waitedMs > 45_000;
+
+  async function retryQueue() {
+    if (jobId.current == null) return;
+    setRetrying(true); setMessage(null);
+    const r = await send(`/api/platform/school-backup/upload/${jobId.current}/retry`, { method: 'POST' });
+    setRetrying(false);
+    setMessage(r.status === 200 ? 'Signal sent again. Waiting for the restore to start.' : String(r.json?.message ?? 'Could not send the signal again.'));
+    if (r.status === 200) setWaitedMs(0);
+  }
 
   const sendPiece = useCallback(async (id: number, position: number, blob: Blob): Promise<boolean> => {
     for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
@@ -157,7 +173,19 @@ export function RestoreUploader() {
             </div>
           )}
 
-          {message && <div className="pa-alert pa-alert--error" role="alert" style={{ margin: '12px 0' }}><div>{message}</div></div>}
+          {stuckQueued && (
+            <div className="pa-alert" role="status" style={{ margin: '12px 0', background: '#fffbeb', border: '1px solid #fde68a', color: '#78350f' }}>
+              <div>
+                <strong>The restore has not started.</strong> The file was uploaded and checked, but the background service has not picked it up.
+                Nothing has been restored. Send the signal again; it is safe to do more than once.
+                <div style={{ marginTop: 8 }}>
+                  <button type="button" className="pa-btn" onClick={() => void retryQueue()} disabled={retrying}>{retrying ? 'Sending…' : 'Send the signal again'}</button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {message && <div className={phase === 'restoring' ? 'pa-alert pa-alert--ok' : 'pa-alert pa-alert--error'} role="alert" style={{ margin: '12px 0' }}><div>{message}</div></div>}
 
           <button type="submit" className="pa-btn pa-btn--primary" disabled={!ready || busy}>
             {busy ? 'Working…' : phase === 'failed' ? 'Try again' : 'Upload and restore'}

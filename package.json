@@ -53,6 +53,8 @@
     "test:school-backup-upload": "tsx src/db/test-school-backup-upload.ts",
     "test:school-backup-passwords": "tsx src/db/test-school-backup-passwords.ts",
     "test:school-backup-chunker": "tsx src/lib/school-backup/chunker.test.ts",
+    "test:school-backup-browser": "tsx src/db/test-school-backup-browser.ts",
+    "test:issue-principal-password": "tsx src/db/test-issue-principal-password.ts",
     "test:school-backup-guard": "tsx src/lib/school-backup/guard.test.ts",
     "test:timetable": "tsx src/db/test-timetable.ts",
     "test:promotion": "tsx src/db/test-promotion.ts",

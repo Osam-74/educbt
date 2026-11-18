@@ -7,6 +7,7 @@ import { reactivateSchoolAction, suspendSchoolAction } from './actions';
 import { PaIcon } from '../../icons';
 import { CopyButton } from '../../CopyButton';
 import { BackupDownload } from './BackupDownload';
+import { IssuePrincipalPassword } from './IssuePrincipalPassword';
 
 export const dynamic = 'force-dynamic';
 
@@ -202,6 +203,13 @@ export default async function SchoolDetailPage({
           Schools are never deleted from this screen — a school&apos;s history is preserved
           even after it stops using the platform.
         </p>
+      </section>
+
+      <section className="pa-card pa-card-pad" id="principal-password" style={{ marginTop: 16 }}>
+        <IssuePrincipalPassword
+          schoolId={school.id}
+          disabledReason={school.status !== 'active' ? 'Reactivate the school first. A password cannot be issued for a suspended school.' : null}
+        />
       </section>
 
       <section className="pa-card pa-card-pad" id="backup" style={{ marginTop: 16 }}>

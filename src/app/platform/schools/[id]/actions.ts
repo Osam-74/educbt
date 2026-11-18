@@ -10,8 +10,10 @@ import { redirect } from 'next/navigation';
 import { requirePlatformSession } from '@/lib/platform/session';
 import {
   setSchoolStatus,
+  issuePrincipalPassword,
   NotFoundError,
   OnboardingValidationError,
+  type PrincipalPasswordIssue,
 } from '@/lib/platform/schools';
 
 function back(id: number, qs: Record<string, string>) {
@@ -72,3 +74,29 @@ export async function reactivateSchoolAction(formData: FormData): Promise<void> 
   revalidatePath('/platform');
   back(schoolId, { ok: 'School reactivated. Its users can sign in again.' });
 }
+
+export type IssuePasswordState =
+  | { status: 'idle' }
+  | { status: 'error'; message: string }
+  | { status: 'success'; result: PrincipalPasswordIssue };
+
+/**
+ * Issue the principal's temporary password. The password travels back in ACTION STATE and is rendered
+ * once; it is never put in a URL, a redirect or a cookie (a URL ends up in logs and browser history).
+ */
+export async function issuePrincipalPasswordAction(_prev: IssuePasswordState, formData: FormData): Promise<IssuePasswordState> {
+  const actor = await requirePlatformSession();
+  const schoolId = Number(formData.get('schoolId'));
+  if (formData.get('confirm') !== 'on') return { status: 'error', message: 'Tick the box to confirm. The principal\'s current password will stop working.' };
+  try {
+    const result = await issuePrincipalPassword(actor, schoolId);
+    revalidatePath(`/platform/schools/${schoolId}`);
+    return { status: 'success', result };
+  } catch (error) {
+    if (error instanceof NotFoundError) return { status: 'error', message: 'That school could not be found.' };
+    if (error instanceof OnboardingValidationError) return { status: 'error', message: Object.values(error.fieldErrors)[0] ?? error.message };
+    console.error('issuePrincipalPasswordAction failed', error);
+    return { status: 'error', message: 'The password could not be issued. Nothing was changed.' };
+  }
+}
+

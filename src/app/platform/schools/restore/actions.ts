@@ -4,7 +4,7 @@
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { requirePlatformSession } from '@/lib/platform/session';
-import { cancelJob, failStaleRestore, UploadError } from '@/lib/school-backup/upload';
+import { cancelJob, failStaleRestore, UploadError, getJob } from '@/lib/school-backup/upload';
 import { inngest } from '@/inngest/client';
 
 function back(qs: Record<string, string>): never {
@@ -23,6 +23,9 @@ export async function cancelRestoreAction(formData: FormData): Promise<void> {
 export async function retryRestoreAction(formData: FormData): Promise<void> {
   const actor = await requirePlatformSession();
   const jobId = Number(formData.get('jobId'));
+  const job = await getJob(actor.userId, jobId);
+  if (!job) back({ error: 'That upload does not exist.' });
+  else if (job.status !== 'queued') back({ error: `This restore is ${job.status}, so there is nothing to retry.` });
   try { await inngest.send({ name: 'school-backup/restore.requested', data: { jobId, actorUserId: actor.userId } }); }
   catch { back({ error: 'The restore could not be queued yet. Try again in a minute.' }); }
   revalidatePath('/platform/schools/restore');
