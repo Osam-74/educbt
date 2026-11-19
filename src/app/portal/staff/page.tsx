@@ -1,5 +1,6 @@
 import '../school-table.css';
 import { requireSchoolSession, requireRole } from '@/lib/session';
+import { reviewAssignments } from '@/lib/people/assignment-audit';
 import { forSchool, schema } from '@/db';
 import { and, asc, eq } from 'drizzle-orm';
 import { RegisterStaffForm, AssignDutiesForm, StaffRowForm, type StaffRow } from './StaffForms';
@@ -21,6 +22,7 @@ export default async function StaffPage() {
   // Teachers may see students (their own classes), but staff management is an
   // office function. Legacy MANAGE_STAFF: principal and vice principal.
   requireRole(actor, ['principal', 'vice_principal']);
+  const assignmentSuspects = await reviewAssignments(actor);
 
   const data = await forSchool(actor.schoolId, async (tx) => {
     const staffRows = await tx.select({
@@ -178,6 +180,17 @@ export default async function StaffPage() {
   return (
     <>
       <h1 className="page-title">Staff</h1>
+      {assignmentSuspects.length > 0 ? (
+        <details className="card sa-card">
+          <summary><strong>{assignmentSuspects.length} teacher{assignmentSuspects.length === 1 ? '' : 's'} may have extra class assignments</strong></summary>
+          <p className="muted">Each teacher below teaches every one of these subjects in every one of these classes. That is what an earlier fault produced when a teacher was given different subjects in different classes. It may also be exactly what you intended. Nothing has been changed; open the teacher and keep or correct each assignment.</p>
+          <ul>
+            {assignmentSuspects.map((s) => (
+              <li key={s.staffId}><strong>{s.staffName}</strong>: {s.subjectNames.join(', ')} in {s.classNames.join(', ')} ({s.assignments} assignments)</li>
+            ))}
+          </ul>
+        </details>
+      ) : null}
 
       <div className="stack">
         <RegisterStaffForm />

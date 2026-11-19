@@ -82,7 +82,8 @@
     "test:calendar": "tsx src/db/test-calendar.ts",
     "test:timetable-rules": "tsx src/lib/calendar/timetable-rules.test.ts",
     "test:timetable-classes": "tsx src/db/test-timetable-classes.ts",
-    "test:calendar-browser": "tsx src/db/test-calendar-browser.ts"
+    "test:calendar-browser": "tsx src/db/test-calendar-browser.ts",
+    "test:assignment-audit": "tsx src/lib/people/assignment-audit.test.ts"
   },
   "dependencies": {
     "@google-cloud/storage": "^7.22.0",
