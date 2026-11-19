@@ -612,3 +612,24 @@ DROP POLICY IF EXISTS tenant_isolation ON calendar_event_classes;
 CREATE POLICY tenant_isolation ON calendar_event_classes
   USING (school_id = current_school_id() OR is_platform_admin())
   WITH CHECK (school_id = current_school_id() OR is_platform_admin());
+
+ALTER TABLE timetable_periods ENABLE ROW LEVEL SECURITY;
+ALTER TABLE timetable_periods FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON timetable_periods;
+CREATE POLICY tenant_isolation ON timetable_periods
+  USING (school_id = current_school_id() OR is_platform_admin())
+  WITH CHECK (school_id = current_school_id() OR is_platform_admin());
+
+ALTER TABLE timetable_lessons ENABLE ROW LEVEL SECURITY;
+ALTER TABLE timetable_lessons FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON timetable_lessons;
+CREATE POLICY tenant_isolation ON timetable_lessons
+  USING (school_id = current_school_id() OR is_platform_admin())
+  WITH CHECK (school_id = current_school_id() OR is_platform_admin());
+
+ALTER TABLE timetable_publication ENABLE ROW LEVEL SECURITY;
+ALTER TABLE timetable_publication FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON timetable_publication;
+CREATE POLICY tenant_isolation ON timetable_publication
+  USING (school_id = current_school_id() OR is_platform_admin())
+  WITH CHECK (school_id = current_school_id() OR is_platform_admin());

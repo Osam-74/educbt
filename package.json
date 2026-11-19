@@ -79,7 +79,8 @@
     "test:platform-nav": "tsx src/lib/platform/nav.test.ts",
     "test:staff-prefill": "tsx src/lib/people/staff-prefill.test.ts",
     "test:calendar-engine": "tsx src/lib/calendar/calendar.test.ts",
-    "test:calendar": "tsx src/db/test-calendar.ts"
+    "test:calendar": "tsx src/db/test-calendar.ts",
+    "test:timetable-rules": "tsx src/lib/calendar/timetable-rules.test.ts"
   },
   "dependencies": {
     "@google-cloud/storage": "^7.22.0",

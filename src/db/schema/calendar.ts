@@ -23,7 +23,8 @@ import {
   index, uniqueIndex, pgEnum, check,
 } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
-import { schools, academicSessions } from './core';
+import { schools, academicSessions, classes, subjects } from './core';
+import { staff } from './people';
 
 export const calendarCategory = pgEnum('calendar_category', [
   'academic', 'examination', 'school_event', 'public_holiday',
@@ -116,4 +117,60 @@ export const calendarEventClasses = pgTable('calendar_event_classes', {
 }, (t) => [
   index('calendar_event_classes_event_idx').on(t.eventId),
   index('calendar_event_classes_class_idx').on(t.schoolId, t.classId),
+]);
+
+// ── Class teaching timetable ─────────────────────────────────────────────
+
+/**
+ * The school's bell schedule: a named period with a start and an end. A break
+ * is a period too (is_break), so a lesson can never be placed in it. Times are
+ * the school's local clock times; nothing here depends on the server's zone.
+ */
+export const timetablePeriods = pgTable('timetable_periods', {
+  id: bigserial('id', { mode: 'number' }).primaryKey(),
+  schoolId: bigint('school_id', { mode: 'number' }).notNull().references(() => schools.id, { onDelete: 'cascade' }),
+  name: varchar('name', { length: 60 }).notNull(),
+  position: integer('position').notNull(),
+  startTime: time('start_time').notNull(),
+  endTime: time('end_time').notNull(),
+  isBreak: boolean('is_break').notNull().default(false),
+}, (t) => [
+  uniqueIndex('timetable_periods_school_position_uq').on(t.schoolId, t.position),
+  check('timetable_periods_times_ordered', sql`${t.endTime} > ${t.startTime}`),
+]);
+
+/**
+ * One lesson: a class, on a weekday (1 = Monday ... 7 = Sunday), in a period, for
+ * a subject, taught by a teacher. Two unique indexes make a clash impossible
+ * even when two people save at the same moment: a class has one lesson per slot,
+ * and a teacher is in one place per slot.
+ */
+export const timetableLessons = pgTable('timetable_lessons', {
+  id: bigserial('id', { mode: 'number' }).primaryKey(),
+  schoolId: bigint('school_id', { mode: 'number' }).notNull().references(() => schools.id, { onDelete: 'cascade' }),
+  sessionId: bigint('session_id', { mode: 'number' }).notNull().references(() => academicSessions.id, { onDelete: 'cascade' }),
+  classId: bigint('class_id', { mode: 'number' }).notNull().references(() => classes.id, { onDelete: 'cascade' }),
+  periodId: bigint('period_id', { mode: 'number' }).notNull().references(() => timetablePeriods.id, { onDelete: 'cascade' }),
+  weekday: integer('weekday').notNull(),
+  subjectId: bigint('subject_id', { mode: 'number' }).notNull().references(() => subjects.id, { onDelete: 'cascade' }),
+  staffId: bigint('staff_id', { mode: 'number' }).references(() => staff.id, { onDelete: 'set null' }),
+  room: varchar('room', { length: 60 }).notNull().default(''),
+  createdBy: bigint('created_by', { mode: 'number' }),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  uniqueIndex('timetable_lessons_class_slot_uq').on(t.sessionId, t.classId, t.weekday, t.periodId),
+  uniqueIndex('timetable_lessons_teacher_slot_uq').on(t.sessionId, t.staffId, t.weekday, t.periodId).where(sql`${t.staffId} IS NOT NULL`),
+  index('timetable_lessons_class_idx').on(t.schoolId, t.sessionId, t.classId),
+  check('timetable_lessons_weekday_range', sql`${t.weekday} BETWEEN 1 AND 7`),
+]);
+
+/** Whether a class's timetable is visible to students and parents, or still being drawn up. */
+export const timetablePublication = pgTable('timetable_publication', {
+  schoolId: bigint('school_id', { mode: 'number' }).notNull().references(() => schools.id, { onDelete: 'cascade' }),
+  sessionId: bigint('session_id', { mode: 'number' }).notNull().references(() => academicSessions.id, { onDelete: 'cascade' }),
+  classId: bigint('class_id', { mode: 'number' }).notNull().references(() => classes.id, { onDelete: 'cascade' }),
+  publishedAt: timestamp('published_at', { withTimezone: true }).notNull().defaultNow(),
+  publishedBy: bigint('published_by', { mode: 'number' }),
+}, (t) => [
+  uniqueIndex('timetable_publication_uq').on(t.sessionId, t.classId),
 ]);
