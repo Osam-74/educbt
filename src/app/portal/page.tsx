@@ -8,6 +8,7 @@ import { teacherDashboard } from '@/lib/teacher-dashboard';
 import { canManageResults } from '@/lib/results/config';
 import SchoolDashboard from './SchoolDashboard';
 import TeacherDashboard from './TeacherDashboard';
+import CalendarGlance from './CalendarGlance';
 import FamilyChildren from './children/FamilyChildren';
 
 export const dynamic = 'force-dynamic';
@@ -50,6 +51,7 @@ export default async function PortalHome({
     const children = await forSchool(actor.schoolId, (tx) => guardianChildren(tx, actor.userId));
     return <>
       <h1 className="page-title">My Children</h1>
+      <div className="sd-panels"><CalendarGlance /></div>
       <FamilyChildren children={children} />
     </>;
   }
@@ -59,6 +61,8 @@ export default async function PortalHome({
   return (
     <>
       <h1 className="page-title">Dashboard</h1>
+
+      {actor.role === 'student' ? <div className="sd-panels"><CalendarGlance /></div> : null}
 
       {papers.length > 0 ? (
         <section className="card">

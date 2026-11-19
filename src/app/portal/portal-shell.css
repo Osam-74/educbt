@@ -215,3 +215,11 @@ button.sd-action { border-width:1px; font:inherit; }
 .ps-offer-actions { display: flex; gap: 8px; align-items: center; }
 .ps-offer-actions form { margin: 0; }
 .sa-btn--ghost { background: transparent; color: #1d3b27; border: 1px solid #b7d2bf; }
+
+/* "Today and coming up" panel (CalendarGlance). */
+.sd-panel[aria-label="Today and coming up"] > div { padding: 16px 22px; }
+.sd-panel[aria-label="Today and coming up"] > div + div { border-top: 1px solid #e6ebe4; }
+.sd-panel[aria-label="Today and coming up"] header a.sd-term { text-decoration: none; }
+.sd-sub { margin: 0 0 8px; font-size: 13.5px; font-weight: 600; }
+.sd-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.sd-list li { font-size: 13.5px; line-height: 1.45; }

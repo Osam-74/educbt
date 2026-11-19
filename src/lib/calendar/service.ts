@@ -8,7 +8,7 @@ import { forSchool, schema, type Tx } from '@/db';
 import type { Actor } from '@/lib/session';
 import { notifyMany } from '@/lib/comms/notifications';
 import { type DateStr, addDays, isValidTimeZone, toLocalDate, toLocalTime, todayIn } from './dates';
-import { type CalEvent, type Conflict, type Term, conflictsFor } from './engine';
+import { type CalEvent, type Conflict, type Term, conflictsFor, occurrences } from './engine';
 import { canPublish, canSee, canSeeExam, isManager, type Viewer } from './access';
 import { validateEvent, type EventInput } from './validate';
 
@@ -305,4 +305,22 @@ export async function setCalendarState(actor: Actor, sessionId: number, state: C
     }
     return { notified };
   });
+}
+
+export type GlanceEvent = { key: string; title: string; category: string; startsOn: DateStr; endsOn: DateStr; allDay: boolean; startTime: string | null; venue: string | null; inDays: number; ongoing: boolean };
+
+/**
+ * The next few things on the calendar for the dashboard: what is on now or coming up within `horizonDays`,
+ * restricted to what this person may see (same rules as the calendar page) and only on a calendar they may see.
+ * Cancelled events are left out. Never throws on a school with no session or no events: it returns an empty list.
+ */
+export async function upcomingForViewer(actor: Actor, limit = 5, horizonDays = 30): Promise<{ today: DateStr; timeZone: string; events: GlanceEvent[] }> {
+  const view = await loadCalendar(actor);
+  const today = view.today, until = addDays(today, horizonDays);
+  const rows = view.events.filter((e) => e.status !== 'cancelled' && e.status !== 'draft').flatMap((e) => occurrences(e, today, until));
+  const events = rows.sort((a, b) => a.startsOn.localeCompare(b.startsOn) || a.title.localeCompare(b.title)).slice(0, Math.max(0, limit)).map((e) => ({
+    key: e.key, title: e.title, category: e.category, startsOn: e.startsOn, endsOn: e.endsOn, allDay: e.allDay, startTime: e.startTime ?? null, venue: e.venue ?? null,
+    inDays: Math.max(0, Math.round((Date.parse(`${e.startsOn}T00:00:00Z`) - Date.parse(`${today}T00:00:00Z`)) / 86_400_000)), ongoing: e.startsOn <= today && e.endsOn >= today,
+  }));
+  return { today, timeZone: view.timeZone, events };
 }

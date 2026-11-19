@@ -56,3 +56,4 @@
   .cal-cell { min-height: 64px; } .cal-pill { font-size: 11px; padding: 1px 4px; }
   .cal-item { grid-template-columns: 1fr; gap: 4px; }
 }
+.tt-noteacher { color: #8a5a00; font-size: 12.5px; }

@@ -136,7 +136,7 @@ export default async function ClassTimetablePage({ searchParams }: { searchParam
                               {l ? (
                                 <>
                                   <strong>{l.subjectName}</strong>
-                                  {l.staffName ? <div className="muted">{l.staffName}</div> : null}
+                                  {l.staffName ? <div className="muted">{l.staffName}</div> : editing ? <div className="muted tt-noteacher">No teacher yet</div> : null}
                                   {l.room ? <div className="muted">{l.room}</div> : null}
                                   {editing ? (
                                     <div className="tt-actions">
@@ -169,11 +169,12 @@ export default async function ClassTimetablePage({ searchParams }: { searchParam
                 {view.choices.map((c) => <option key={c.subjectId} value={c.subjectId}>{c.subjectName}</option>)}
               </select></label>
               <label>Teacher<select name="staffId" defaultValue={selected?.staffId ?? ''}>
-                <option value="">Not set</option>
+                <option value="">No teacher yet</option>
                 {view.choices.flatMap((c) => c.teachers.map((t) => <option key={`${c.subjectId}-${t.staffId}`} value={t.staffId}>{t.name} ({c.subjectName})</option>))}
               </select></label>
               <label>Room<input name="room" maxLength={60} defaultValue={selected?.room ?? ''} placeholder="Optional" /></label>
               <div className="tt-form-actions"><button className="sa-btn" type="submit">Save lesson</button> <Link href={back()} className="sa-btn sa-btn--ghost">Cancel</Link></div>
+              <p className="muted">A lesson with a teacher also appears on that teacher&rsquo;s dashboard.</p>
               {view.choices.length === 0 ? <p className="muted">No subjects have teachers in this class yet. Assign teachers under Staff first.</p> : null}
             </form>
           ) : null}

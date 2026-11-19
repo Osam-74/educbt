@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import CalendarGlance from './CalendarGlance';
 import type { schoolDashboard } from '@/lib/portal-dashboard';
 import { activityTitle, activityAllowed } from '@/lib/portal-dashboard';
 import { PortalIcon } from './PortalShell';
@@ -24,6 +25,7 @@ export default function SchoolDashboard({ data, role }: { data: NonNullable<Awai
       </section>
     )}
     <div className="sd-panels">
+      <CalendarGlance />
       <section className="sd-panel"><header><h2><PortalIcon name="chart"/>Results Pipeline</h2><span className="sd-term">{data.term?.title ?? 'No current term'}</span></header>
         {data.pipeline.length ? <><div className="sd-table-wrap"><table><thead><tr><th>Class</th><th>Stage</th><th>Students</th></tr></thead><tbody>{data.pipeline.map(row => <tr key={`${row.classId}-${row.state}`}><td><Link href={`/portal/results?classId=${row.classId}&sessionId=${data.session!.id}&termId=${data.term!.id}`}>{row.className}</Link></td><td><span className={`sd-stage sd-stage-${row.state}`}>{stages[row.state]}</span></td><td>{row.students}</td></tr>)}</tbody></table></div><p className="sd-footnote">Students with stored subject results at each stage. A class may appear at multiple stages.</p></> : <div className="sd-empty"><span className="sd-icon"><PortalIcon name="chart"/></span><h3>{data.term ? 'No results compiled yet' : 'No current academic period'}</h3><p>{data.term ? 'Compiled class results will appear here as they move through review and publication.' : 'A current session and term must be configured before the pipeline can be shown.'}</p><Link href="/portal/results">Open results workspace →</Link></div>}
       </section>

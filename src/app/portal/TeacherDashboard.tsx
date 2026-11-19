@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import CalendarGlance from './CalendarGlance';
 import type { teacherDashboard } from '@/lib/teacher-dashboard';
 import { PortalIcon } from './PortalShell';
 
@@ -59,6 +60,7 @@ export default function TeacherDashboard({ data, canReview }: { data: NonNullabl
     </div>
 
     <div className="sd-panels">
+      <CalendarGlance />
       <section className="sd-panel sd-panel--wide">
         <header><h2><PortalIcon name="edit" />Record CA</h2>{currentTerm ? <span className="sd-term">{currentTerm.title}</span> : null}</header>
         {data.subjects.length ? <div className="sd-table-wrap"><table>

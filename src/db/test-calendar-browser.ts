@@ -44,8 +44,10 @@ async function main() {
     assert.match(await t.textContent('h1') ?? '', /Class timetable/); ok('the class teacher opens the class timetable');
     const options = await t.$$eval('select[name=classId] option', (o: Element[]) => o.map((x) => x.textContent ?? ''));
     assert.ok(options.some((o: string) => o.includes('JSS1 Gold') && !o.includes('view only'))); ok('their own class is editable in the picker');
+    const todayWd = (() => { const d = new Date().getUTCDay(); return d === 0 || d === 6 ? 0 : d; })();
     await t.click('a.tt-link:has-text("Add")'); await t.waitForSelector('form.tt-form');
-    await t.selectOption('select[name=subjectId]', { label: 'Mathematics' }); await t.fill('input[name=room]', 'Room 7');
+    if (todayWd) await t.selectOption('select[name=weekday]', String(todayWd));
+    await t.selectOption('select[name=subjectId]', { label: 'Mathematics' }); await t.selectOption('select[name=staffId]', { label: 'Tee Maths (Mathematics)' }); await t.fill('input[name=room]', 'Room 7');
     await t.click('button:has-text("Save lesson")'); await t.waitForSelector('.ok');
     assert.match(await t.textContent('.ok') ?? '', /Lesson saved/); assert.match(await t.textContent('table.tt-grid') ?? '', /Mathematics/); assert.match(await t.textContent('table.tt-grid') ?? '', /Room 7/); ok('adds a lesson and sees it in the grid');
     assert.match(await t.textContent('table.tt-grid') ?? '', /Break/); ok('the break row is shown as a break, with no Add link');
@@ -76,6 +78,20 @@ async function main() {
     console.log('── what the teacher now sees ──');
     await t.goto('/portal/calendar?view=list'); await t.waitForSelector('.cal-list'); assert.match(await t.textContent('.cal-list') ?? '', /Founders Day/); ok('after publishing, the teacher sees the school event');
     assert.equal(await t.$$eval('.tt-actions', (a: Element[]) => a.length), 0); ok('and has no edit, cancel or delete controls on it');
+    console.log('── the dashboards ──');
+    const wd = new Date().getUTCDay() === 0 ? 7 : new Date().getUTCDay();
+    await t.goto('/portal?scope=mine'); await t.waitForSelector('.sd-panels');
+    const glance = await t.$$('section[aria-label="Today and coming up"]'); assert.equal(glance.length, 1, 'the teacher dashboard has the panel'); ok('the teacher dashboard shows "Today and coming up"');
+    const panelText = (await t.textContent('section[aria-label="Today and coming up"]')) ?? '';
+    assert.match(panelText, /Coming up/); assert.match(panelText, /Founders Day/); assert.match(panelText, /In 2 days|Tomorrow|In \d+ days/); ok('it lists the published school event with how far away it is');
+    assert.match(panelText, /No lessons scheduled for you today|No lessons today/); ok('the class teacher, who is not the one teaching it, is not shown that lesson');
+    const m = await open(tMath.id, 'cal-e2e-maths'); await m.goto('/portal?scope=mine'); await m.waitForSelector('.sd-panels');
+    const mText = (await m.textContent('section[aria-label="Today and coming up"]')) ?? '';
+    if (wd >= 1 && wd <= 5) { assert.match(mText, /Mathematics/); assert.match(mText, /JSS1 Gold/); assert.match(mText, /Room 7/); ok('the teacher the lesson is assigned to sees it today, with its class and room'); }
+    else { assert.match(mText, /No lessons today\. It is the weekend/); ok('on a weekend the assigned teacher sees the weekend sentence'); }
+    await p.goto('/portal'); await p.waitForSelector('.sd-panels'); assert.equal((await p.$$('section[aria-label="Today and coming up"]')).length, 1); ok('the principal\'s overview shows it too');
+    const empty = await open((await db.insert(schema.users).values({ schoolId: (await db.insert(schema.schools).values({ name: 'Empty Glance', code: 'EG' + randomUUID().slice(0, 5).toUpperCase(), settings: {} }).returning())[0]!.id, role: 'principal', loginId: 'eg-' + randomUUID().slice(0, 6), passwordHash: 'x', mustChangePassword: false, status: 'active' }).returning())[0]!.id, 'cal-e2e-empty');
+    await empty.goto('/portal'); await empty.waitForLoadState('networkidle'); assert.equal((await empty.$$('section[aria-label="Today and coming up"]')).length, 0); ok('a school with no events and no timetable shows no panel at all (a clean dashboard)');
     console.log(`\nCALENDAR BROWSER OK: ${count} checks passed.`);
   } finally { await browser.close(); await owner.end(); }
 }
