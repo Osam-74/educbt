@@ -455,9 +455,18 @@ async function main() {
     await check('EXAMS: the original plugin row is kept verbatim, including columns this code does not use', async () => {
       const [h] = await q<{ source: Record<string, string> }>("select source from legacy_exam_attempts where school_id = $1 and kind = 'paper' and source_id = $2", [sid, String(pAttempts[0]!.id)]);
       for (const k of Object.keys(pAttempts[0]!)) assert.equal(String(h!.source[k] ?? ''), String(pAttempts[0]![k] ?? ''), 'source.' + k);
-      assert.ok('session_token' in h!.source, 'the sitting token is kept');
+      assert.equal(h!.source.session_token, '', 'a live sitting token is never archived');
       const [p] = await q<{ source: Record<string, unknown>; questions: unknown[] }>("select source, questions from legacy_exam_papers where school_id = $1 and kind = 'paper'", [sid]);
-      assert.equal(String(p!.source.access_code ?? '').length > 0, true, 'the paper access code is kept'); assert.equal(p!.questions.length, 20);
+      assert.equal(String(p!.source.access_code ?? ''), '', 'a live exam access code is never archived'); assert.equal(p!.questions.length, 20);
+    });
+    await check('EXAMS: even a file that still carries live secrets (an older exporter) never archives them', async () => {
+      const dirty = JSON.parse(JSON.stringify(plugin));
+      dirty.tables.exam_papers[0].access_code = 'LIVE-CODE-9'; dirty.tables.attempts.forEach((a: Row) => { a.session_token = 'LIVE-TOKEN-' + a.id; });
+      dirty.tables.exam_attempts.forEach((a: Row) => { a.session_key = 'LIVE-KEY'; }); dirty.tables.exam_series[0].access_code = 'LIVE-SERIES';
+      const t = translatePluginBackup(dirty);
+      const text = JSON.stringify([t.document.tables.legacy_exam_papers, t.document.tables.legacy_exam_attempts]);
+      for (const secret of ['LIVE-CODE-9', 'LIVE-TOKEN-', 'LIVE-KEY', 'LIVE-SERIES']) assert.equal(text.includes(secret), false, secret + ' must not be archived');
+      assert.equal(t.report.translated.legacy_exam_attempts, plugin.tables.attempts.length + plugin.tables.exam_attempts.length, 'nothing else is lost');
     });
     await check('EXAMS: the empty draft series and the legacy demo exam (with its timetable) are kept too', async () => {
       const kinds = await q<{ kind: string; n: string }>('select kind, count(*)::int n from legacy_exam_papers where school_id = $1 group by 1', [sid]);

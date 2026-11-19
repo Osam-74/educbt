@@ -29,6 +29,17 @@ const iso = (v: unknown): string | null => {
   return Number.isNaN(d.getTime()) ? null : d.toISOString();
 };
 const bool = (v: unknown): boolean | null => (v === null || v === undefined || v === '' ? null : v === true || v === 1 || v === '1');
+/**
+ * Live secrets are never archived, whatever the file says. The exporter already blanks them; this is the second
+ * lock, because a file can come from an older or another exporter, and an exam access code or a session token
+ * kept in a read-only history would sit in every later backup of the school.
+ */
+const SECRET_KEYS = ['access_code', 'session_token', 'session_key', 'invite_token'];
+const scrub = <T extends Record<string, unknown>>(row: T): T => {
+  const out: Record<string, unknown> = { ...row };
+  for (const k of SECRET_KEYS) if (k in out && out[k] !== null && out[k] !== '') out[k] = '';
+  return out as T;
+};
 const jsonOr = <T>(v: unknown, fallback: T): T => {
   if (v === null || v === undefined || v === '') return fallback;
   if (typeof v === 'object') return v as T;
@@ -77,7 +88,7 @@ export function translateExams(
       class_id: klass !== null && known.classes.has(klass) ? klass : null, class_name: klass !== null ? known.classNames.get(klass) ?? '' : '',
       session_id: s && known.sessions.has(num(s.session_id) ?? -1) ? num(s.session_id) : null, term_id: s && known.terms.has(num(s.term_id) ?? -1) ? num(s.term_id) : null,
       status: str(p.status), scheduled_at: iso(p.scheduled_at), duration_seconds: num(p.duration_seconds) ?? 0, question_count: num(p.question_count) ?? 0,
-      total_marks: num(p.total_marks) ?? 0, source: { ...p, series: s ?? null, invigilators: invigilatorsOf.get(id) ?? [] }, questions: frozen, created_at: iso(p.created_at) });
+      total_marks: num(p.total_marks) ?? 0, source: { ...scrub(p), series: s ? scrub(s) : null, invigilators: invigilatorsOf.get(id) ?? [] }, questions: frozen, created_at: iso(p.created_at) });
     paperIndex.set(paperKey('paper', id), papers.length);
   }
 
@@ -89,7 +100,7 @@ export function translateExams(
       subject_id: null, subject_name: '', class_id: null, class_name: '',
       session_id: known.sessions.has(num(s.session_id) ?? -1) ? num(s.session_id) : null, term_id: known.terms.has(num(s.term_id) ?? -1) ? num(s.term_id) : null,
       status: str(s.status), scheduled_at: iso(s.starts_on), duration_seconds: (num(s.duration_minutes) ?? 0) * 60, question_count: num(s.questions_per_student) ?? 0,
-      total_marks: 0, source: { ...s }, questions: [], created_at: iso(s.created_at) });
+      total_marks: 0, source: { ...scrub(s) }, questions: [], created_at: iso(s.created_at) });
     paperIndex.set(paperKey('series', id), papers.length);
   }
 
@@ -110,7 +121,7 @@ export function translateExams(
       subject_id: null, subject_name: tt ? str(tt.subject) : '', class_id: null, class_name: tt ? [str(tt.class_name), str(tt.arm)].filter(Boolean).join(' ') : '',
       session_id: null, term_id: null, status: bool(e.is_published) ? 'published' : 'draft', scheduled_at: iso(e.start_time),
       duration_seconds: (num(e.duration_minutes) ?? 0) * 60, question_count: frozen.length, total_marks: 0,
-      source: { ...e, timetable: tt ?? null }, questions: frozen, created_at: iso(e.created_at) });
+      source: { ...scrub(e), timetable: tt ?? null }, questions: frozen, created_at: iso(e.created_at) });
     paperIndex.set(paperKey('legacy', id), papers.length);
   }
 
@@ -129,7 +140,7 @@ export function translateExams(
     attempts.push({ id: attempts.length + 1, school_id: 0, kind, source_id: id, paper_id: paperId, student_id: stu !== null && known.students.has(stu) ? stu : null,
       status: str(a.status), submit_reason: str(a.submit_reason), started_at: iso(startedAt), submitted_at: iso(submittedAt), graded_at: iso(a.graded_at),
       extension_seconds: num(a.extension_seconds) ?? 0, raw_score: num(extra.raw_score), max_score: num(extra.max_score), percentage: num(extra.percentage),
-      flag_count: num(a.flag_count) ?? 0, integrity_count: num(a.integrity_count) ?? eventRows.length, question_order: order, source: { ...a } });
+      flag_count: num(a.flag_count) ?? 0, integrity_count: num(a.integrity_count) ?? eventRows.length, question_order: order, source: { ...scrub(a) } });
     const newAttempt = attempts.length;
     for (const ev of eventRows) events.push({ id: events.length + 1, school_id: 0, attempt_id: newAttempt, event_type: str(ev.event_type),
       occurred_at: iso(ev.created_at), payload: jsonOr<Record<string, unknown>>(ev.payload ?? ev.event_payload, { raw: str(ev.payload ?? ev.event_payload) }) });
@@ -167,7 +178,7 @@ export function translateExams(
     const result = rows('results').find((r) => num(r.exam_attempt_id) === id);
     freeze('legacy', a, pIdx ?? null, jsonOr<unknown[]>(a.question_order, []), integrityOf.get(id) ?? [], a.time_started, a.time_submitted,
       { raw_score: result?.score, max_score: null, percentage: null });
-    attempts[attempts.length - 1]!.source = { ...a, result: result ?? null };
+    attempts[attempts.length - 1]!.source = { ...scrub(a), result: result ?? null };
   }
 
   if (orphanAttempts) report.notes.push(`${orphanAttempts} exam sitting(s) pointed at a paper that is not in the file. They were kept, without a paper.`);
