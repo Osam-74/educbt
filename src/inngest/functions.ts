@@ -37,6 +37,7 @@ import { purgeExpiredSessions } from '@/lib/jobs/session-cleanup';
 import { sweepAllExpiredAttempts } from '@/lib/jobs/exam-sweep';
 import { drainAllQueuedEmails } from '@/lib/jobs/email-drain';
 import { runRestoreJob } from '@/lib/school-backup/job';
+import { sendAllCalendarReminders } from '@/lib/jobs/calendar-reminders';
 
 function log(fields: Record<string, unknown>) {
   // Structured single-line JSON — greppable now, shippable to Sentry later.
@@ -143,4 +144,24 @@ export const restoreSchoolJob = inngest.createFunction(
   },
 );
 
-export const jobs = [sweepExpiredAttemptsJob, purgeExpiredSessionsJob, drainEmailQueueJob, restoreSchoolJob];
+export const calendarRemindersJob = inngest.createFunction(
+  {
+    id: 'calendar-reminders',
+    name: 'Send academic calendar reminders (all active schools)',
+    concurrency: 1,
+    triggers: [{ cron: '0 * * * *' }],
+  },
+  async () => {
+    log({ job: 'calendar-reminders', status: 'start' });
+    try {
+      const summary = await sendAllCalendarReminders();
+      log({ job: 'calendar-reminders', status: 'end', ...summary, failures: summary.failures.length });
+      return summary;
+    } catch (err) {
+      log({ job: 'calendar-reminders', status: 'failed', error: err instanceof Error ? err.message : String(err) });
+      throw err;
+    }
+  },
+);
+
+export const jobs = [sweepExpiredAttemptsJob, purgeExpiredSessionsJob, drainEmailQueueJob, restoreSchoolJob, calendarRemindersJob];
