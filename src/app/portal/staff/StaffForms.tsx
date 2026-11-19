@@ -3,6 +3,7 @@
 import type { ReactNode } from 'react';
 import { useActionState, useEffect, useRef, useState } from 'react';
 import { staffAction, type ActionState } from './actions';
+import { groupDutyRows } from '@/lib/people/staff-groups';
 
 const EMPTY: ActionState = { ok: false, message: '' };
 
@@ -165,11 +166,11 @@ export function AssignDutiesForm({ staffOptions, levels, subjects, existing }: {
   staffOptions: Array<{ id: number; name: string }>;
   levels: LevelOption[];
   subjects: SubjectOption[];
-  existing: Record<number, { classTeacherLevelIds: number[]; subjectTeacherLevelIds: number[]; subjectIds: number[]; classTeacherClassIds: number[]; subjectTeacherClassIds: number[] }>;
+  existing: Record<number, { classTeacherLevelIds: number[]; subjectTeacherLevelIds: number[]; subjectIds: number[]; classTeacherClassIds: number[]; subjectTeacherClassIds: number[]; subjectClasses: Record<number, number[]> }>;
 }) {
   const [state, action, pending] = useActionState(staffAction, EMPTY);
   const [kind, setKind] = useState<'subject_teacher' | 'class_teacher'>('subject_teacher');
-  const [rows, setRows] = useState<Array<{ key: number; staffId: number; classIds: number[]; subjectIds: number[]; prefill: string | null }>>([{ key: 0, staffId: 0, classIds: [], subjectIds: [], prefill: null }]);
+  const [rows, setRows] = useState<Array<{ key: number; staffId: number; classIds: number[]; subjectIds: number[]; prefill: string | null; spawnedBy?: number }>>([{ key: 0, staffId: 0, classIds: [], subjectIds: [], prefill: null }]);
   const nextKey = useRef(1);
 
   const update = (key: number, patch: Partial<typeof rows[number]>) => {
@@ -195,30 +196,52 @@ export function AssignDutiesForm({ staffOptions, levels, subjects, existing }: {
   // JSS 1A only is shown as JSS 1A only; they are never widened to JSS 1B/1C.
   const prefillFor = (staffId: number, forKind: 'subject_teacher' | 'class_teacher') => {
     const held = staffId ? existing[staffId] : undefined;
-    if (!held) return { classIds: [] as number[], subjectIds: [] as number[], prefill: null as string | null };
+    type Group = { subjectIds: number[]; classIds: number[] };
+    if (!held) return { groups: [] as Group[], classIds: [] as number[], subjectIds: [] as number[], prefill: null as string | null };
     if (forKind === 'class_teacher') {
       const classIds = held.classTeacherClassIds;
       const names = classIds.map(armName).filter(Boolean);
-      return { classIds, subjectIds: [], prefill: names.length ? `Pre-filled: ${names.join(', ')}` : null };
+      return { groups: [] as Group[], classIds, subjectIds: [] as number[], prefill: names.length ? `Pre-filled: ${names.join(', ')}` : null };
     }
-    const classIds = held.subjectTeacherClassIds;
-    const subjectNames = held.subjectIds.map((id) => subjects.find((s) => s.id === id)?.name).filter(Boolean);
+    // One entry per distinct set of classes: a subject keeps only the classes it is really taken in.
+    const groups = groupDutyRows(held.subjectClasses);
+    const total = groups.reduce((n, g) => n + g.subjectIds.length * g.classIds.length, 0);
     return {
-      classIds, subjectIds: held.subjectIds,
-      prefill: (subjectNames.length || classIds.length)
-        ? `Pre-filled: ${subjectNames.length} subject${subjectNames.length === 1 ? '' : 's'}, ${classIds.length} class${classIds.length === 1 ? '' : 'es'}`
-        : null,
+      groups,
+      classIds: groups[0]?.classIds ?? [], subjectIds: groups[0]?.subjectIds ?? [],
+      prefill: total ? `Pre-filled: ${total} duty${total === 1 ? '' : 'ies'}${groups.length > 1 ? `, shown as ${groups.length} rows so each subject keeps only its own classes` : ''}` : null,
     };
   };
 
+  /** Fill one row from a prefill, and add a further row (same teacher) for each extra group of classes. */
+  const withPrefill = (rs: typeof rows, key: number, staffId: number, forKind: 'subject_teacher' | 'class_teacher') => {
+    const { groups, classIds, subjectIds, prefill } = prefillFor(staffId, forKind);
+    const spawned = groups.slice(1).map((g) => ({ key: nextKey.current++, staffId, classIds: g.classIds, subjectIds: g.subjectIds, prefill: null as string | null }));
+    return rs.flatMap((r) => r.key === key ? [{ ...r, staffId, classIds, subjectIds, prefill }, ...spawned] : [r]);
+  };
+
   const chooseTeacher = (key: number, staffId: number) => {
-    if (!staffId) { update(key, { staffId, classIds: [], subjectIds: [], prefill: null }); return; }
-    update(key, { staffId, ...prefillFor(staffId, kind) });
+    // Rows an earlier choice of this teacher spawned are replaced, so choosing twice never piles up copies.
+    setRows((rs) => {
+      const cleaned = rs.filter((r) => !(r.spawnedBy === key));
+      if (!staffId) return cleaned.map((r) => r.key === key ? { ...r, staffId, classIds: [], subjectIds: [], prefill: null } : r);
+      const out = withPrefill(cleaned, key, staffId, kind);
+      return out.map((r, i) => (i > 0 && !cleaned.some((c) => c.key === r.key) ? { ...r, spawnedBy: key } : r));
+    });
   };
 
   const changeKind = (next: 'subject_teacher' | 'class_teacher') => {
     setKind(next);
-    setRows((rs) => rs.map((r) => (r.staffId ? { ...r, ...prefillFor(r.staffId, next) } : { ...r, classIds: [], subjectIds: [], prefill: null })));
+    setRows((rs) => {
+      let out = rs.filter((r) => r.spawnedBy === undefined);
+      for (const r of out.slice()) {
+        if (!r.staffId) { out = out.map((x) => x.key === r.key ? { ...x, classIds: [], subjectIds: [], prefill: null } : x); continue; }
+        const before = out.length;
+        out = withPrefill(out, r.key, r.staffId, next);
+        out = out.map((x, i) => (i >= before && x.spawnedBy === undefined && !rs.some((o) => o.key === x.key) ? { ...x, spawnedBy: r.key } : x));
+      }
+      return out;
+    });
   };
 
   // A subject no longer offered by the stages of the chosen classes is

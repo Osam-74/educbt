@@ -9,7 +9,7 @@
  * builder — the two duty types were sharing one class/level list.
  */
 import assert from 'node:assert/strict';
-import { buildAssignmentPrefill } from './staff';
+import { buildAssignmentPrefill, groupDutyRows } from './staff';
 
 function main() {
   let count = 0;
@@ -50,13 +50,13 @@ function main() {
       [1],
     );
     assert.equal(prefill[99], undefined);
-    assert.deepEqual(prefill[1], { classTeacherLevelIds: [], subjectTeacherLevelIds: [], subjectIds: [], classTeacherClassIds: [], subjectTeacherClassIds: [] });
+    assert.deepEqual(prefill[1], { classTeacherLevelIds: [], subjectTeacherLevelIds: [], subjectIds: [], classTeacherClassIds: [], subjectTeacherClassIds: [], subjectClasses: {} });
   });
 
   check('every active staff id gets an entry even with no duties at all', () => {
     const prefill = buildAssignmentPrefill([], [1, 2]);
-    assert.deepEqual(prefill[1], { classTeacherLevelIds: [], subjectTeacherLevelIds: [], subjectIds: [], classTeacherClassIds: [], subjectTeacherClassIds: [] });
-    assert.deepEqual(prefill[2], { classTeacherLevelIds: [], subjectTeacherLevelIds: [], subjectIds: [], classTeacherClassIds: [], subjectTeacherClassIds: [] });
+    assert.deepEqual(prefill[1], { classTeacherLevelIds: [], subjectTeacherLevelIds: [], subjectIds: [], classTeacherClassIds: [], subjectTeacherClassIds: [], subjectClasses: {} });
+    assert.deepEqual(prefill[2], { classTeacherLevelIds: [], subjectTeacherLevelIds: [], subjectIds: [], classTeacherClassIds: [], subjectTeacherClassIds: [], subjectClasses: {} });
   });
 
   check('a teacher on ONE arm of a level is pre-filled with that arm only, never the whole level', () => {
@@ -73,6 +73,37 @@ function main() {
       { staffId: 1, type: 'subject_teacher', levelId: 20, classId: 2001, subjectId: 101 },
     ], [1]);
     assert.deepEqual(new Set(prefill[1]!.subjectTeacherClassIds), new Set([1001, 1002, 2001]));
+  });
+
+  check('REPORTED BUG: Subject A in SS1-3 and Subject B in SS1 only is two rows, so B is never widened to SS2 and SS3', () => {
+    const prefill = buildAssignmentPrefill([
+      { staffId: 1, type: 'subject_teacher', levelId: 1, classId: 11, subjectId: 100 },
+      { staffId: 1, type: 'subject_teacher', levelId: 2, classId: 21, subjectId: 100 },
+      { staffId: 1, type: 'subject_teacher', levelId: 3, classId: 31, subjectId: 100 },
+      { staffId: 1, type: 'subject_teacher', levelId: 1, classId: 11, subjectId: 200 },
+    ], [1]);
+    const rows = groupDutyRows(prefill[1]!.subjectClasses);
+    assert.equal(rows.length, 2);
+    const pairs = rows.flatMap((r) => r.subjectIds.flatMap((s) => r.classIds.map((c) => `${s}:${c}`))).sort();
+    assert.deepEqual(pairs, ['100:11', '100:21', '100:31', '200:11']);
+    assert.ok(!pairs.includes('200:21') && !pairs.includes('200:31'));
+  });
+
+  check('subjects taken in exactly the same classes share one row', () => {
+    const rows = groupDutyRows({ 100: [11, 21], 200: [21, 11], 300: [31] });
+    assert.equal(rows.length, 2);
+    assert.deepEqual(rows.find((r) => r.subjectIds.includes(100))!.subjectIds.sort(), [100, 200]);
+  });
+
+  check('loading then saving writes exactly what was held, over 500 random duty sets', () => {
+    let seed = 7; const rnd = (n: number) => { seed = (seed * 1103515245 + 12345) & 0x7fffffff; return seed % n; };
+    for (let t = 0; t < 500; t++) {
+      const held: Record<number, number[]> = {};
+      for (let s = 0; s < 1 + rnd(5); s++) { held[s + 1] = Array.from({ length: rnd(6) }, () => 1 + rnd(8)); }
+      const want = new Set<string>(); for (const [s, cs] of Object.entries(held)) for (const c of cs) want.add(`${s}:${c}`);
+      const got = new Set(groupDutyRows(held).flatMap((r) => r.subjectIds.flatMap((s) => r.classIds.map((c) => `${s}:${c}`))));
+      assert.deepEqual([...got].sort(), [...want].sort());
+    }
   });
 
   check('class-teacher arms and subject-teacher arms never mix', () => {

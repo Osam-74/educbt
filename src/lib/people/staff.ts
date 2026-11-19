@@ -782,6 +782,8 @@ export type AssignmentPrefill = {
   /** The exact arms (classes) held, so a teacher who takes Maths in JSS 1A
    *  only is shown as JSS 1A only and never widened to the whole level. */
   classTeacherClassIds: number[]; subjectTeacherClassIds: number[];
+  /** Each subject with the exact classes the teacher takes it in. The flat sets above lose this pairing. */
+  subjectClasses: Record<number, number[]>;
 };
 
 /**
@@ -800,13 +802,14 @@ export function buildAssignmentPrefill(dutyRows: DutyRow[], activeStaffIds: numb
   const activeSet = new Set(activeStaffIds);
   const result: Record<number, AssignmentPrefill> = {};
   for (const staffId of activeStaffIds) {
-    result[staffId] = { classTeacherLevelIds: [], subjectTeacherLevelIds: [], subjectIds: [], classTeacherClassIds: [], subjectTeacherClassIds: [] };
+    result[staffId] = { classTeacherLevelIds: [], subjectTeacherLevelIds: [], subjectIds: [], classTeacherClassIds: [], subjectTeacherClassIds: [], subjectClasses: {} };
   }
   const classTeacherClassSets = new Map<number, Set<number>>();
   const subjectTeacherClassSets = new Map<number, Set<number>>();
   const classTeacherSets = new Map<number, Set<number>>();
   const subjectTeacherSets = new Map<number, Set<number>>();
   const subjectSets = new Map<number, Set<number>>();
+  const pairing = new Map<number, Map<number, Set<number>>>();
   for (const d of dutyRows) {
     if (!activeSet.has(d.staffId)) continue;
     if (d.classId != null) {
@@ -831,6 +834,11 @@ export function buildAssignmentPrefill(dutyRows: DutyRow[], activeStaffIds: numb
         const set = subjectSets.get(d.staffId) ?? new Set<number>();
         set.add(d.subjectId);
         subjectSets.set(d.staffId, set);
+        if (d.classId != null) {
+          const bySubject = pairing.get(d.staffId) ?? new Map<number, Set<number>>();
+          const classes = bySubject.get(d.subjectId) ?? new Set<number>();
+          classes.add(d.classId); bySubject.set(d.subjectId, classes); pairing.set(d.staffId, bySubject);
+        }
       }
     }
   }
@@ -841,7 +849,10 @@ export function buildAssignmentPrefill(dutyRows: DutyRow[], activeStaffIds: numb
       subjectIds: [...(subjectSets.get(staffId) ?? [])],
       classTeacherClassIds: [...(classTeacherClassSets.get(staffId) ?? [])],
       subjectTeacherClassIds: [...(subjectTeacherClassSets.get(staffId) ?? [])],
+      subjectClasses: Object.fromEntries([...(pairing.get(staffId) ?? [])].map(([sub, cls]) => [sub, [...cls]])),
     };
   }
   return result;
 }
+
+export { groupDutyRows } from './staff-groups';
