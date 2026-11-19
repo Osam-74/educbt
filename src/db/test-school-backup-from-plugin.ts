@@ -60,6 +60,83 @@ async function main() {
       assert.equal(await count_('enrollments'), p.enrollments.length);
       assert.equal(await count_('staff_assignments'), p.staff_assignments.length);
     });
+    // ── Slice 2: results, checked against the plugin's OWN rows, never against the translator's output ──
+    const nameOf = (table: string, id: unknown) => String((plugin.tables[table].find((r: Row) => String(r.id) === String(id)) ?? {}).name ?? (plugin.tables[table].find((r: Row) => String(r.id) === String(id)) ?? {}).title ?? '');
+    const newStudent = async (oldId: unknown) => { const a = plugin.tables.students.find((r: Row) => String(r.id) === String(oldId)).admission_number;
+      return Number((await q<{ id: string }>('select id from students where school_id = $1 and admission_number = $2', [sid, a]))[0]!.id); };
+    const newSubject = async (oldId: unknown) => { const code = String(plugin.tables.subjects_v2.find((r: Row) => String(r.id) === String(oldId)).code).toUpperCase().replace(/\s+/g, '');
+      return Number((await q<{ id: string }>('select id from subjects where school_id = $1 and code = $2', [sid, code]))[0]!.id); };
+    const newTerm = async (oldId: unknown) => { const t = plugin.tables.terms.find((r: Row) => String(r.id) === String(oldId));
+      const rows = await q<{ id: string }>('select t.id from terms t join academic_sessions s on s.id = t.session_id where t.school_id = $1 and t.title = $2 and t.position = $3 and s.title = $4', [sid, t.title, t.term_order, nameOf('academic_sessions', t.session_id) || `Earlier session (recovered ${t.session_id})`]);
+      return Number(rows[0]!.id); };
+    await check('RESULTS: every score arrives with exactly the same value, for the same pupil, subject, term and assessment', async () => {
+      assert.equal(await count_('assessment_scores'), plugin.tables.assessment_scores.length);
+      const comp = new Map<string, string>(plugin.tables.assessment_components.map((c: Row) => [String(c.id), String(c.code)]));
+      for (const sc of plugin.tables.assessment_scores) {
+        const got = await q<{ score: string }>('select score from assessment_scores where school_id = $1 and student_id = $2 and subject_id = $3 and term_id = $4 and component_key = $5',
+          [sid, await newStudent(sc.student_id), await newSubject(sc.subject_id), await newTerm(sc.term_id), comp.get(String(sc.component_id))]);
+        assert.equal(got.length, 1, 'one score row'); assert.equal(Number(got[0]!.score), Number(sc.score), `score of pupil ${sc.student_id} subject ${sc.subject_id}`);
+      }
+    });
+    await check('RESULTS: the school settings carry the plugin assessment setup and its own grading scale, and the SaaS accepts them', async () => {
+      const { resultConfig } = await import('@/lib/results/config');
+      const [row] = await q<{ settings: Record<string, unknown> }>('select settings from schools where id = $1', [sid]);
+      const cfg = resultConfig(row!.settings); assert.ok(cfg, 'the SaaS config schema accepts the migrated settings');
+      assert.deepEqual(cfg!.assessmentComponents.map((c) => [c.key, c.maxScore, c.isExam]), plugin.tables.assessment_components.map((c: Row) => [c.code, Number(c.max_score), String(c.is_exam) === '1']));
+      const def = plugin.tables.grading_scales.find((x: Row) => String(x.is_default) === '1');
+      const bands = plugin.tables.grade_bands.filter((b: Row) => String(b.scale_id) === String(def.id));
+      assert.deepEqual(cfg!.gradingScale.bands.map((b) => [b.grade, b.min]).sort(), bands.map((b: Row) => [b.grade, Number(b.min_score)]).sort());
+      assert.equal(cfg!.gradingScale.bands.length, 5, 'the 2-band senior scale must NOT replace the default scale');
+    });
+    await check('RESULTS: every compiled result keeps its CA, exam and total, and its grade is the grade the school bands give that total', async () => {
+      assert.equal(await count_('subject_results'), plugin.tables.subject_results.length);
+      const def = plugin.tables.grading_scales.find((x: Row) => String(x.is_default) === '1');
+      const bands = plugin.tables.grade_bands.filter((b: Row) => String(b.scale_id) === String(def.id)).map((b: Row) => ({ g: String(b.grade), min: Number(b.min_score) })).sort((a: { min: number }, b: { min: number }) => b.min - a.min);
+      for (const r of plugin.tables.subject_results) {
+        const got = await q<{ ca_total: string; exam_total: string; total: string; grade: string; remark: string; complete: boolean; subject_position: number }>(
+          'select ca_total, exam_total, total, grade, remark, complete, subject_position from subject_results where school_id = $1 and student_id = $2 and subject_id = $3 and term_id = $4',
+          [sid, await newStudent(r.student_id), await newSubject(r.subject_id), await newTerm(r.term_id)]);
+        assert.equal(got.length, 1);
+        const g = got[0]!; assert.equal(Number(g.ca_total), Number(r.ca_total)); assert.equal(Number(g.exam_total), Number(r.exam_total)); assert.equal(Number(g.total), Number(r.total));
+        assert.equal(g.subject_position, Number(r.subject_position), 'position is carried, not recalculated');
+        if (g.complete) assert.equal(g.grade, bands.find((b: { min: number }) => Number(r.total) >= b.min)!.g, `grade of total ${r.total}`);
+        else { assert.equal(g.grade, ''); assert.equal(g.remark, 'Incomplete'); }
+      }
+    });
+    await check('RESULTS: a pupil missing an assessment is marked incomplete with no grade, and one with a zero is complete', async () => {
+      const inc = await q<{ n: string }>("select count(*)::int n from subject_results where school_id = $1 and complete = false and grade = '' and remark = 'Incomplete'", [sid]);
+      assert.ok(Number(inc[0]!.n) >= 1, 'the missing-exam pupil is incomplete');
+      const zero = await q<{ grade: string; complete: boolean }>("select grade, complete from subject_results where school_id = $1 and total = 0 and complete = true", [sid]);
+      assert.ok(zero.length >= 1 && zero.every((z) => z.grade === 'F'));
+    });
+    await check('RESULTS: ONLY what the plugin published is visible to students (published flag follows the term row)', async () => {
+      const termOf = (st: unknown, tm: unknown) => plugin.tables.term_results.find((t: Row) => String(t.student_id) === String(st) && String(t.term_id) === String(tm));
+      for (const r of plugin.tables.subject_results) {
+        const t = termOf(r.student_id, r.term_id);
+        const got = await q<{ published: boolean; state: string }>('select published, state from subject_results where school_id = $1 and student_id = $2 and subject_id = $3 and term_id = $4',
+          [sid, await newStudent(r.student_id), await newSubject(r.subject_id), await newTerm(r.term_id)]);
+        const expectPublished = t?.status === 'published';
+        assert.equal(got[0]!.published, expectPublished, `pupil ${r.student_id} term ${r.term_id} is ${t?.status}`);
+        if (!expectPublished) assert.notEqual(got[0]!.state, 'published');
+      }
+      const visible = await q<{ n: string }>('select count(*)::int n from subject_results where school_id = $1 and published', [sid]);
+      assert.equal(Number(visible[0]!.n), plugin.tables.subject_results.filter((r: Row) => termStatus(r) === 'published').length);
+      function termStatus(r: Row) { return plugin.tables.term_results.find((t: Row) => String(t.student_id) === String(r.student_id) && String(t.term_id) === String(r.term_id))?.status; }
+    });
+    await check('RESULTS: remarks (accents and quotes intact), attendance, position and approval state of every term result are carried', async () => {
+      assert.equal(await count_('term_summaries'), plugin.tables.term_results.length);
+      for (const t of plugin.tables.term_results) {
+        const [g] = await q<Row>('select * from term_summaries where school_id = $1 and student_id = $2 and term_id = $3', [sid, await newStudent(t.student_id), await newTerm(t.term_id)]);
+        assert.ok(g); assert.equal(g!.class_teacher_remark, t.class_teacher_remark ?? ''); assert.equal(g!.principal_remark, t.principal_remark ?? '');
+        assert.equal(Number(g!.days_present), Number(t.days_present)); assert.equal(Number(g!.days_total), Number(t.days_total));
+        assert.equal(Number(g!.class_position), Number(t.class_position)); assert.equal(g!.status, t.status);
+      }
+      assert.ok(plugin.tables.term_results.some((t: Row) => /très bien/.test(String(t.class_teacher_remark))), 'the fixture really has accented remarks');
+    });
+    await check('RESULTS: the migrated results report the real grading scale and are tied to it', async () => {
+      const rows = await q<{ grading_scale_id: string; grading_scale_version: number }>('select distinct grading_scale_id, grading_scale_version from subject_results where school_id = $1', [sid]);
+      assert.deepEqual(rows.map((r) => r.grading_scale_id), ['wp-' + plugin.tables.grading_scales.find((x: Row) => String(x.is_default) === '1').id]);
+    });
     await check('the school itself keeps its name', async () => assert.equal(restored.school.name, plugin.school.school_name));
     await check('students keep their admission numbers and names', async () => {
       const got = await q<{ admission_number: string; first_name: string; last_name: string }>('select admission_number, first_name, last_name from students where school_id = $1 order by admission_number', [sid]);
@@ -213,6 +290,54 @@ async function main() {
       // a carried person who changes their password BEFORE ever signing in with the old one (legacy hash still stored)
       await changeOwnPassword({ id: c.id, schoolId: s3 }, c.pw, 'Another-New-Pass-77');
       assert.equal(await shouldOfferNewPassword({ id: c.id, schoolId: s3 }), false);
+    });
+    await check('RESULTS: through the real student/parent view, a migrated student sees exactly the terms the plugin published, with all their subjects', async () => {
+      const { familyPublishedTerms } = await import('@/lib/results/family');
+      const { forSchool } = await import('@/db');
+      const published = new Set(plugin.tables.term_results.filter((t: Row) => t.status === 'published').map((t: Row) => `${t.student_id}/${t.term_id}`));
+      let sawPublished = 0, sawNothing = 0;
+      for (const st of plugin.tables.students) {
+        const newId = await newStudent(st.id);
+        const seen = await forSchool(sid, (tx) => familyPublishedTerms(tx, newId));
+        for (const t of plugin.tables.terms) {
+          const should = published.has(`${st.id}/${t.id}`);
+          const termId = await newTerm(t.id);
+          const hit = seen.find((x) => x.termId === termId);
+          assert.equal(!!hit, should, `student ${st.admission_number} term ${t.id} should ${should ? '' : 'NOT '}be visible`);
+          if (hit) { sawPublished++; const n = plugin.tables.subject_results.filter((r: Row) => String(r.student_id) === String(st.id) && String(r.term_id) === String(t.id)).length; assert.equal(hit.subjects, n, 'all subjects of the term are visible together'); }
+        }
+        if (seen.length === 0) sawNothing++;
+      }
+      assert.ok(sawPublished >= 4, 'the fixture really publishes some terms'); assert.ok(sawNothing >= 1, 'and really leaves some pupils with nothing visible');
+    });
+    await check('RESULTS: an assessment setup the SaaS cannot hold (totals 90, two exams) still keeps EVERY score and result, and says what to set again', async () => {
+      const odd = JSON.parse(JSON.stringify(plugin)); odd.tables.assessment_components[0].max_score = '0.00'; odd.tables.assessment_components[1].max_score = '10.00';
+      odd.tables.assessment_components[2].max_score = '10.00'; odd.tables.assessment_components[3].max_score = '70.00'; odd.tables.assessment_components[0].is_exam = '1';
+      const t = translatePluginBackup(odd);
+      assert.equal(t.report.translated.assessment_scores, plugin.tables.assessment_scores.length, 'no score lost');
+      assert.equal(t.report.translated.subject_results, plugin.tables.subject_results.length, 'no result lost');
+      assert.ok(t.report.notes.some((n) => /NOT carried and must be set again/.test(n) && /scores were kept/.test(n)));
+      const r = await restoreSchool({ actorUserId: admin!.id, file: encode(t.document), code: 'ODD-' + suffix, subdomain: 'odd' + suffix.toLowerCase(), principalPassword: 'defer' });
+      schoolIds.push(r.school.id);
+      const n = await q<{ n: string }>('select count(*)::int n from assessment_scores where school_id = $1', [r.school.id]);
+      assert.equal(Number(n[0]!.n), plugin.tables.assessment_scores.length);
+      const sum = await q<{ t: string }>('select sum(total) t from subject_results where school_id = $1', [r.school.id]);
+      assert.ok(Math.abs(Number(sum[0]!.t) - plugin.tables.subject_results.reduce((a: number, x: Row) => a + Number(x.total), 0)) < 0.005, 'every total is kept exactly');
+      const [st] = await q<{ settings: Record<string, unknown> }>('select settings from schools where id = $1', [r.school.id]);
+      assert.equal(st!.settings.assessmentComponents, undefined, 'the unusable setup is not pretended to be valid');
+    });
+    await check('RESULTS: a school with NO grading scale keeps its scores and results, with no grade invented', async () => {
+      const bare = JSON.parse(JSON.stringify(plugin)); bare.tables.grading_scales = []; bare.tables.grade_bands = [];
+      const t = translatePluginBackup(bare);
+      assert.equal(t.report.translated.subject_results, plugin.tables.subject_results.length);
+      assert.ok(t.document.tables.subject_results!.every((x) => x.grade === ''), 'no invented grades');
+      assert.equal((t.document.school.settings as { gradingScale?: unknown }).gradingScale, undefined);
+    });
+    await check('RESULTS: a score for a pupil or subject that is not in the file is reported, never attached to someone else', async () => {
+      const bad = JSON.parse(JSON.stringify(plugin)); bad.tables.assessment_scores.push({ id: '9999', school_id: '1', student_id: '88888', subject_id: '1', class_id: '4', session_id: '2', term_id: '4', component_id: '25', score: '5', max_score: '10', source: 'manual' });
+      const t = translatePluginBackup(bad);
+      assert.equal(t.report.translated.assessment_scores, plugin.tables.assessment_scores.length);
+      assert.ok(t.report.notes.some((n) => /1 score\(s\) pointed at a pupil/.test(n)));
     });
     const carriedOf = async (doc: unknown, tag: string) => {
       const r = await restoreSchool({ actorUserId: admin!.id, file: encode(doc as never), code: `T${tag}-` + suffix, subdomain: `t${tag}` + suffix.toLowerCase(), principalPassword: 'defer' });

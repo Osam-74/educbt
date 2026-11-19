@@ -15,6 +15,7 @@
  */
 import { buildDocument, type BackupDocument } from './format';
 import { isCarryableLegacyHash } from '@/lib/auth/legacy-password';
+import { translateResults } from './from-plugin-results';
 
 type Row = Record<string, unknown>;
 export type PluginBackup = {
@@ -72,7 +73,7 @@ const ASSIGNMENT: Record<string, string> = { class_teacher: 'class_teacher', sub
 
 /** Tables the plugin file may carry that slice 1 does not translate. Named, never silently ignored. */
 const LATER_SLICES = [
-  'assessment_components', 'assessment_scores', 'subject_results', 'term_results', 'results', 'grading_scales', 'grade_bands',
+  'results',
   'questions', 'question_options', 'question_sets', 'question_sub_items', 'passages', 'exams', 'exam_papers', 'exam_series',
   'exam_attempts', 'attempts', 'attempt_answers', 'attempt_events', 'exam_questions', 'paper_questions', 'exam_timetables',
   'paper_invigilators', 'promotion_batches', 'promotion_decisions', 'promotions', 'transcripts', 'announcements',
@@ -247,10 +248,16 @@ export function translatePluginBackup(plugin: PluginBackup): { document: BackupD
     // A duty the school already ended ("dropped") is kept as an inactive record, so history is not lost.
     class_id: link(r.class_id), subject_id: link(r.subject_id), status: (str(r.status) ?? 'active') })));
 
+  // ── Results (slice 2) ────────────────────────────────────────
+  const slice = { notes };
+  const resultsSlice = translateResults(plugin, { subjects: subjectIds, students: studentIds, sessions: new Set(out.academic_sessions!.map((x) => x.id)),
+    terms: new Set(out.terms!.map((x) => x.id)), classes: classIds }, slice);
+  for (const [name, list] of Object.entries(resultsSlice.tables)) emit(name, list);
+
   const notTranslated = LATER_SLICES.filter((t) => rows(t).length > 0);
   const s = plugin.school;
   const school: Row = { name: str(s.school_name) ?? 'Imported school', address: str(s.address), phone: str(s.phone), email: str(s.email), website: str(s.website),
-    principal_name: str(s.principal_name), logo_url: str(s.logo), principal_photo_url: str(s.principal_photo), settings: {} };
+    principal_name: str(s.principal_name), logo_url: str(s.logo), principal_photo_url: str(s.principal_photo), settings: resultsSlice.settings };
 
   const document = buildDocument({ createdAt: new Date().toISOString(), app: { name: 'EduCBT', schemaTables: Object.keys(out).length },
     credentials: carried > 0 ? 'wordpress-hashes' : 'none', school, tables: out, uploads: plugin.uploads ?? {} });
