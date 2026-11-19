@@ -23,6 +23,7 @@ const TYPE_LABELS: Record<NotificationType, string> = {
   question_set_deleted: 'Draft set deleted',
   result_approved: 'Results approved',
   staff_assigned: 'New teaching assignment',
+  calendar_event: 'Academic calendar',
 };
 
 /**

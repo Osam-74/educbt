@@ -235,6 +235,13 @@
       "when": 1790688000000,
       "tag": "0032_academic_calendar",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1790774400000,
+      "tag": "0033_calendar_notification",
+      "breakpoints": true
     }
   ]
 }
