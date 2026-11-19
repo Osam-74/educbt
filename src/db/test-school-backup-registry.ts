@@ -101,6 +101,10 @@ async function main() {
       'audit_log.entity_id': 'cleared on restore (points at many kinds of row)',
       'users.login_id': 'the sign-in name, not a row id',
       'announcements.audience_ref': 'remapped by the restore according to `audience`',
+      'legacy_exam_papers.source_id': 'the id the paper had in the WordPress plugin, kept to trace it back; not a row here',
+      'legacy_exam_papers.series_source_id': 'the id the examination had in the WordPress plugin; not a row here',
+      'legacy_exam_attempts.source_id': 'the id the sitting had in the WordPress plugin; not a row here',
+      'legacy_attempt_answers.question_source_id': 'the id the question had in the WordPress plugin; not a row here',
     };
     await check('every id-looking column on a backed-up table is declared (catches references with NO foreign key)', () => {
       const missing: string[] = [];

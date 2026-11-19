@@ -410,6 +410,30 @@ DROP POLICY IF EXISTS tenant_isolation ON bank_question_parts;
 CREATE POLICY tenant_isolation ON bank_question_parts
   USING (school_id = current_school_id() OR is_platform_admin())
   WITH CHECK (school_id = current_school_id() OR is_platform_admin());
+ALTER TABLE legacy_exam_papers ENABLE ROW LEVEL SECURITY;
+ALTER TABLE legacy_exam_papers FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON legacy_exam_papers;
+CREATE POLICY tenant_isolation ON legacy_exam_papers
+  USING (school_id = current_school_id() OR is_platform_admin())
+  WITH CHECK (school_id = current_school_id() OR is_platform_admin());
+ALTER TABLE legacy_exam_attempts ENABLE ROW LEVEL SECURITY;
+ALTER TABLE legacy_exam_attempts FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON legacy_exam_attempts;
+CREATE POLICY tenant_isolation ON legacy_exam_attempts
+  USING (school_id = current_school_id() OR is_platform_admin())
+  WITH CHECK (school_id = current_school_id() OR is_platform_admin());
+ALTER TABLE legacy_attempt_answers ENABLE ROW LEVEL SECURITY;
+ALTER TABLE legacy_attempt_answers FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON legacy_attempt_answers;
+CREATE POLICY tenant_isolation ON legacy_attempt_answers
+  USING (school_id = current_school_id() OR is_platform_admin())
+  WITH CHECK (school_id = current_school_id() OR is_platform_admin());
+ALTER TABLE legacy_attempt_events ENABLE ROW LEVEL SECURITY;
+ALTER TABLE legacy_attempt_events FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON legacy_attempt_events;
+CREATE POLICY tenant_isolation ON legacy_attempt_events
+  USING (school_id = current_school_id() OR is_platform_admin())
+  WITH CHECK (school_id = current_school_id() OR is_platform_admin());
 ALTER TABLE school_remark_ranges ENABLE ROW LEVEL SECURITY;
 ALTER TABLE school_remark_ranges FORCE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS tenant_isolation ON school_remark_ranges;

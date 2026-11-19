@@ -214,6 +214,13 @@
       "when": 1790428800000,
       "tag": "0029_question_bank",
       "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "when": 1790515200000,
+      "tag": "0030_legacy_exam_history",
+      "breakpoints": true
     }
   ]
 }

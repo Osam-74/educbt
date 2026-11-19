@@ -23,7 +23,7 @@ import {
   integer, numeric, uniqueIndex, index, pgEnum, jsonb,
 } from 'drizzle-orm/pg-core';
 import { schools, academicSessions, terms, subjects, classLevels, departments, classes } from './core';
-import { staff } from './people';
+import { staff, students } from './people';
 
 // ── Enums ────────────────────────────────────────────────────────────────────
 
@@ -368,3 +368,92 @@ export const bankQuestionParts = pgTable('bank_question_parts', {
   marks: numeric('marks', { precision: 8, scale: 2 }).default('0').notNull(),
   sequence: integer('sequence').default(0).notNull(),
 }, (t) => ({ questionIdx: index('bank_question_parts_question_idx').on(t.questionId, t.sequence) }));
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Exam history from the WordPress plugin (migration 0030). READ-ONLY.
+//
+// A plugin paper draws from the standalone question bank, and a SaaS attempt can only point at a set-based
+// question, so they cannot be re-created as live exams without inventing sets the school never made. They are kept
+// as history: the queryable facts are real columns, and the plugin's original row is kept verbatim in `source`
+// so no column is ever lost. Nothing here feeds a live exam, a result or a report card.
+// ─────────────────────────────────────────────────────────────────────────────
+export const legacyExamPapers = pgTable('legacy_exam_papers', {
+  id: bigserial('id', { mode: 'number' }).primaryKey(),
+  schoolId: bigint('school_id', { mode: 'number' }).notNull().references(() => schools.id, { onDelete: 'cascade' }),
+  kind: varchar('kind', { length: 20 }).notNull(),
+  sourceId: bigint('source_id', { mode: 'number' }).notNull(),
+  seriesSourceId: bigint('series_source_id', { mode: 'number' }),
+  title: varchar('title', { length: 255 }).default('').notNull(),
+  seriesType: varchar('series_type', { length: 30 }).default('').notNull(),
+  subjectId: bigint('subject_id', { mode: 'number' }),
+  subjectName: varchar('subject_name', { length: 150 }).default('').notNull(),
+  classId: bigint('class_id', { mode: 'number' }),
+  className: varchar('class_name', { length: 100 }).default('').notNull(),
+  sessionId: bigint('session_id', { mode: 'number' }),
+  termId: bigint('term_id', { mode: 'number' }),
+  status: varchar('status', { length: 30 }).default('').notNull(),
+  scheduledAt: timestamp('scheduled_at', { withTimezone: true }),
+  durationSeconds: integer('duration_seconds').default(0).notNull(),
+  questionCount: integer('question_count').default(0).notNull(),
+  totalMarks: numeric('total_marks', { precision: 10, scale: 2 }).default('0').notNull(),
+  source: jsonb('source').$type<Record<string, unknown>>().notNull(),
+  questions: jsonb('questions').$type<unknown[]>().notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+}, (t) => ({
+  sourceUq: uniqueIndex('legacy_exam_papers_source_uq').on(t.schoolId, t.kind, t.sourceId),
+}));
+
+export const legacyExamAttempts = pgTable('legacy_exam_attempts', {
+  id: bigserial('id', { mode: 'number' }).primaryKey(),
+  schoolId: bigint('school_id', { mode: 'number' }).notNull().references(() => schools.id, { onDelete: 'cascade' }),
+  kind: varchar('kind', { length: 20 }).notNull(),
+  sourceId: bigint('source_id', { mode: 'number' }).notNull(),
+  paperId: bigint('paper_id', { mode: 'number' }).references(() => legacyExamPapers.id, { onDelete: 'set null' }),
+  studentId: bigint('student_id', { mode: 'number' }).references(() => students.id, { onDelete: 'set null' }),
+  status: varchar('status', { length: 30 }).default('').notNull(),
+  submitReason: varchar('submit_reason', { length: 30 }).default('').notNull(),
+  startedAt: timestamp('started_at', { withTimezone: true }),
+  submittedAt: timestamp('submitted_at', { withTimezone: true }),
+  gradedAt: timestamp('graded_at', { withTimezone: true }),
+  extensionSeconds: integer('extension_seconds').default(0).notNull(),
+  rawScore: numeric('raw_score', { precision: 10, scale: 2 }),
+  maxScore: numeric('max_score', { precision: 10, scale: 2 }),
+  percentage: numeric('percentage', { precision: 6, scale: 2 }),
+  flagCount: integer('flag_count').default(0).notNull(),
+  integrityCount: integer('integrity_count').default(0).notNull(),
+  questionOrder: jsonb('question_order').$type<unknown[]>().notNull(),
+  source: jsonb('source').$type<Record<string, unknown>>().notNull(),
+}, (t) => ({
+  sourceUq: uniqueIndex('legacy_exam_attempts_source_uq').on(t.schoolId, t.kind, t.sourceId),
+  studentIdx: index('legacy_exam_attempts_student_idx').on(t.schoolId, t.studentId),
+}));
+
+export const legacyAttemptAnswers = pgTable('legacy_attempt_answers', {
+  id: bigserial('id', { mode: 'number' }).primaryKey(),
+  schoolId: bigint('school_id', { mode: 'number' }).notNull().references(() => schools.id, { onDelete: 'cascade' }),
+  attemptId: bigint('attempt_id', { mode: 'number' }).notNull().references(() => legacyExamAttempts.id, { onDelete: 'cascade' }),
+  position: integer('position').default(0).notNull(),
+  questionSourceId: bigint('question_source_id', { mode: 'number' }),
+  questionText: text('question_text').default('').notNull(),
+  chosenOption: text('chosen_option'),
+  correctOption: text('correct_option'),
+  answerText: text('answer_text'),
+  isCorrect: boolean('is_correct'),
+  marksAwarded: numeric('marks_awarded', { precision: 8, scale: 2 }),
+  marksAvailable: numeric('marks_available', { precision: 8, scale: 2 }),
+  answeredAt: timestamp('answered_at', { withTimezone: true }),
+  source: jsonb('source').$type<Record<string, unknown>>().notNull(),
+}, (t) => ({
+  attemptIdx: index('legacy_attempt_answers_attempt_idx').on(t.attemptId, t.position),
+}));
+
+export const legacyAttemptEvents = pgTable('legacy_attempt_events', {
+  id: bigserial('id', { mode: 'number' }).primaryKey(),
+  schoolId: bigint('school_id', { mode: 'number' }).notNull().references(() => schools.id, { onDelete: 'cascade' }),
+  attemptId: bigint('attempt_id', { mode: 'number' }).notNull().references(() => legacyExamAttempts.id, { onDelete: 'cascade' }),
+  eventType: varchar('event_type', { length: 60 }).default('').notNull(),
+  occurredAt: timestamp('occurred_at', { withTimezone: true }),
+  payload: jsonb('payload').$type<Record<string, unknown>>().notNull(),
+}, (t) => ({
+  attemptIdx: index('legacy_attempt_events_attempt_idx').on(t.attemptId),
+}));

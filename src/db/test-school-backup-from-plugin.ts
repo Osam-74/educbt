@@ -396,6 +396,96 @@ async function main() {
       const links = await q<{ child: string; parent: string }>('select c.id child, p.id parent from bank_questions c join bank_questions p on p.id = c.parent_id where c.school_id = $1 and p.school_id = $1', [r.school.id]);
       assert.equal(links.length, 1, 'the parent link was restored inside the new school');
     });
+    // ── Slice 4: exam papers and sittings kept as history, checked against the plugin's OWN rows ───────────────
+    const pAttempts = (plugin.tables.attempts as Row[]).slice().sort((a, b) => Number(a.id) - Number(b.id));
+    const histOf = async (srcId: string) => (await q<Row>("select * from legacy_exam_attempts where school_id = $1 and kind = 'paper' and source_id = $2", [sid, srcId]))[0]!;
+    await check('EXAMS: every paper, empty series, legacy exam and sitting arrives, nothing is dropped', async () => {
+      assert.equal(await count_('legacy_exam_attempts'), pAttempts.length + (plugin.tables.exam_attempts as Row[]).length);
+      assert.equal(await count_('legacy_exam_papers'), (plugin.tables.exam_papers as Row[]).length + (plugin.tables.exams as Row[]).length
+        + (plugin.tables.exam_series as Row[]).filter((x) => !(plugin.tables.exam_papers as Row[]).some((p) => String(p.series_id) === String(x.id))).length);
+      assert.ok(pAttempts.length >= 4, 'the fixture really holds sittings');
+    });
+    await check('EXAMS: every score is EXACTLY the plugin figure (carried, never re-graded or re-scaled)', async () => {
+      for (const a of pAttempts) {
+        const h = await histOf(String(a.id));
+        assert.equal(Number(h.raw_score), Number(a.raw_score), 'raw score of ' + a.id); assert.equal(Number(h.max_score), Number(a.max_score), 'max score of ' + a.id);
+        assert.equal(Number(h.percentage), Number(a.percentage), 'percentage of ' + a.id);
+        assert.equal(h.status, String(a.status)); assert.equal(h.submit_reason, String(a.submit_reason ?? ''));
+      }
+      const graded = pAttempts.filter((a) => a.status === 'graded'); assert.ok(graded.length >= 3);
+      assert.ok(pAttempts.some((a) => a.status === 'in_progress'), 'an unfinished sitting is kept as unfinished, not turned into a score');
+    });
+    await check('EXAMS: each sitting belongs to the SAME student and the same paper as in the plugin', async () => {
+      for (const a of pAttempts) {
+        const h = await histOf(String(a.id));
+        const stu = plugin.tables.students.find((x: Row) => String(x.id) === String(a.student_id));
+        const [s2] = await q<{ admission_number: string }>('select admission_number from students where id = $1', [h.student_id as string]);
+        assert.equal(s2!.admission_number, String(stu.admission_number).trim(), 'student of sitting ' + a.id);
+        const [pp] = await q<{ source_id: string; kind: string }>('select source_id, kind from legacy_exam_papers where id = $1', [h.paper_id as string]);
+        assert.equal(String(pp!.source_id), String(a.paper_id)); assert.equal(pp!.kind, 'paper');
+      }
+    });
+    await check('EXAMS: every answer is kept in the order the student saw it, with what they chose and what was right', async () => {
+      for (const a of pAttempts) {
+        const h = await histOf(String(a.id));
+        const order: number[] = JSON.parse(String(a.question_order));
+        const got = await q<Row>('select * from legacy_attempt_answers where attempt_id = $1 order by position', [h.id as string]);
+        assert.equal(got.length, order.length, 'one row per question the student was shown, answered or not (sitting ' + a.id + ')');
+        const ans = (plugin.tables.attempt_answers as Row[]).filter((x) => String(x.attempt_id) === String(a.id));
+        got.forEach((g, i) => {
+          assert.equal(String(g.question_source_id), String(order[i]), 'order position ' + i);
+          const mine = ans.find((x) => String(x.question_id) === String(order[i]));
+          if (!mine) { assert.equal(g.chosen_option, null, 'unanswered stays unanswered'); assert.equal(g.marks_awarded, null); return; }
+          const opt = (plugin.tables.question_options as Row[]).find((o) => String(o.id) === String(mine.option_id));
+          assert.equal(g.chosen_option, String(opt!.option_text).trim(), 'chosen option'); assert.equal(Number(g.marks_awarded), Number(mine.marks_awarded));
+          assert.equal(g.is_correct, mine.is_correct === null ? null : String(mine.is_correct) === '1', 'correctness as graded then');
+        });
+        const sum = got.reduce((t, g) => t + Number(g.marks_awarded ?? 0), 0);
+        if (a.status === 'graded') assert.equal(sum, Number(a.raw_score), 'the answers add up to the stored score for sitting ' + a.id);
+      }
+    });
+    await check('EXAMS: a later edit to the live question bank cannot change what a past sitting says', async () => {
+      const h = await histOf(String(pAttempts[0]!.id));
+      const before = await q<{ question_text: string; chosen_option: string; correct_option: string }>('select question_text, chosen_option, correct_option from legacy_attempt_answers where attempt_id = $1 order by position', [h.id as string]);
+      await q("update bank_questions set question_text = 'EDITED LATER' where school_id = $1", [sid]);
+      await q("update bank_question_options set option_text = 'EDITED LATER' where school_id = $1", [sid]);
+      const after = await q<{ question_text: string; chosen_option: string; correct_option: string }>('select question_text, chosen_option, correct_option from legacy_attempt_answers where attempt_id = $1 order by position', [h.id as string]);
+      assert.deepEqual(after, before); assert.ok(before.every((b) => b.question_text.startsWith('Biology paper question')), 'the frozen wording is the original');
+    });
+    await check('EXAMS: the original plugin row is kept verbatim, including columns this code does not use', async () => {
+      const [h] = await q<{ source: Record<string, string> }>("select source from legacy_exam_attempts where school_id = $1 and kind = 'paper' and source_id = $2", [sid, String(pAttempts[0]!.id)]);
+      for (const k of Object.keys(pAttempts[0]!)) assert.equal(String(h!.source[k] ?? ''), String(pAttempts[0]![k] ?? ''), 'source.' + k);
+      assert.ok('session_token' in h!.source, 'the sitting token is kept');
+      const [p] = await q<{ source: Record<string, unknown>; questions: unknown[] }>("select source, questions from legacy_exam_papers where school_id = $1 and kind = 'paper'", [sid]);
+      assert.equal(String(p!.source.access_code ?? '').length > 0, true, 'the paper access code is kept'); assert.equal(p!.questions.length, 20);
+    });
+    await check('EXAMS: the empty draft series and the legacy demo exam (with its timetable) are kept too', async () => {
+      const kinds = await q<{ kind: string; n: string }>('select kind, count(*)::int n from legacy_exam_papers where school_id = $1 group by 1', [sid]);
+      assert.deepEqual(Object.fromEntries(kinds.map((k) => [k.kind, Number(k.n)])), { paper: 1, series: 1, legacy: 1 });
+      const [l] = await q<{ source: { timetable: { subject: string } | null }; questions: unknown[] }>("select source, questions from legacy_exam_papers where school_id = $1 and kind = 'legacy'", [sid]);
+      assert.equal(l!.source.timetable!.subject, 'General Studies'); assert.equal(l!.questions.length, 5);
+    });
+    await check('EXAMS: history never leaks into live results, report cards or the student view', async () => {
+      const [r] = await q<{ n: string }>('select count(*)::int n from attempts where school_id = $1', [sid]); assert.equal(Number(r!.n), 0, 'no live SaaS attempt was invented');
+      const [e] = await q<{ n: string }>('select count(*)::int n from exam_papers where school_id = $1', [sid]); assert.equal(Number(e!.n), 0, 'no live SaaS paper was invented');
+      const [s1] = await q<{ n: string }>('select count(*)::int n from exam_series where school_id = $1', [sid]); assert.equal(Number(s1!.n), 0, 'no live SaaS series was invented');
+    });
+    await check('EXAMS: tenant isolation: another school cannot read this exam history, answers or integrity log', async () => {
+      const { forSchool, schema } = await import('@/db'); const other = schoolIds.find((x) => x !== sid)!;
+      for (const t of [schema.legacyExamPapers, schema.legacyExamAttempts, schema.legacyAttemptAnswers, schema.legacyAttemptEvents] as const) {
+        const seen = await forSchool(other, (tx) => tx.select({ id: t.id }).from(t).where(eq(t.schoolId, sid)));
+        assert.equal(seen.length, 0);
+      }
+      await assert.rejects(forSchool(other, (tx) => tx.insert(schema.legacyExamAttempts).values({ schoolId: sid, kind: 'paper', sourceId: 999, questionOrder: [], source: {} })));
+    });
+    await check('EXAMS: a sitting for a student or paper that is not in the file is kept and reported, never given to someone else', async () => {
+      const bad = JSON.parse(JSON.stringify(plugin)); bad.tables.attempts.push({ ...bad.tables.attempts[0], id: '900', student_id: '99999', paper_id: '88888', session_token: 'x' });
+      const t = translatePluginBackup(bad);
+      assert.equal(t.report.translated.legacy_exam_attempts, plugin.tables.attempts.length + plugin.tables.exam_attempts.length + 1);
+      const last = t.document.tables.legacy_exam_attempts!.find((a) => a.source_id === 900)!;
+      assert.equal(last.student_id, null); assert.equal(last.paper_id, null);
+      assert.ok(t.report.notes.some((n) => /pointed at a paper that is not in the file/.test(n)) && t.report.notes.some((n) => /belonged to a student who is not in the file/.test(n)));
+    });
     await check('RESULTS: an assessment setup the SaaS cannot hold (totals 90, two exams) still keeps EVERY score and result, and says what to set again', async () => {
       const odd = JSON.parse(JSON.stringify(plugin)); odd.tables.assessment_components[0].max_score = '0.00'; odd.tables.assessment_components[1].max_score = '10.00';
       odd.tables.assessment_components[2].max_score = '10.00'; odd.tables.assessment_components[3].max_score = '70.00'; odd.tables.assessment_components[0].is_exam = '1';

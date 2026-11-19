@@ -17,6 +17,7 @@ import { buildDocument, type BackupDocument } from './format';
 import { isCarryableLegacyHash } from '@/lib/auth/legacy-password';
 import { translateResults } from './from-plugin-results';
 import { translateQuestions } from './from-plugin-questions';
+import { translateExams } from './from-plugin-exams';
 
 type Row = Record<string, unknown>;
 export type PluginBackup = {
@@ -74,10 +75,8 @@ const ASSIGNMENT: Record<string, string> = { class_teacher: 'class_teacher', sub
 
 /** Tables the plugin file may carry that slice 1 does not translate. Named, never silently ignored. */
 const LATER_SLICES = [
-  'results',
-  'question_sets', 'passages', 'question_drafts', 'exams', 'exam_papers', 'exam_series',
-  'exam_attempts', 'attempts', 'attempt_answers', 'attempt_events', 'exam_questions', 'paper_questions', 'exam_timetables',
-  'paper_invigilators', 'promotion_batches', 'promotion_decisions', 'promotions', 'transcripts', 'announcements',
+  'question_sets', 'passages', 'question_drafts',
+  'promotion_batches', 'promotion_decisions', 'promotions', 'transcripts', 'announcements',
   'messages', 'message_threads', 'notifications', 'signatures', 'remark_ranges',
 ];
 
@@ -260,6 +259,12 @@ export function translatePluginBackup(plugin: PluginBackup): { document: BackupD
   for (const sub of subjectRows) subjectByName.set(String(sub.name).toLowerCase(), Number(sub.id));
   const questionSlice = translateQuestions(plugin, { subjects: subjectByName, staff: staffIds }, { notes });
   for (const [name, list] of Object.entries(questionSlice.tables)) emit(name, list);
+
+  // ── Exam papers and sittings, kept as history (slice 4) ───────
+  const nameOf = (rows: Row[], key: string) => new Map(rows.map((r) => [Number(r.id), String(r[key] ?? '')]));
+  const examSlice = translateExams(plugin, { subjects: subjectIds as Set<number>, classes: classIds as Set<number>, sessions: new Set(out.academic_sessions!.map((x) => Number(x.id))),
+    terms: new Set(out.terms!.map((x) => Number(x.id))), students: studentIds as Set<number>, subjectNames: nameOf(subjectRows, 'name'), classNames: nameOf(classRows, 'display_name') }, { notes });
+  for (const [name, list] of Object.entries(examSlice.tables)) emit(name, list);
 
   const notTranslated = LATER_SLICES.filter((t) => rows(t).length > 0);
   const s = plugin.school;
