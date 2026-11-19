@@ -54,6 +54,9 @@ export function portalAreas(role: string, teaching: boolean, classTeacher: boole
   ] });
   if (role === 'student') areas.push({ label: 'Student', items: [item('', 'Dashboard', 'area:student'), item('/my-results', 'My results', 'results'), item('/practice', 'Practice', 'tests')] });
   if (role === 'parent') areas.push({ label: 'Parent', items: [item('', 'Dashboard', 'area:guardian'), item('/children', 'My children', 'children'), item('/timetable', 'Exam timetable', 'timetable')] });
+  // Calendar: the academic calendar (terms, exams, holidays, events) and the class teaching timetable.
+  // Both are for every role; WHAT each person sees and may change is decided on the server, not by this menu.
+  areas.push({ label: 'Calendar', items: [item('/calendar', 'Academic Calendar', 'timetable'), item('/calendar/timetable', 'Class Timetable', 'timetable')] });
   // Communications are for everyone: the inbox, the announcements board and
   // (for staff and parents) messages. Added as its own area so the sidebar
   // never buries the unread count.
