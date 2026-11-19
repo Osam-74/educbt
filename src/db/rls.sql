@@ -590,3 +590,25 @@ CREATE POLICY platform_admin_only ON school_backup_chunks
   FOR ALL
   USING (is_platform_admin())
   WITH CHECK (is_platform_admin());
+
+-- ── Academic calendar (migration 0032): every table is private to its school.
+ALTER TABLE academic_calendars ENABLE ROW LEVEL SECURITY;
+ALTER TABLE academic_calendars FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON academic_calendars;
+CREATE POLICY tenant_isolation ON academic_calendars
+  USING (school_id = current_school_id() OR is_platform_admin())
+  WITH CHECK (school_id = current_school_id() OR is_platform_admin());
+
+ALTER TABLE calendar_events ENABLE ROW LEVEL SECURITY;
+ALTER TABLE calendar_events FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON calendar_events;
+CREATE POLICY tenant_isolation ON calendar_events
+  USING (school_id = current_school_id() OR is_platform_admin())
+  WITH CHECK (school_id = current_school_id() OR is_platform_admin());
+
+ALTER TABLE calendar_event_classes ENABLE ROW LEVEL SECURITY;
+ALTER TABLE calendar_event_classes FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON calendar_event_classes;
+CREATE POLICY tenant_isolation ON calendar_event_classes
+  USING (school_id = current_school_id() OR is_platform_admin())
+  WITH CHECK (school_id = current_school_id() OR is_platform_admin());

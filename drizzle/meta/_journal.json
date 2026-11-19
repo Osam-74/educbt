@@ -228,6 +228,13 @@
       "when": 1790601600000,
       "tag": "0031_user_login_aliases",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1790688000000,
+      "tag": "0032_academic_calendar",
+      "breakpoints": true
     }
   ]
 }
