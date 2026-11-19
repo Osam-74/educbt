@@ -116,7 +116,7 @@ export async function restoreSchool(input: RestoreInput): Promise<RestoreResult>
     );
 
     // 4. Every table, in dependency order.
-    const questionParents: Array<{ oldId: number; oldParent: number }> = [];
+    const questionParents: Array<{ table: 'questions' | 'bank_questions'; oldId: number; oldParent: number }> = [];
     for (const spec of DATA_TABLES) {
       if (spec.table === 'portal_uploads') continue; // restored above, from `uploads`
       const rows = (doc.tables[spec.table] ?? []) as Row[];
@@ -130,7 +130,7 @@ export async function restoreSchool(input: RestoreInput): Promise<RestoreResult>
         const row = remapRow(spec, source, { newSchoolId, ids, photoTokens, takenEmails: taken, credentials: doc.credentials });
 
         if (spec.table === 'question_vault') row.payload = remapVaultPayload(source.payload, ids, newSchoolId);
-        if (spec.table === 'questions' && source.parent_id != null) questionParents.push({ oldId: Number(source.id), oldParent: Number(source.parent_id) });
+        if ((spec.table === 'questions' || spec.table === 'bank_questions') && source.parent_id != null) questionParents.push({ table: spec.table, oldId: Number(source.id), oldParent: Number(source.parent_id) });
 
         // Only columns that exist today and have a value; an unknown column in an older file is ignored,
         // never interpolated.
@@ -148,11 +148,11 @@ export async function restoreSchool(input: RestoreInput): Promise<RestoreResult>
     }
 
     // 5. Second pass: a question's parent could not be known until every question existed.
-    for (const { oldId, oldParent } of questionParents) {
-      const newId = ids.get('questions', oldId); const newParent = ids.get('questions', oldParent);
+    for (const { table, oldId, oldParent } of questionParents) {
+      const newId = ids.get(table, oldId); const newParent = ids.get(table, oldParent);
       if (newId !== undefined && newParent !== undefined) {
-        await tx.execute(sql`update questions set parent_id = ${newParent} where id = ${newId} and school_id = ${newSchoolId}`);
-      } else skipped.push(`question #${oldId} lost its parent link (the parent was not in the backup)`);
+        await tx.execute(sql`update ${sql.identifier(table)} set parent_id = ${newParent} where id = ${newId} and school_id = ${newSchoolId}`);
+      } else skipped.push(`${table === 'questions' ? 'question' : 'bank question'} #${oldId} lost its parent link (the parent was not in the backup)`);
     }
 
     // 6. The photos' paths were rewritten above; the school's own logo and principal photo too.

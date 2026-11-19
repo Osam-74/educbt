@@ -299,3 +299,72 @@ export const questionOptions = pgTable('question_options', {
 }, (t) => ({
   questionIdx: index('options_question_idx').on(t.questionId, t.sortOrder),
 }));
+
+// ─────────────────────────────────────────────────────────────────────────────
+// The standalone question bank (migration 0029).
+//
+// The WordPress plugin keeps questions OUTSIDE any exam set, with subject, class, topic, difficulty, Bloom level,
+// exam year, duration, explanation and marking guide. SaaS questions must belong to a set, so these details had
+// nowhere to live. These tables hold them without touching the set-based flow that exam composition relies on.
+// ─────────────────────────────────────────────────────────────────────────────
+export const bankQuestions = pgTable('bank_questions', {
+  id: bigserial('id', { mode: 'number' }).primaryKey(),
+  schoolId: bigint('school_id', { mode: 'number' }).notNull().references(() => schools.id, { onDelete: 'cascade' }),
+  subjectId: bigint('subject_id', { mode: 'number' }).references(() => subjects.id, { onDelete: 'set null' }),
+  /** the subject as the school wrote it; kept even when it matches no subject, so nothing is lost */
+  subjectName: varchar('subject_name', { length: 150 }).default('').notNull(),
+  classLabel: varchar('class_label', { length: 100 }).default('').notNull(),
+  departmentLabel: varchar('department_label', { length: 100 }).default('').notNull(),
+  section: varchar('section', { length: 100 }).default('').notNull(),
+  topic: varchar('topic', { length: 255 }).default('').notNull(),
+  subTopic: varchar('sub_topic', { length: 255 }).default('').notNull(),
+  difficulty: varchar('difficulty', { length: 30 }).default('').notNull(),
+  bloomLevel: varchar('bloom_level', { length: 50 }).default('').notNull(),
+  learningObjective: text('learning_objective').default('').notNull(),
+  examinationType: varchar('examination_type', { length: 100 }).default('').notNull(),
+  examinationYear: varchar('examination_year', { length: 10 }).default('').notNull(),
+  questionType: varchar('question_type', { length: 20 }).default('objective').notNull(),
+  marks: numeric('marks', { precision: 8, scale: 2 }).default('1').notNull(),
+  estimatedSeconds: integer('estimated_seconds').default(0).notNull(),
+  questionText: text('question_text').default('').notNull(),
+  passageText: text('passage_text').default('').notNull(),
+  imageUrl: text('image_url'),
+  explanation: text('explanation').default('').notNull(),
+  markingGuide: text('marking_guide').default('').notNull(),
+  status: varchar('status', { length: 20 }).default('draft').notNull(),
+  approvalStatus: varchar('approval_status', { length: 20 }).default('pending').notNull(),
+  reviewNote: text('review_note').default('').notNull(),
+  reviewedBy: bigint('reviewed_by', { mode: 'number' }),
+  reviewedAt: timestamp('reviewed_at', { withTimezone: true }),
+  sourceMethod: varchar('source_method', { length: 30 }).default('manual').notNull(),
+  authorStaffId: bigint('author_staff_id', { mode: 'number' }),
+  parentId: bigint('parent_id', { mode: 'number' }),
+  partLabel: varchar('part_label', { length: 10 }).default('').notNull(),
+  sequence: integer('sequence').default(0).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+}, (t) => ({
+  subjectIdx: index('bank_questions_school_subject_idx').on(t.schoolId, t.subjectId, t.status),
+  topicIdx: index('bank_questions_topic_idx').on(t.schoolId, t.topic),
+}));
+
+export const bankQuestionOptions = pgTable('bank_question_options', {
+  id: bigserial('id', { mode: 'number' }).primaryKey(),
+  schoolId: bigint('school_id', { mode: 'number' }).notNull().references(() => schools.id, { onDelete: 'cascade' }),
+  questionId: bigint('question_id', { mode: 'number' }).notNull().references(() => bankQuestions.id, { onDelete: 'cascade' }),
+  optionKey: varchar('option_key', { length: 10 }).default('').notNull(),
+  optionText: text('option_text').default('').notNull(),
+  imageUrl: text('image_url'),
+  isCorrect: boolean('is_correct').default(false).notNull(),
+  sortOrder: integer('sort_order').default(0).notNull(),
+}, (t) => ({ questionIdx: index('bank_question_options_question_idx').on(t.questionId, t.sortOrder) }));
+
+export const bankQuestionParts = pgTable('bank_question_parts', {
+  id: bigserial('id', { mode: 'number' }).primaryKey(),
+  schoolId: bigint('school_id', { mode: 'number' }).notNull().references(() => schools.id, { onDelete: 'cascade' }),
+  questionId: bigint('question_id', { mode: 'number' }).notNull().references(() => bankQuestions.id, { onDelete: 'cascade' }),
+  label: varchar('label', { length: 10 }).default('').notNull(),
+  text: text('text').default('').notNull(),
+  marks: numeric('marks', { precision: 8, scale: 2 }).default('0').notNull(),
+  sequence: integer('sequence').default(0).notNull(),
+}, (t) => ({ questionIdx: index('bank_question_parts_question_idx').on(t.questionId, t.sequence) }));

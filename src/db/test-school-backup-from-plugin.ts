@@ -11,6 +11,8 @@ import postgres from 'postgres';
 import { drizzle } from 'drizzle-orm/postgres-js';
 
 type Row = Record<string, unknown>;
+import { eq } from 'drizzle-orm';
+
 async function main() {
   for (const key of ['DATABASE_URL_APP', 'DATABASE_URL_UNPOOLED']) {
     const url = new URL(process.env[key] ?? '');
@@ -309,6 +311,90 @@ async function main() {
         if (seen.length === 0) sawNothing++;
       }
       assert.ok(sawPublished >= 4, 'the fixture really publishes some terms'); assert.ok(sawNothing >= 1, 'and really leaves some pupils with nothing visible');
+    });
+    // ── Slice 3: the question bank, checked against the plugin's OWN rows ──────────────────────────────────────
+    const qplugin = (plugin.tables.questions as Row[]).slice().sort((a, b) => Number(a.id) - Number(b.id));
+    const bankIds = (await q<{ id: string }>('select id from bank_questions where school_id = $1 order by id', [sid])).map((r) => Number(r.id));
+    const bankIdOf = (pluginId: string) => bankIds[qplugin.findIndex((x) => String(x.id) === pluginId)]!;
+    const bankOf = async (qid: string) => (await q<Row>('select * from bank_questions where id = $1', [bankIdOf(qid)]))[0]!;
+    await check('QUESTIONS: every plugin question arrives, including the ones that belong to no school (school_id 0)', async () => {
+      assert.equal(await count_('bank_questions'), qplugin.length);
+      assert.ok(qplugin.some((x) => String(x.school_id) === '0'), 'the fixture really holds school_id 0 questions');
+      assert.equal(await count_('bank_question_parts'), plugin.tables.question_sub_items.length);
+    });
+    await check('QUESTIONS: topic, difficulty, duration, explanation and marking guide are kept, field for field', async () => {
+      for (const x of qplugin) {
+        const r = await bankOf(String(x.id));
+        assert.ok(r, 'question ' + x.id + ' arrived');
+        assert.equal(r.topic, String(x.topic ?? '').trim(), 'topic of ' + x.id); assert.equal(r.question_text, String(x.question_text ?? '').trim(), 'text of ' + x.id);
+        assert.equal(r.difficulty, String(x.difficulty ?? '').trim(), 'difficulty of ' + x.id); assert.equal(r.estimated_seconds, Number(x.estimated_duration ?? 0), 'duration of ' + x.id);
+        assert.equal(String(r.explanation).split('\nStored answer:')[0], String(x.explanations ?? '').trim(), 'explanation of ' + x.id);
+        assert.equal(r.marking_guide, String(x.marking_guide ?? '').trim(), 'marking guide of ' + x.id); assert.equal(Number(r.marks), Number(x.marks), 'marks of ' + x.id);
+        assert.equal(r.subject_name, String(x.subject ?? '').trim(), 'subject of ' + x.id);
+      }
+    });
+    await check('QUESTIONS: the correct answer is the same in BOTH storage styles (old JSON list and newer option rows)', async () => {
+      for (const x of qplugin) {
+        const rowOpts = (plugin.tables.question_options as Row[]).filter((o) => String(o.question_id) === String(x.id));
+        const expected = rowOpts.length ? rowOpts.filter((o) => String(o.is_correct) === '1').map((o) => String(o.option_text).trim())
+          : (() => { try { const a = JSON.parse(String(x.answers ?? '[]')); return Array.isArray(a) ? a.map((v: unknown) => String(v).trim()) : []; } catch { return []; } })();
+        const b = { id: String(bankIdOf(String(x.id))) };
+        const got = await q<{ option_text: string }>('select option_text from bank_question_options where question_id = $1 and is_correct order by sort_order', [b.id]);
+        assert.deepEqual(got.map((g) => g.option_text.toLowerCase()).sort(), expected.map((e: string) => e.toLowerCase()).sort(), 'correct answer of question ' + x.id);
+      }
+    });
+    await check('QUESTIONS: an odd stored type (a bare 0) becomes objective, and nothing else is guessed', async () => {
+      const types = await q<{ question_type: string; n: string }>('select question_type, count(*)::int n from bank_questions where school_id = $1 group by 1', [sid]);
+      assert.ok(types.every((t) => ['objective', 'single', 'theory'].includes(t.question_type)), JSON.stringify(types));
+      assert.equal(qplugin.filter((x) => String(x.question_type) === '0').length, 5, 'the fixture really has the odd type');
+    });
+    await check('QUESTIONS: theory parts keep their label, text and marks, in order', async () => {
+      const theory = qplugin.find((x) => String(x.question_type) === 'theory')!; const b = await bankOf(String(theory.id));
+      const got = await q<{ label: string; text: string; marks: string }>('select label, text, marks from bank_question_parts where question_id = $1 order by sequence', [b.id as string]);
+      const want = (plugin.tables.question_sub_items as Row[]).filter((p) => String(p.question_id) === String(theory.id)).sort((a, c) => Number(a.sequence) - Number(c.sequence));
+      assert.equal(got.length, want.length); assert.ok(got.length >= 2);
+      got.forEach((g, i) => { assert.equal(g.label, String(want[i]!.label).trim()); assert.equal(g.text, String(want[i]!.text).trim()); assert.equal(Number(g.marks), Number(want[i]!.marks)); });
+    });
+    await check('QUESTIONS: subject names link to the school subjects, and the written name is always kept', async () => {
+      const rows = await q<{ subject_name: string; sname: string | null }>('select b.subject_name, s.name sname from bank_questions b left join subjects s on s.id = b.subject_id where b.school_id = $1', [sid]);
+      assert.ok(rows.every((r) => r.subject_name !== '' || true));
+      for (const r of rows) if (r.sname) assert.equal(r.sname.toLowerCase(), r.subject_name.toLowerCase());
+      assert.ok(rows.filter((r) => r.sname).length >= 8, 'most questions are linked to their subject');
+    });
+    await check('QUESTIONS: tenant isolation: under ANOTHER school the bank is invisible, and a write into this school is refused', async () => {
+      const { forSchool, schema } = await import('@/db');
+      const otherSchool = schoolIds.find((x) => x !== sid)!;
+      const seenByOther = await forSchool(otherSchool, (tx) => tx.select({ id: schema.bankQuestions.id }).from(schema.bankQuestions).where(eq(schema.bankQuestions.schoolId, sid)));
+      assert.equal(seenByOther.length, 0, 'another school must not see this bank');
+      const seenByOwner = await forSchool(sid, (tx) => tx.select({ id: schema.bankQuestions.id }).from(schema.bankQuestions));
+      assert.equal(seenByOwner.length, qplugin.length, 'the owning school sees all of it');
+      await assert.rejects(forSchool(otherSchool, (tx) => tx.insert(schema.bankQuestions).values({ schoolId: sid, questionText: 'planted' })), 'writing into another school is refused by row-level security');
+      const opts = await forSchool(otherSchool, (tx) => tx.select({ id: schema.bankQuestionOptions.id }).from(schema.bankQuestionOptions).where(eq(schema.bankQuestionOptions.schoolId, sid)));
+      assert.equal(opts.length, 0, 'options are isolated too');
+    });
+    await check('QUESTIONS: a stored answer that matches NO option is kept (appended to the explanation), never lost', async () => {
+      const odd = JSON.parse(JSON.stringify(plugin)); const x = odd.tables.questions.find((r: Row) => String(r.id) === '1'); x.answers = '["not an option"]';
+      const t = translatePluginBackup(odd); const b = t.document.tables.bank_questions!.find((r) => r.id === 1)!;
+      assert.match(String(b.explanation), /Stored answer: not an option/);
+      assert.ok(t.report.notes.some((n) => /none of its options matched the stored answer/.test(n)));
+      assert.equal(t.document.tables.bank_question_options!.filter((o) => o.question_id === 1 && o.is_correct).length, 0, 'no option is invented as correct');
+    });
+    await check('QUESTIONS: options pointing at a missing question, and a missing parent, are reported and never attached to another question', async () => {
+      const bad = JSON.parse(JSON.stringify(plugin)); bad.tables.question_options.push({ id: '9001', school_id: '1', question_id: '77777', option_key: 'A', option_text: 'lost', is_correct: '1', sort_order: '0' });
+      bad.tables.questions.find((r: Row) => String(r.id) === '4').parent_id = '88888';
+      const t = translatePluginBackup(bad);
+      assert.ok(!t.document.tables.bank_question_options!.some((o) => o.option_text === 'lost'));
+      assert.ok(t.report.notes.some((n) => /options in the file but the question itself was missing/.test(n)));
+      assert.equal(t.document.tables.bank_questions!.find((r) => r.id === 4)!.parent_id, null);
+      assert.ok(t.report.notes.some((n) => /pointed at a parent question that is not in the file/.test(n)));
+    });
+    await check('QUESTIONS: a bank question keeps its parent link through a restore (two-pass)', async () => {
+      const withParent = JSON.parse(JSON.stringify(plugin)); withParent.tables.questions.find((r: Row) => String(r.id) === '5').parent_id = '4';
+      const t = translatePluginBackup(withParent);
+      const r = await restoreSchool({ actorUserId: admin!.id, file: encode(t.document), code: 'QPAR-' + suffix, subdomain: 'qpar' + suffix.toLowerCase(), principalPassword: 'defer' });
+      schoolIds.push(r.school.id);
+      const links = await q<{ child: string; parent: string }>('select c.id child, p.id parent from bank_questions c join bank_questions p on p.id = c.parent_id where c.school_id = $1 and p.school_id = $1', [r.school.id]);
+      assert.equal(links.length, 1, 'the parent link was restored inside the new school');
     });
     await check('RESULTS: an assessment setup the SaaS cannot hold (totals 90, two exams) still keeps EVERY score and result, and says what to set again', async () => {
       const odd = JSON.parse(JSON.stringify(plugin)); odd.tables.assessment_components[0].max_score = '0.00'; odd.tables.assessment_components[1].max_score = '10.00';

@@ -16,6 +16,7 @@
 import { buildDocument, type BackupDocument } from './format';
 import { isCarryableLegacyHash } from '@/lib/auth/legacy-password';
 import { translateResults } from './from-plugin-results';
+import { translateQuestions } from './from-plugin-questions';
 
 type Row = Record<string, unknown>;
 export type PluginBackup = {
@@ -74,7 +75,7 @@ const ASSIGNMENT: Record<string, string> = { class_teacher: 'class_teacher', sub
 /** Tables the plugin file may carry that slice 1 does not translate. Named, never silently ignored. */
 const LATER_SLICES = [
   'results',
-  'questions', 'question_options', 'question_sets', 'question_sub_items', 'passages', 'exams', 'exam_papers', 'exam_series',
+  'question_sets', 'passages', 'question_drafts', 'exams', 'exam_papers', 'exam_series',
   'exam_attempts', 'attempts', 'attempt_answers', 'attempt_events', 'exam_questions', 'paper_questions', 'exam_timetables',
   'paper_invigilators', 'promotion_batches', 'promotion_decisions', 'promotions', 'transcripts', 'announcements',
   'messages', 'message_threads', 'notifications', 'signatures', 'remark_ranges',
@@ -253,6 +254,12 @@ export function translatePluginBackup(plugin: PluginBackup): { document: BackupD
   const resultsSlice = translateResults(plugin, { subjects: subjectIds, students: studentIds, sessions: new Set(out.academic_sessions!.map((x) => x.id)),
     terms: new Set(out.terms!.map((x) => x.id)), classes: classIds }, slice);
   for (const [name, list] of Object.entries(resultsSlice.tables)) emit(name, list);
+
+  // ── Question bank (slice 3) ──────────────────────────────────
+  const subjectByName = new Map<string, number>();
+  for (const sub of subjectRows) subjectByName.set(String(sub.name).toLowerCase(), Number(sub.id));
+  const questionSlice = translateQuestions(plugin, { subjects: subjectByName, staff: staffIds }, { notes });
+  for (const [name, list] of Object.entries(questionSlice.tables)) emit(name, list);
 
   const notTranslated = LATER_SLICES.filter((t) => rows(t).length > 0);
   const s = plugin.school;

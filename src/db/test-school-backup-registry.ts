@@ -137,9 +137,9 @@ async function main() {
       assert.deepEqual(bad, [], 'tables with no declared pk: ' + bad.join(', '));
     });
 
-    await check('the only self-reference is questions.parent_id (needs the two-pass restore)', () => {
+    await check('the only self-references are questions.parent_id and bank_questions.parent_id (both patched by the two-pass restore)', () => {
       const selfRefs = DATA_TABLES.flatMap((t) => Object.entries(t.columns).filter(([, r]) => r.kind === 'ref' && r.table === t.table).map(([c]) => `${t.table}.${c}`));
-      assert.deepEqual(selfRefs, ['questions.parent_id']);
+      assert.deepEqual([...selfRefs].sort(), ['bank_questions.parent_id', 'questions.parent_id']);
     });
 
     await check('credentials are never part of the backup', () => {

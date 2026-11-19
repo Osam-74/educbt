@@ -392,6 +392,24 @@ DROP POLICY IF EXISTS tenant_isolation ON question_parts;
 CREATE POLICY tenant_isolation ON question_parts
   USING (school_id = current_school_id() OR is_platform_admin())
   WITH CHECK (school_id = current_school_id() OR is_platform_admin());
+ALTER TABLE bank_questions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE bank_questions FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON bank_questions;
+CREATE POLICY tenant_isolation ON bank_questions
+  USING (school_id = current_school_id() OR is_platform_admin())
+  WITH CHECK (school_id = current_school_id() OR is_platform_admin());
+ALTER TABLE bank_question_options ENABLE ROW LEVEL SECURITY;
+ALTER TABLE bank_question_options FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON bank_question_options;
+CREATE POLICY tenant_isolation ON bank_question_options
+  USING (school_id = current_school_id() OR is_platform_admin())
+  WITH CHECK (school_id = current_school_id() OR is_platform_admin());
+ALTER TABLE bank_question_parts ENABLE ROW LEVEL SECURITY;
+ALTER TABLE bank_question_parts FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON bank_question_parts;
+CREATE POLICY tenant_isolation ON bank_question_parts
+  USING (school_id = current_school_id() OR is_platform_admin())
+  WITH CHECK (school_id = current_school_id() OR is_platform_admin());
 ALTER TABLE school_remark_ranges ENABLE ROW LEVEL SECURITY;
 ALTER TABLE school_remark_ranges FORCE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS tenant_isolation ON school_remark_ranges;
