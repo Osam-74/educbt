@@ -81,6 +81,25 @@ function sessionUserFrom(user: typeof schema.users.$inferSelect, staffId: number
  * rows (the unique index is case-sensitive), so more than one match is
  * treated as a hard failure — ambiguous is unauthenticated.
  */
+/**
+ * People whose OLD sign-in name (kept from the WordPress plugin) is `needle`, inside ONE school.
+ * Two explicit school checks, on top of row-level security, so the answer is right even if RLS were ever absent:
+ * the alias must be filed under this school AND the person it points at must belong to it.
+ */
+export async function findUsersByAlias(tx: Pick<typeof db, 'select'>, schoolId: number, needle: string) {
+  const rows = await tx
+    .select({ user: schema.users })
+    .from(schema.userLoginAliases)
+    .innerJoin(schema.users, eq(schema.users.id, schema.userLoginAliases.userId))
+    .where(and(
+      eq(schema.userLoginAliases.schoolId, schoolId),
+      eq(schema.users.schoolId, schoolId),
+      sql`lower(${schema.userLoginAliases.alias}) = ${needle.toLowerCase()}`,
+    ))
+    .limit(2);
+  return rows.map((r) => r.user);
+}
+
 async function findUserForSignIn(loginId: string, schoolId: number | null) {
   const needle = loginId.toLowerCase();
   // EMAIL LOGIN (correction-pass item 12): an address in the sign-in box
@@ -106,7 +125,10 @@ async function findUserForSignIn(loginId: string, schoolId: number | null) {
           ),
         )
         .limit(2);
-      return rows;
+      // A real sign-in name or email ALWAYS wins. Only when it finds nobody are the person's OLD names consulted
+      // (the ones they used on the WordPress plugin), so an alias can never take over another person's real name.
+      if (rows.length > 0 || looksLikeEmail) return rows;
+      return findUsersByAlias(tx, schoolId, needle);
     });
   }
 

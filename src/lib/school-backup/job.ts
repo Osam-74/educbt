@@ -10,6 +10,7 @@ import { eq } from 'drizzle-orm';
 import { asPlatformAdmin, schema } from '@/db';
 import { BackupFormatError } from './format';
 import { RestoreIntegrityError } from './remap';
+import { prepareUploadedFile, PluginFileError } from './prepare-upload';
 import { restoreSchool } from './restore';
 import { discardChunks, markJob, readUploadedFile } from './upload';
 
@@ -17,7 +18,7 @@ export type RestoreJobOutcome = { ok: true; schoolId: number } | { ok: false; me
 
 /** Turn any failure into a sentence an operator can act on. Internal detail stays in the server log. */
 export function friendlyRestoreError(err: unknown): string {
-  if (err instanceof BackupFormatError || err instanceof RestoreIntegrityError) return err.message;
+  if (err instanceof BackupFormatError || err instanceof RestoreIntegrityError || err instanceof PluginFileError) return err.message;
   const text = err instanceof Error ? `${err.message} ${(err as { code?: string }).code ?? ''}` : String(err);
   if (/schools_code|23505.*code|duplicate key.*code/i.test(text)) return 'A school with that code already exists. Choose a different code and upload again.';
   if (/subdomain/i.test(text)) return 'That subdomain is already in use. Choose a different one and upload again.';
@@ -34,12 +35,14 @@ export async function runRestoreJob(jobId: number, actorUserId: number): Promise
 
   await markJob(actorUserId, jobId, { status: 'restoring' });
   try {
-    const file = await readUploadedFile(jobId, actorUserId);
+    const uploaded = await readUploadedFile(jobId, actorUserId);
+    // A file from the WordPress plugin is read, checked and translated first; a SaaS file passes straight through.
+    const { file, source, report } = prepareUploadedFile(uploaded);
     const result = await restoreSchool({
       actorUserId, file, code: job.newSchoolCode, subdomain: job.newSchoolSubdomain ?? null,
       name: job.newSchoolName ?? undefined, principalPassword: 'defer',
     });
-    await markJob(actorUserId, jobId, { status: 'succeeded', restoredSchoolId: result.school.id, summary: result.counts });
+    await markJob(actorUserId, jobId, { status: 'succeeded', restoredSchoolId: result.school.id, summary: source === 'plugin' ? { ...result.counts, _fromPlugin: 1, _notes: report?.notes.length ?? 0 } : result.counts });
     return { ok: true, schoolId: result.school.id };
   } catch (err) {
     console.error(JSON.stringify({ job: 'restore-school', jobId, status: 'failed', error: err instanceof Error ? err.message : String(err) }));

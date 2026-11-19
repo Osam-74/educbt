@@ -53,6 +53,7 @@ export const DATA_TABLES: TableSpec[] = [
   // ── People ────────────────────────────────────────────────────────────────
   // Logins are recreated WITHOUT credentials. See USER_STRIP below.
   { table: 'users', about: 'Logins (no passwords or two-factor secrets)', columns: { id: pk, school_id: school } },
+  { table: 'user_login_aliases', about: 'Old sign-in names that still work (from the WordPress plugin)', columns: { id: pk, school_id: school, user_id: ref('users') } },
   { table: 'staff', about: 'Teachers and office staff', columns: { id: pk, school_id: school, user_id: ref('users', true), photo_url: { kind: 'photo' } } },
   { table: 'staff_assignments', about: 'Who teaches what, and class teacher duties',
     columns: { id: pk, school_id: school, staff_id: ref('staff'), subject_id: ref('subjects', true), class_id: ref('classes', true) } },

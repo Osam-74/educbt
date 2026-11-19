@@ -434,6 +434,12 @@ DROP POLICY IF EXISTS tenant_isolation ON legacy_attempt_events;
 CREATE POLICY tenant_isolation ON legacy_attempt_events
   USING (school_id = current_school_id() OR is_platform_admin())
   WITH CHECK (school_id = current_school_id() OR is_platform_admin());
+ALTER TABLE user_login_aliases ENABLE ROW LEVEL SECURITY;
+ALTER TABLE user_login_aliases FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON user_login_aliases;
+CREATE POLICY tenant_isolation ON user_login_aliases
+  USING (school_id = current_school_id() OR is_platform_admin())
+  WITH CHECK (school_id = current_school_id() OR is_platform_admin());
 ALTER TABLE school_remark_ranges ENABLE ROW LEVEL SECURITY;
 ALTER TABLE school_remark_ranges FORCE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS tenant_isolation ON school_remark_ranges;

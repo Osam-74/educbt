@@ -153,7 +153,9 @@ export function translatePluginBackup(plugin: PluginBackup): { document: BackupD
   const wp = plugin.wpUsers ?? {};
   const carryPasswords = plugin.credentials === 'password-hashes';
   let carried = 0, none = 0;
-  const newUser = (role: string, loginId: string, wpUserId?: unknown, email?: string | null): number => {
+  // The names a person used to sign in with on the plugin. They keep working: each becomes an alias of the new account.
+  const aliasWanted: Array<{ userId: number; alias: string; source: string }> = [];
+  const newUser = (role: string, loginId: string, wpUserId?: unknown, email?: string | null, oldNames: Array<string | null | undefined> = []): number => {
     const id = nextUser++;
     const w = wp[String(link(wpUserId) ?? '')];
     const row: Row = { id, school_id: 0, role, login_id: loginId, status: 'active', email: str(email) ?? str(w?.email) };
@@ -162,7 +164,10 @@ export function translatePluginBackup(plugin: PluginBackup): { document: BackupD
       // to change it; the first correct sign-in upgrades it silently and they are offered a new one.
       row.password_hash = w.hash; row.must_change_password = false; row.password_carried_at = new Date().toISOString(); carried++;
     } else none++;
-    userRows.push(row); return id;
+    userRows.push(row);
+    // Only a person who really had a WordPress account has old names worth keeping. Their WordPress login is one.
+    if (w) for (const name of [w.login, ...oldNames]) { const a = typeof name === 'string' ? name.trim() : ''; if (a) aliasWanted.push({ userId: id, alias: a, source: 'wordpress' }); }
+    return id;
   };
   const takenLogins = new Set<string>();
   const uniqueLogin = (base: string): string => {
@@ -176,7 +181,7 @@ export function translatePluginBackup(plugin: PluginBackup): { document: BackupD
     const slug = String(r.role_slug ?? '');
     let role = STAFF_ROLE[slug];
     if (!role) { role = 'teacher'; notes.push(`Staff member ${str(r.first_name) ?? ''} ${str(r.last_name) ?? ''} had the role "${slug || 'none'}", which the platform does not know, so they were added as a teacher.`); }
-    const userId = newUser(role, uniqueLogin(str(r.staff_number) ?? `staff${r.id}`), r.wp_user_id, str(r.email));
+    const userId = newUser(role, uniqueLogin(str(r.staff_number) ?? `staff${r.id}`), r.wp_user_id, str(r.email), [str(r.staff_number), str(r.email)]);
     staffRows.push({ id: num(r.id), school_id: 0, user_id: userId, staff_number: str(r.staff_number) ?? `STF${r.id}`, first_name: str(r.first_name) ?? '-',
       last_name: str(r.last_name) ?? '-', title: str(r.title), gender: str(r.gender), email: str(r.email), phone: str(r.phone), photo_url: str(r.photo), role,
       status: STAFF_STATUS[String(r.status ?? 'active')] ?? 'active' });
@@ -191,7 +196,7 @@ export function translatePluginBackup(plugin: PluginBackup): { document: BackupD
     if (!adm) { notes.push(`A student (${str(r.first_name) ?? ''} ${str(r.last_name) ?? ''}) has no admission number, so they were left out.`); continue; }
     const status = String(r.status ?? 'active');
     if (!STUDENT_STATUS.has(status)) notes.push(`${adm}: unknown status "${status}", set to active.`);
-    const userId = newUser('student', uniqueLogin(adm), r.wp_user_id);
+    const userId = newUser('student', uniqueLogin(adm), r.wp_user_id, undefined, [adm, str(r.registration_number), str(r.login_username)]);
     const [first, last] = [str(r.first_name), str(r.last_name)];
     const full = str(r.full_name);
     studentRows.push({ id: num(r.id), school_id: 0, user_id: userId, admission_number: adm,
@@ -206,7 +211,7 @@ export function translatePluginBackup(plugin: PluginBackup): { document: BackupD
   const guardianRows: Row[] = [];
   for (const r of rows('guardians')) {
     const name = [str(r.first_name), str(r.last_name)].filter(Boolean).join(' ') || 'Guardian ' + r.id;
-    const userId = newUser('parent', uniqueLogin(str(r.email) ?? `parent${r.id}`), r.wp_user_id, str(r.email));
+    const userId = newUser('parent', uniqueLogin(str(r.email) ?? `parent${r.id}`), r.wp_user_id, str(r.email), [str(r.email)]);
     guardianRows.push({ id: num(r.id), school_id: 0, user_id: userId, full_name: name, email: str(r.email), phone: str(r.phone),
       invite_status: 'none', invite_token: null });
   }
@@ -220,6 +225,24 @@ export function translatePluginBackup(plugin: PluginBackup): { document: BackupD
     can_view_results: r.can_view_results === undefined ? true : bool(r.can_view_results) })));
 
   emit('users', userRows);
+  // Aliases are built last, when every real sign-in name is known, so none can shadow a real one or another person's.
+  {
+    const real = new Set(userRows.map((u) => String(u.login_id).toLowerCase()));
+    const claimed = new Map<string, number>();
+    const aliasRows: Row[] = [];
+    let dropped = 0;
+    for (const a of aliasWanted) {
+      const key = a.alias.toLowerCase();
+      const owner = userRows.find((u) => u.id === a.userId)!;
+      if (key === String(owner.login_id).toLowerCase()) continue;              // already their real name: nothing to add
+      if (real.has(key) || (claimed.has(key) && claimed.get(key) !== a.userId)) { dropped++; continue; }   // never ambiguous, never someone else's
+      if (claimed.has(key)) continue;                                          // the same person listed twice
+      claimed.set(key, a.userId);
+      aliasRows.push({ id: aliasRows.length + 1, school_id: 0, user_id: a.userId, alias: a.alias, source: a.source });
+    }
+    if (dropped) notes.push(`${dropped} old sign-in name(s) were not kept because they would have matched more than one person, or another person's new name. Those people sign in with their new name.`);
+    emit('user_login_aliases', aliasRows);
+  }
 
   // ── Placement ────────────────────────────────────────────────
   const sessionIds = new Set(out.academic_sessions!.map((s) => s.id));

@@ -16,6 +16,7 @@ import {
   pgTable, bigserial, bigint, varchar, text, boolean, timestamp,
   uniqueIndex, index, pgEnum, jsonb, inet, customType,
 } from 'drizzle-orm/pg-core';
+import { sql } from 'drizzle-orm';
 import { schools, classes, classLevels, departments, subjects, academicSessions } from './core';
 import { studentStatus, staffStatus, enrollmentStatus } from './core';
 
@@ -378,4 +379,24 @@ export const auditLog = pgTable('audit_log', {
   schoolIdx: index('audit_school_idx').on(t.schoolId, t.createdAt),
   entityIdx: index('audit_entity_idx').on(t.entityType, t.entityId),
   actorIdx: index('audit_actor_idx').on(t.actorUserId, t.createdAt),
+}));
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Old sign-in names (migration 0031).
+//
+// The WordPress plugin let a student sign in with an admission number, a registration number or a username, and
+// staff with a WordPress login such as DSS001.STF.007. The platform's own names are shaped differently, so each
+// migrated person's old names are kept here and accepted at sign-in. An alias only finds a person inside ONE
+// school, is unique per school ignoring case, and a real users.login_id always wins over an alias.
+// ─────────────────────────────────────────────────────────────────────────────
+export const userLoginAliases = pgTable('user_login_aliases', {
+  id: bigserial('id', { mode: 'number' }).primaryKey(),
+  schoolId: bigint('school_id', { mode: 'number' }).notNull().references(() => schools.id, { onDelete: 'cascade' }),
+  userId: bigint('user_id', { mode: 'number' }).notNull().references(() => users.id, { onDelete: 'cascade' }),
+  alias: varchar('alias', { length: 191 }).notNull(),
+  source: varchar('source', { length: 40 }).notNull().default('wordpress'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => ({
+  schoolAliasUq: uniqueIndex('user_login_aliases_school_alias_uq').on(t.schoolId, sql`lower(${t.alias})`),
+  userIdx: index('user_login_aliases_user_idx').on(t.userId),
 }));

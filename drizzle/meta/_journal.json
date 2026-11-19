@@ -221,6 +221,13 @@
       "when": 1790515200000,
       "tag": "0030_legacy_exam_history",
       "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1790601600000,
+      "tag": "0031_user_login_aliases",
+      "breakpoints": true
     }
   ]
 }
