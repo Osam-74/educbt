@@ -75,3 +75,24 @@
      Reset it to natural content height here. */
   .qs-field--grow { flex: 0 1 auto; }
 }
+
+/* Comprehension passage panel */
+.qs-passage { border:1px solid var(--line); border-radius:12px; padding:14px 16px; margin:16px 0; background:#fcfdfc; max-width:640px; }
+.qs-passage__tick { display:flex; align-items:center; gap:8px; font-weight:650; font-size:14px; cursor:pointer; }
+.qs-passage__hint { margin:6px 0 0 26px; font-size:12.5px; }
+.qs-passage__list { list-style:none; margin:12px 0; padding:0; display:flex; flex-direction:column; gap:8px; }
+.qs-passage__list li { border:1px solid #d7dedb; border-radius:10px; padding:10px 12px; display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap; background:#fff; }
+.qs-passage__list li.is-selected { border-color:#14532d; box-shadow:0 0 0 3px rgba(20,83,45,.10); }
+.qs-passage__pick { color:inherit; text-decoration:none; flex:1 1 220px; }
+.qs-passage__chip { margin-left:8px; font-size:11px; font-weight:650; background:#e8f3d6; color:#14532d; border-radius:999px; padding:2px 8px; }
+.qs-passage__icons { display:inline-flex; gap:6px; }
+.qs-iconbtn { border:1px solid #d7dedb; background:#fff; border-radius:8px; width:34px; height:34px; cursor:pointer; font-size:15px; line-height:1; }
+.qs-iconbtn:hover { border-color:#14532d; }
+.qs-iconbtn--danger:hover { border-color:#b42318; }
+.qs-passage__edit { width:100%; max-width:none; }
+.qs-passage__actions { display:flex; gap:12px; align-items:center; }
+.qs-passage__confirm { border:1px solid #f1c7c2; background:#fff6f5; border-radius:10px; padding:12px 14px; margin:10px 0; }
+.qs-passage__confirm p { margin:0 0 10px; }
+.qs-linkbtn { background:none; border:0; color:#14532d; font:inherit; font-weight:600; cursor:pointer; text-decoration:underline; padding:0; }
+.qs-danger { background:#b42318 !important; border-color:#b42318 !important; color:#fff !important; }
+.qs-passage__new { max-width:none; margin:12px 0 0; }

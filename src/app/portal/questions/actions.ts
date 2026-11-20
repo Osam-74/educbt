@@ -4,6 +4,7 @@ import { requireSchoolSession } from '@/lib/session';
 import { collectionView } from '@/lib/exam/collection';
 import { findOrCreateSet, addQuestion, addQuestionsBulk, submitSet, type SetScope } from '@/lib/exam/sets';
 import { snapshotSet } from '@/lib/exam/vault';
+import { createPassage, editPassage, passageDeletePreview, deletePassageWithQuestions } from '@/lib/exam/passages';
 import type { ParsedRow } from './parsers';
 
 function backToQuestions(params: URLSearchParams, error?: string, ok?: string) {
@@ -118,6 +119,7 @@ export async function saveManualQuestion(form: FormData) {
       text,
       marks: Number(form.get('marks') ?? 1) || 1,
       instructions: String(form.get('instructions') ?? '').trim() || null,
+      passageId: Number(form.get('passageId')) || null,
       options,
       ...(parts.length > 0 ? { parts } : {}),
     });
@@ -165,5 +167,62 @@ export async function handInSet(form: FormData) {
   // Written delivery has nothing in the bank to have "saved" — it is an
   // intent, not a paper — so it gets its own confirmation copy.
   returnParams.set('ok', form.get('written') === '1' ? 'Written examination intent submitted.' : (result.autoApproved ? 'Saved and approved.' : 'Submitted for review.'));
+  backToQuestions(returnParams);
+}
+
+
+/** Save a new passage, then come back with it selected so the next questions attach to it. */
+export async function savePassage(form: FormData) {
+  const actor = await requireSchoolSession();
+  const returnParams = new URLSearchParams(String(form.get('returnParams') ?? ''));
+  try {
+    const p = await createPassage(actor, {
+      subjectId: Number(form.get('subjectId')),
+      title: String(form.get('passageTitle') ?? ''),
+      instructions: String(form.get('passageInstructions') ?? ''),
+      body: String(form.get('passageBody') ?? ''),
+      classLevel: String(form.get('classLevel') ?? ''),
+    });
+    returnParams.set('passageId', String(p.id));
+    returnParams.set('ok', 'Passage saved. The questions you add next belong to it.');
+  } catch (e) {
+    returnParams.set('error', e instanceof Error ? e.message : 'That passage could not be saved.');
+  }
+  backToQuestions(returnParams);
+}
+
+export async function saveEditedPassage(form: FormData) {
+  const actor = await requireSchoolSession();
+  const returnParams = new URLSearchParams(String(form.get('returnParams') ?? ''));
+  try {
+    await editPassage(actor, Number(form.get('passageId')), {
+      title: String(form.get('passageTitle') ?? ''),
+      instructions: String(form.get('passageInstructions') ?? ''),
+      body: String(form.get('passageBody') ?? ''),
+    });
+    returnParams.set('ok', 'Passage updated.');
+  } catch (e) {
+    returnParams.set('error', e instanceof Error ? e.message : 'That passage could not be changed.');
+  }
+  backToQuestions(returnParams);
+}
+
+/** Read-only: what deleting would remove, so the warning can state the real number. */
+export async function previewPassageDelete(passageId: number) {
+  const actor = await requireSchoolSession();
+  try { return { ok: true as const, ...(await passageDeletePreview(actor, passageId)) }; }
+  catch (e) { return { ok: false as const, error: e instanceof Error ? e.message : 'Could not check that passage.' }; }
+}
+
+export async function removePassage(form: FormData) {
+  const actor = await requireSchoolSession();
+  const returnParams = new URLSearchParams(String(form.get('returnParams') ?? ''));
+  try {
+    const r = await deletePassageWithQuestions(actor, Number(form.get('passageId')));
+    if (returnParams.get('passageId') === String(form.get('passageId'))) returnParams.delete('passageId');
+    returnParams.set('ok', r.deletedQuestions > 0 ? `Passage deleted with its ${r.deletedQuestions} question${r.deletedQuestions === 1 ? '' : 's'}.` : 'Passage deleted.');
+  } catch (e) {
+    returnParams.set('error', e instanceof Error ? e.message : 'That passage could not be deleted.');
+  }
   backToQuestions(returnParams);
 }

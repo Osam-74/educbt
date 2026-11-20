@@ -184,9 +184,16 @@ export async function addQuestion(
       .from(schema.questions)
       .where(eq(schema.questions.questionSetId, setId));
 
+    // Reading order inside a passage: each new question goes after the ones already written on it.
+    const [posRow] = input.passageId
+      ? await tx.select({ next: sql<number>`COALESCE(MAX(${schema.questions.passagePosition}), -1) + 1`.mapWith(Number) })
+        .from(schema.questions).where(and(eq(schema.questions.passageId, input.passageId), eq(schema.questions.schoolId, actor.schoolId)))
+      : [{ next: 0 }];
+
     const [question] = await tx.insert(schema.questions).values({
       schoolId: actor.schoolId,
       questionSetId: setId,
+      passagePosition: posRow?.next ?? 0,
       questionText: input.text,
       questionType: set.examType === 'theory' ? 'theory' : 'single_choice',
       marks: String(input.marks),

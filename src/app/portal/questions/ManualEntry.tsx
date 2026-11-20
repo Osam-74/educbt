@@ -1,5 +1,6 @@
 import { saveManualQuestion, handInSet } from './actions';
 import TheoryParts from './TheoryParts';
+import PassagePanel, { type PassageRow } from './PassagePanel';
 
 /**
  * Manual Entry (legacy parity: the entry form under Region B when Method =
@@ -11,10 +12,16 @@ export default function ManualEntry({
   set,
   questions,
   returnParams,
+  subjectId = 0,
+  passages = [],
+  selectedPassageId = 0,
 }: {
   set: { id: number; examType: string; status: string; minRequired: number; defaultMarks: string; reviewerComment: string | null };
   questions: Array<{ id: number; text: string; marks: string; approvalStatus: string; reviewerComment: string | null; parts?: Array<{ label: string; text: string; marks: string }> }>;
   returnParams: string;
+  subjectId?: number;
+  passages?: PassageRow[];
+  selectedPassageId?: number;
 }) {
   const editable = set.status === 'draft' || set.status === 'returned';
   const short = questions.length < set.minRequired;
@@ -30,10 +37,15 @@ export default function ManualEntry({
         {short ? ` — ${set.minRequired - questions.length} more needed before you can submit.` : ' — ready to submit.'}
       </p>
 
+      {subjectId > 0 && set.examType === 'objective' ? (
+        <PassagePanel subjectId={subjectId} returnParams={returnParams} passages={passages} selectedId={selectedPassageId} editable={editable} />
+      ) : null}
+
       {editable ? (
         <form action={saveManualQuestion} className="qs-manual-form">
           <input type="hidden" name="setId" value={set.id} />
           <input type="hidden" name="returnParams" value={returnParams} />
+          {selectedPassageId > 0 ? <input type="hidden" name="passageId" value={selectedPassageId} /> : null}
 
           <label htmlFor="instructions">Instructions (optional)</label>
           <input id="instructions" name="instructions" type="text"

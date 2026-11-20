@@ -6,6 +6,7 @@ import { isSchoolWide } from '@/lib/queries';
 import { forSchool, schema } from '@/db';
 import { collectionView } from '@/lib/exam/collection';
 import { setWithQuestions } from '@/lib/exam/sets';
+import { listPassages } from '@/lib/exam/passages';
 import { caComponents } from '@/lib/ca/validation';
 import { openSet } from './actions';
 import BankFields from './BankFields';
@@ -19,7 +20,7 @@ export const dynamic = 'force-dynamic';
 type Query = {
   subjectId?: string; levelId?: string; departmentId?: string;
   examType?: string; delivery?: string; marks?: string; method?: string; waecMode?: string;
-  setId?: string; error?: string; ok?: string;
+  setId?: string; passageId?: string; error?: string; ok?: string;
 };
 
 export default async function QuestionBankPage({ searchParams }: { searchParams: Promise<Query> }) {
@@ -39,6 +40,7 @@ export default async function QuestionBankPage({ searchParams }: { searchParams:
   const method = (['manual', 'paste', 'csv'] as const).includes(q.method as never) ? (q.method as 'manual' | 'paste' | 'csv') : 'manual';
   const waecMode = q.waecMode === '1';
   const setId = Number(q.setId) || 0;
+  const passageId = Number(q.passageId) || 0;
 
   const theoryAllowed = current?.seriesType === 'examination';
   const lockedDelivery: 'cbt' | 'written' | null =
@@ -53,7 +55,7 @@ export default async function QuestionBankPage({ searchParams }: { searchParams:
   const returnParams = new URLSearchParams({
     subjectId: subjectId ? String(subjectId) : '', levelId: levelId ? String(levelId) : '',
     departmentId: departmentId ? String(departmentId) : '', examType, delivery, marks: String(marks), method,
-    waecMode: waecMode ? '1' : '', setId: setId ? String(setId) : '',
+    waecMode: waecMode ? '1' : '', setId: setId ? String(setId) : '', passageId: passageId ? String(passageId) : '',
   }).toString();
   // Method now switches locally without a round-trip (see BankFields), so the
   // URL's own `method` can lag behind what's on screen. ManualEntry's save
@@ -65,6 +67,7 @@ export default async function QuestionBankPage({ searchParams }: { searchParams:
   const manualReturnParamsStr = manualReturnParams.toString();
 
   const loaded = setId ? await setWithQuestions(actor, setId) : null;
+  const passages = loaded && subjectId ? await listPassages(actor, subjectId, level) : [];
   const periodTitle = current ? await forSchool(actor.schoolId, async (tx) => {
     const [session] = await tx.select({ title: schema.academicSessions.title }).from(schema.academicSessions)
       .where(and(eq(schema.academicSessions.id, current.sessionId), eq(schema.academicSessions.schoolId, actor.schoolId)));
@@ -124,7 +127,8 @@ export default async function QuestionBankPage({ searchParams }: { searchParams:
                 already={loaded.set.status !== 'draft'} />
             ) : null}
             manualEntry={loaded ? (
-              <ManualEntry set={loaded.set as never} questions={loaded.questions as never} returnParams={manualReturnParamsStr} />
+              <ManualEntry set={loaded.set as never} questions={loaded.questions as never} returnParams={manualReturnParamsStr}
+                subjectId={subjectId} passages={passages} selectedPassageId={passages.some((p) => p.id === passageId) ? passageId : 0} />
             ) : null}
             pasteImport={loaded ? (
               <BulkImport mode="paste" examType={examType} defaultMarks={Number(loaded.set.defaultMarks) || marks} setId={loaded.set.id} />
