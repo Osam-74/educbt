@@ -43,7 +43,7 @@ type Question = {
   instructions: string | null;
   marks: number;
   options: Option[];
-  passage: { title: string; body: string } | null;
+  passage: { title: string; instructions?: string | null; body: string } | null;
 };
 
 type SyncState = 'saved' | 'saving' | 'offline' | 'error';
@@ -338,6 +338,8 @@ export default function ExamRoom({
           {q.passage ? (
             <div className="passage">
               <h3>{q.passage.title}</h3>
+              {/* Said once for the whole passage, above it, on every question that uses it. */}
+              {q.passage.instructions ? <p className="passage__instr"><strong>{q.passage.instructions}</strong></p> : null}
               {/* Paragraph breaks preserved — a comprehension passage without
                   them is far harder to read under exam conditions. */}
               {q.passage.body.split('\n').filter(Boolean).map((p, i) => (

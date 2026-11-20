@@ -153,6 +153,10 @@ export const passages = pgTable('passages', {
   body: text('body').notNull(),
   imageUrl: text('image_url'),
 
+  // Said once for the whole passage ("Read the passage and answer questions 1 to 4"), not repeated on each question.
+  instructions: text('instructions'),
+  classLevel: varchar('class_level', { length: 50 }).default('').notNull(),
+
   authorStaffId: bigint('author_staff_id', { mode: 'number' })
     .references(() => staff.id, { onDelete: 'set null' }),
   status: varchar('status', { length: 20 }).default('active').notNull(),
@@ -243,6 +247,8 @@ export const questions = pgTable('questions', {
 
   passageId: bigint('passage_id', { mode: 'number' })
     .references(() => passages.id, { onDelete: 'set null' }),
+  // Reading order inside a passage: 0, 1, 2... Standalone questions stay 0.
+  passagePosition: integer('passage_position').default(0).notNull(),
 
   // e.g. "paper2:antonyms" for a WAEC-structured paper. Empty otherwise.
   section: varchar('section', { length: 100 }).default('').notNull(),
@@ -271,6 +277,7 @@ export const questions = pgTable('questions', {
   setIdx: index('questions_set_idx').on(t.questionSetId, t.status),
   sectionIdx: index('questions_section_idx').on(t.questionSetId, t.section),
   schoolIdx: index('questions_school_idx').on(t.schoolId),
+  passageIdx: index('questions_passage_idx').on(t.passageId, t.passagePosition),
 }));
 
 /**

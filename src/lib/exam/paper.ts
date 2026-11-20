@@ -45,7 +45,7 @@ export type PublicQuestion = {
   instructions: string | null;
   marks: number;
   section: string;
-  passage: { id: number; title: string; body: string; imageUrl: string | null } | null;
+  passage: { id: number; title: string; instructions: string | null; body: string; imageUrl: string | null } | null;
   options: PublicOption[];
 };
 
@@ -101,6 +101,13 @@ export async function paperForCandidateTx(
       ))
       .orderBy(asc(schema.questions.sequence), asc(schema.questions.id));
 
+    // DELIVER IN THE ORDER THE SERVER FIXED FOR THIS ATTEMPT. The database returns
+    // rows in sequence order, which would hand every candidate the same paper and
+    // pull a comprehension passage's questions apart. The caller's list is the
+    // attempt's stored order: shuffled whole units, each passage in reading order.
+    const position = new Map(questionIds.map((qid, idx) => [Number(qid), idx]));
+    rows.sort((a, b) => (position.get(Number(a.id)) ?? 0) - (position.get(Number(b.id)) ?? 0));
+
     // Options: id, key, text, image. No correctness column is named, so none
     // can be returned.
     const optionRows = await tx
@@ -125,6 +132,7 @@ export async function paperForCandidateTx(
           .select({
             id: schema.passages.id,
             title: schema.passages.title,
+            instructions: schema.passages.instructions,
             body: schema.passages.body,
             imageUrl: schema.passages.imageUrl,
           })

@@ -249,6 +249,13 @@
       "when": 1790860800000,
       "tag": "0034_class_timetable",
       "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1790947200000,
+      "tag": "0035_passage_parity",
+      "breakpoints": true
     }
   ]
 }

@@ -24,6 +24,7 @@
 import { and, eq, sql, inArray } from 'drizzle-orm';
 import { forSchool, schema } from '@/db';
 import { paperForCandidateTx, type PublicQuestion } from './paper';
+import { orderForDelivery, drawUnits } from './passage-units';
 
 export type StartResult =
   | { ok: true; attemptId: number; expiresAt: Date; questions: PublicQuestion[]; resumed: boolean }
@@ -138,21 +139,29 @@ export async function startAttempt(
       if (now > series.closesAt.getTime()) return { ok: false, reason: 'window_closed' };
     }
 
-    const pool = await tx.select({ questionId: schema.paperQuestions.questionId })
+    const pool = await tx.select({
+      questionId: schema.paperQuestions.questionId,
+      passageId: schema.questions.passageId,
+      passagePosition: schema.questions.passagePosition,
+    })
       .from(schema.paperQuestions)
+      .innerJoin(schema.questions, eq(schema.questions.id, schema.paperQuestions.questionId))
       .where(eq(schema.paperQuestions.paperId, paperId));
 
     if (pool.length === 0) return { ok: false, reason: 'no_questions' };
 
-    let ids = pool.map((p) => Number(p.questionId));
-
-    if (paper.shuffleQuestions) ids = shuffle(ids);
+    // A comprehension passage travels as a UNIT: a candidate gets a passage with
+    // ALL of its questions or none of it, and the questions inside a passage
+    // always stay in reading order. Only whole units are shuffled and drawn.
+    const units = orderForDelivery(
+      pool.map((p) => ({ id: Number(p.questionId), passageId: p.passageId ? Number(p.passageId) : null, passagePosition: p.passagePosition })),
+      paper.shuffleQuestions,
+    );
 
     // A paper asking for more questions than the pool holds gives everyone the
     // whole pool rather than failing — a short pool is the setter's problem to
     // fix, not a reason to stop a candidate sitting.
-    const take = paper.questionCount > 0 ? Math.min(paper.questionCount, ids.length) : ids.length;
-    const chosen = ids.slice(0, take);
+    const chosen = drawUnits(units, paper.questionCount > 0 ? paper.questionCount : 0);
 
     const expiresAt = new Date(Date.now() + paper.durationSeconds * 1000);
 

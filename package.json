@@ -29,6 +29,8 @@
     "test:authoring": "tsx src/db/test-authoring.ts",
     "test:results": "tsx src/db/test-results.ts",
     "test:practice": "tsx src/db/test-practice.ts",
+    "test:passage-units": "tsx src/db/test-passage-units.ts",
+    "test:passage-draw": "tsx src/db/test-passage-draw.ts",
     "test:jobs": "tsx src/db/test-jobs.ts",
     "test:domain": "tsx src/domain/academic.test.ts",
     "test:people": "tsx src/db/test-people.ts",
