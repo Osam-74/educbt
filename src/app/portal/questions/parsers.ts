@@ -18,7 +18,16 @@ export type ParsedRow = {
   options?: Array<{ text: string; isCorrect: boolean }>;
   status: 'valid' | 'error';
   errors: string[];
+  /** The passage this question belongs to: its ref in the file (matched case-insensitively). */
+  passageRef?: string;
+  /** Set when the ref names a passage the school already has (exact title). */
+  passageExistingId?: number;
 };
+
+/** A passage written in the file itself: one row with passage_ref + passage_text and no question. */
+export type PassageDef = { ref: string; title: string; instructions: string; body: string };
+
+export type ParsedCSV = { rows: ParsedRow[]; passages: PassageDef[] };
 
 function normalize(text: string): string {
   return text
@@ -129,16 +138,53 @@ export function parseCSVLine(line: string): string[] {
   return out.map((s) => s.trim());
 }
 
-export function parseCSV(raw: string, isTheory: boolean, defaultMarks: number): ParsedRow[] {
-  const lines = raw.split(/\r?\n/).filter((l) => l.trim());
-  if (lines.length < 2) return [];
-  const header = parseCSVLine(lines[0]!).map((h) => h.toLowerCase());
+
+/**
+ * Read a whole CSV file into rows of cells. Unlike splitting on line breaks first, this keeps a quoted
+ * cell that contains line breaks in one piece (a comprehension passage with paragraphs), treats "" inside
+ * quotes as one quote, accepts \r\n, and ignores the byte-order mark Excel adds. Fully blank rows are skipped.
+ */
+export function parseCSVRecords(raw: string): string[][] {
+  const text = String(raw ?? '').replace(/^\uFEFF/, '');
+  const rows: string[][] = [];
+  let row: string[] = [], cur = '', inQuotes = false;
+  const endRow = () => { row.push(cur); cur = ''; if (row.some((x) => x.trim() !== '')) rows.push(row); row = []; };
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i]!;
+    if (inQuotes) {
+      if (c === '"') { if (text[i + 1] === '"') { cur += '"'; i++; } else inQuotes = false; }
+      // A line break INSIDE a cell is always stored as a single \n, whatever the file used (Windows \r\n, old Mac \r).
+      else if (c === '\r') { if (text[i + 1] === '\n') i++; cur += '\n'; }
+      else cur += c;
+      continue;
+    }
+    if (c === '"') { inQuotes = true; continue; }
+    if (c === ',') { row.push(cur); cur = ''; continue; }
+    if (c === '\n' || c === '\r') { if (c === '\r' && text[i + 1] === '\n') i++; endRow(); continue; }
+    cur += c;
+  }
+  if (cur !== '' || row.length > 0) endRow();
+  return rows;
+}
+
+export function parseCSV(raw: string, isTheory: boolean, defaultMarks: number, existingPassages: Array<{ id: number; title: string }> = []): ParsedCSV {
+  const records = parseCSVRecords(raw);
+  if (records.length < 2) return { rows: [], passages: [] };
+  const header = records[0]!.map((h) => h.trim().toLowerCase());
   const col = (name: string) => header.indexOf(name);
   const results: ParsedRow[] = [];
+  const defs = new Map<string, PassageDef>();
 
-  for (let i = 1; i < lines.length; i++) {
-    const cells = parseCSVLine(lines[i]!);
+  for (let i = 1; i < records.length; i++) {
+    const cells = records[i]!;
     const get = (name: string) => { const idx = col(name); return idx === -1 ? '' : (cells[idx] ?? '').trim(); };
+
+    // A row with a passage_ref and passage_text but no question DEFINES a passage; it is not a question.
+    const refKey = get('passage_ref').toLowerCase();
+    if (!isTheory && refKey && !get('question') && get('passage_text')) {
+      defs.set(refKey, { ref: get('passage_ref'), title: get('passage_title') || 'Comprehension passage', instructions: get('passage_instructions'), body: get('passage_text') });
+      continue;
+    }
 
     if (isTheory) {
       const row: ParsedRow = { text: get('question'), marks: parseFloat(get('marks')) || 0, markingGuide: get('marking_guide') || undefined, status: 'valid', errors: [] };
@@ -160,16 +206,32 @@ export function parseCSV(raw: string, isTheory: boolean, defaultMarks: number): 
       if (row.options!.filter((o) => o.text.trim()).length < 2) { row.status = 'error'; row.errors.push('Needs at least two options.'); }
       if (correctIdx < 0 || !row.options![correctIdx]?.text.trim()) { row.status = 'error'; row.errors.push('correct_option does not match a filled option.'); }
       if (!row.marks) row.marks = defaultMarks;
+      if (refKey) row.passageRef = get('passage_ref');
       results.push(row);
     }
   }
 
-  return results;
+  // Every passage_ref must lead somewhere: a passage written in this file, or one the school already has under
+  // that exact title. Otherwise the question would import without its passage, which a teacher can least afford
+  // to miss, so it is stopped here as an error, before anything is saved.
+  for (const row of results) {
+    if (!row.passageRef) continue;
+    const key = row.passageRef.toLowerCase();
+    if (defs.has(key)) continue;
+    const existing = existingPassages.find((p) => p.title.trim().toLowerCase() === key);
+    if (existing) { row.passageExistingId = existing.id; continue; }
+    row.status = 'error';
+    row.errors.push(`passage_ref "${row.passageRef}" has no passage: add a row with that passage_ref and the passage_text, or use the exact title of a passage already saved.`);
+  }
+
+  return { rows: results, passages: [...defs.values()] };
 }
 
 export const CSV_TEMPLATE = {
-  objective: 'question,option_a,option_b,option_c,option_d,correct_option,marks\n'
-    + '"What is 2+2?","1","2","3","4","D","2"\n"Capital of Nigeria?","Lagos","Abuja","Kano","Port Harcourt","B","1"',
+  objective: 'question,option_a,option_b,option_c,option_d,correct_option,marks,passage_ref,passage_title,passage_instructions,passage_text\n'
+    + '"What is 2+2?","1","2","3","4","D","2",,,,\n"Capital of Nigeria?","Lagos","Abuja","Kano","Port Harcourt","B","1",,,,\n'
+    + ',,,,,,,"P1","The Village Market","Read the passage and answer the questions that follow.","The market opens at dawn.\nTraders arrange their goods."\n'
+    + '"When does the market open?","At dawn","At noon","At night","Never","A","1","P1",,,',
   theory: 'question,marks,marking_guide\n'
     + '"Explain photosynthesis",10,"Light energy converted to chemical energy..."\n"Define gravity",5,"Force of attraction between masses..."',
 };

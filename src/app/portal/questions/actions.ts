@@ -4,7 +4,8 @@ import { requireSchoolSession } from '@/lib/session';
 import { collectionView } from '@/lib/exam/collection';
 import { findOrCreateSet, addQuestion, addQuestionsBulk, submitSet, type SetScope } from '@/lib/exam/sets';
 import { snapshotSet } from '@/lib/exam/vault';
-import { createPassage, editPassage, passageDeletePreview, deletePassageWithQuestions } from '@/lib/exam/passages';
+import { createPassage, editPassage, passageDeletePreview, deletePassageWithQuestions, ensurePassagesForImport } from '@/lib/exam/passages';
+import { getSetSubject } from '@/lib/exam/sets';
 import type { ParsedRow } from './parsers';
 
 function backToQuestions(params: URLSearchParams, error?: string, ok?: string) {
@@ -133,14 +134,37 @@ export async function saveManualQuestion(form: FormData) {
   back(returnParams);
 }
 
-export async function bulkAddQuestions(setId: number, examType: 'objective' | 'theory', items: ParsedRow[]) {
+export async function bulkAddQuestions(
+  setId: number, examType: 'objective' | 'theory', items: ParsedRow[],
+  passages: Array<{ ref: string; title: string; instructions: string; body: string }> = [],
+  existingPassageIds: Record<string, number> = {},
+) {
   const actor = await requireSchoolSession();
-  return addQuestionsBulk(actor, setId, items.map((r) => ({
-    text: r.text,
-    marks: r.marks,
-    markingGuide: r.markingGuide ?? null,
-    options: examType === 'objective' ? r.options : undefined,
+
+  // Passages written in the file are made once (or matched to an existing one by title) BEFORE the questions.
+  const needed = new Set(items.map((r) => r.passageRef?.toLowerCase()).filter((x): x is string => !!x));
+  const subjectId = needed.size > 0 ? await getSetSubject(actor, setId) : 0;
+  const made = needed.size > 0
+    ? await ensurePassagesForImport(actor, subjectId, passages.filter((d) => needed.has(d.ref.toLowerCase())))
+    : { ids: new Map<string, number>(), failed: new Map<string, string>() };
+
+  const prepared: Array<{ index: number; item: ParsedRow; passageId: number | null; skip?: string }> = items.map((r, index) => {
+    const key = r.passageRef?.toLowerCase();
+    if (!key) return { index, item: r, passageId: null };
+    const id = made.ids.get(key) ?? (r.passageExistingId ?? existingPassageIds[key]);
+    if (!id) return { index, item: r, passageId: null, skip: made.failed.get(key) ?? `The passage "${r.passageRef}" could not be found.` };
+    return { index, item: r, passageId: id };
+  });
+
+  const go = prepared.filter((p) => !p.skip);
+  const outcome = await addQuestionsBulk(actor, setId, go.map(({ item, passageId }) => ({
+    text: item.text, marks: item.marks, markingGuide: item.markingGuide ?? null, passageId,
+    options: examType === 'objective' ? item.options : undefined,
   })));
+  // addQuestionsBulk numbers failures within the list it was given; put them back on the caller's numbering.
+  const failed = outcome.failed.map((f) => ({ ...f, index: go[f.index]!.index }));
+  for (const p of prepared) if (p.skip) failed.push({ index: p.index, text: p.item.text.slice(0, 60), reason: p.skip });
+  return { added: outcome.added, failed: failed.sort((a, b) => a.index - b.index) };
 }
 
 export async function handInSet(form: FormData) {

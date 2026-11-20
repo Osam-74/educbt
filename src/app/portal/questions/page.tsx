@@ -134,7 +134,8 @@ export default async function QuestionBankPage({ searchParams }: { searchParams:
               <BulkImport mode="paste" examType={examType} defaultMarks={Number(loaded.set.defaultMarks) || marks} setId={loaded.set.id} />
             ) : null}
             csvImport={loaded ? (
-              <BulkImport mode="csv" examType={examType} defaultMarks={Number(loaded.set.defaultMarks) || marks} setId={loaded.set.id} />
+              <BulkImport mode="csv" examType={examType} defaultMarks={Number(loaded.set.defaultMarks) || marks} setId={loaded.set.id}
+                existingPassages={passages.map((p) => ({ id: p.id, title: p.title }))} />
             ) : null}
           />
         </section>

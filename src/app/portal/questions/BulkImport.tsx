@@ -7,7 +7,7 @@
  * anything is written; only the rows still ticked "valid" go to the server.
  */
 import { useState } from 'react';
-import { CSV_TEMPLATE, PASTE_GUIDE, parseCSV, parseObjectivePaste, parseTheoryPaste, type ParsedRow } from './parsers';
+import { CSV_TEMPLATE, PASTE_GUIDE, parseCSV, parseObjectivePaste, parseTheoryPaste, type ParsedRow, type PassageDef } from './parsers';
 import { bulkAddQuestions } from './actions';
 
 export default function BulkImport({
@@ -15,21 +15,26 @@ export default function BulkImport({
   examType,
   defaultMarks,
   setId,
+  existingPassages = [],
 }: {
   mode: 'paste' | 'csv';
   examType: 'objective' | 'theory';
   defaultMarks: number;
   setId: number;
+  /** Passages this school already has for the subject, so a file can point at one by its exact title. */
+  existingPassages?: Array<{ id: number; title: string }>;
 }) {
   const isTheory = examType === 'theory';
   const [text, setText] = useState('');
   const [rows, setRows] = useState<ParsedRow[] | null>(null);
+  const [filePassages, setFilePassages] = useState<PassageDef[]>([]);
   const [included, setIncluded] = useState<boolean[]>([]);
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<{ added: number; failed: Array<{ index: number; text: string; reason: string }> } | null>(null);
 
-  function stage(parsed: ParsedRow[]) {
+  function stage(parsed: ParsedRow[], defs: PassageDef[] = []) {
     setRows(parsed);
+    setFilePassages(defs);
     setIncluded(parsed.map((r) => r.status === 'valid'));
     setResult(null);
   }
@@ -45,7 +50,10 @@ export default function BulkImport({
     const file = e.target.files?.[0];
     if (!file) return;
     const reader = new FileReader();
-    reader.onload = () => stage(parseCSV(String(reader.result ?? ''), isTheory, defaultMarks));
+    reader.onload = () => {
+      const out = parseCSV(String(reader.result ?? ''), isTheory, defaultMarks, existingPassages);
+      stage(out.rows, out.passages);
+    };
     reader.readAsText(file);
   }
 
@@ -63,7 +71,7 @@ export default function BulkImport({
     if (!items.length) return;
     setBusy(true);
     try {
-      const outcome = await bulkAddQuestions(setId, examType, items);
+      const outcome = await bulkAddQuestions(setId, examType, items, filePassages);
       setResult(outcome);
       setRows(null);
     } finally {
@@ -96,19 +104,26 @@ export default function BulkImport({
           <p className="qs-hint">
             Columns: <code>{isTheory ? 'question, marks, marking_guide' : 'question, option_a, option_b, option_c, option_d, correct_option, marks'}</code>
           </p>
+          {!isTheory ? (
+            <p className="qs-hint">
+              For a comprehension passage, add a row with <code>passage_ref</code>, <code>passage_title</code>, <code>passage_instructions</code> and <code>passage_text</code> and no question,
+              then give each of its questions the same <code>passage_ref</code>. A ref can also be the exact title of a passage you have already saved.
+            </p>
+          ) : null}
         </>
       )}
 
       {rows && rows.length > 0 ? (
         <div className="qs-staging">
           <table className="tbl">
-            <thead><tr><th /><th>Question</th><th>Marks</th><th>Status</th></tr></thead>
+            <thead><tr><th /><th>Question</th><th>Passage</th><th>Marks</th><th>Status</th></tr></thead>
             <tbody>
               {rows.map((r, i) => (
                 <tr key={i} className={r.status === 'error' ? 'qs-row--error' : ''}>
                   <td><input type="checkbox" checked={included[i]} disabled={r.status === 'error'}
                     onChange={(e) => setIncluded((prev) => prev.map((v, idx) => idx === i ? e.target.checked : v))} /></td>
                   <td>{r.text || <span className="muted">(no text)</span>}</td>
+                  <td>{r.passageRef ? (filePassages.find((d) => d.ref.toLowerCase() === r.passageRef!.toLowerCase())?.title ?? r.passageRef) : <span className="muted">-</span>}</td>
                   <td>{r.marks}</td>
                   <td>{r.status === 'valid' ? <span className="pill pill--approved">Valid</span> : <span className="pill pill--returned">{r.errors.join(' ')}</span>}</td>
                 </tr>

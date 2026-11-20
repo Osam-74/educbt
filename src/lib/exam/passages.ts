@@ -173,3 +173,29 @@ export async function deletePassageWithQuestions(actor: Actor, passageId: number
     return { deletedQuestions: ids.length };
   });
 }
+
+
+/**
+ * Passages written inside an imported file. Each one is created ONCE; if the school already has a passage for
+ * this subject with the same title, that one is used, so importing the same file twice never doubles a passage.
+ * Returns the id for every ref (lower-cased), and the refs that could not be made, with the reason.
+ */
+export async function ensurePassagesForImport(
+  actor: Actor, subjectId: number,
+  defs: Array<{ ref: string; title: string; instructions: string; body: string }>,
+) {
+  const ids = new Map<string, number>();
+  const failed = new Map<string, string>();
+  for (const d of defs) {
+    const key = d.ref.toLowerCase();
+    try {
+      const found = (await listPassages(actor, subjectId)).find((p) => p.title.trim().toLowerCase() === d.title.trim().toLowerCase());
+      if (found) { ids.set(key, Number(found.id)); continue; }
+      const made = await createPassage(actor, { subjectId, title: d.title, instructions: d.instructions, body: d.body });
+      ids.set(key, Number(made.id));
+    } catch (e) {
+      failed.set(key, e instanceof Error ? e.message : 'The passage could not be saved.');
+    }
+  }
+  return { ids, failed };
+}

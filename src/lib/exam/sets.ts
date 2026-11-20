@@ -534,6 +534,7 @@ export async function addQuestionsBulk(
     section?: string;
     instructions?: string | null;
     markingGuide?: string | null;
+    passageId?: number | null;
     options?: Array<{ text: string; isCorrect: boolean }>;
   }>,
 ) {
@@ -685,5 +686,17 @@ export async function setWithQuestions(actor: Actor, setId: number) {
       .orderBy(asc(schema.questionParts.sequence));
     return { set, questions: questions.map(q => ({ ...q,
       parts: partRows.filter(r => Number(r.questionId) === Number(q.id)).map(r => ({ label: r.label, text: r.text, marks: r.marks })) })) };
+  });
+}
+
+
+/** The subject a set belongs to, for a person who is allowed to edit that set. */
+export async function getSetSubject(actor: Actor, setId: number): Promise<number> {
+  return forSchool(actor.schoolId, async (tx) => {
+    const [set] = await tx.select().from(schema.questionSets).where(and(
+      eq(schema.questionSets.id, setId), eq(schema.questionSets.schoolId, actor.schoolId))).limit(1);
+    if (!set) throw new Error('Question set not found.');
+    await editableSetAccess(tx, actor, set);
+    return Number(set.subjectId);
   });
 }
