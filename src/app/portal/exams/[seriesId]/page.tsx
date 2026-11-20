@@ -3,6 +3,7 @@ import { requireSchoolSession, requireRole, SCHOOL_WIDE } from '@/lib/session';
 import {
   questionAvailability,
   composeSeries,
+  passageNotes,
   scheduleSeries,
   publishSeries,
   seriesPapers,
@@ -63,10 +64,10 @@ export default async function SeriesPage({
 
       destination = result.short.length > 0
         ? `/portal/exams/${seriesId}?error=${encodeURIComponent(
-            `Composed ${result.created} paper(s). These subjects had too few approved questions: ${result.short.join('; ')}.`,
+            `Composed ${result.created} paper(s). These subjects had too few approved questions: ${result.short.join('; ')}.${passageNotes(result)}`,
           )}`
         : `/portal/exams/${seriesId}?ok=${encodeURIComponent(
-            `Composed ${result.created} paper(s).${result.skipped > 0 ? ` ${result.skipped} already composed.` : ''}`,
+            `Composed ${result.created} paper(s).${result.skipped > 0 ? ` ${result.skipped} already composed.` : ''}${passageNotes(result)}`,
           )}`;
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Composition failed.';

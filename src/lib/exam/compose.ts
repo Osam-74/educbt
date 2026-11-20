@@ -19,7 +19,8 @@
  * results, never re-decide them.
  */
 
-import { and, eq, sql, asc } from 'drizzle-orm';
+import { passageWarnings, type PoolQuestion } from './passage-units';
+import { and, eq, sql, asc, inArray } from 'drizzle-orm';
 import { z } from 'zod';
 import { forSchool, schema, type Tx } from '@/db';
 import type { Actor } from '@/lib/session';
@@ -29,6 +30,12 @@ export type ComposeResult = {
   created: number;
   skipped: number;
   short: string[];
+  /**
+   * Plain-language notes about comprehension passages that will reach students with fewer
+   * questions than were written (some are not approved yet), or a paper size that can only
+   * be met by splitting a passage. Empty when everything is in order. Never blocks composing.
+   */
+  warnings?: string[];
 };
 
 // ── Series creation ──────────────────────────────────────────────────────────
@@ -290,6 +297,7 @@ export async function composeSeries(
     let created = 0;
     let skipped = 0;
     const short: string[] = [];
+    const warnings: string[] = [];
 
     for (const c of candidates) {
       // Written delivery has nothing to pool — there is no bank of typed
@@ -369,6 +377,32 @@ export async function composeSeries(
         ))
         .orderBy(asc(schema.questions.sequence));
 
+      // Tell the office when a comprehension passage will reach students short of questions. Looks at every
+      // active question in the set (approved ones are usable) and uses the same rule the engine draws by.
+      if (c.deliveryMode !== 'written') {
+        const everything = await tx.select({
+          id: schema.questions.id, passageId: schema.questions.passageId,
+          passagePosition: schema.questions.passagePosition, approvalStatus: schema.questions.approvalStatus,
+        }).from(schema.questions).where(and(
+          eq(schema.questions.questionSetId, c.setId), eq(schema.questions.status, 'active')));
+        const titles = new Map<number, string>();
+        const ids = [...new Set(everything.map((q) => q.passageId).filter((x): x is number => !!x))];
+        if (ids.length) for (const row of await tx.select({ id: schema.passages.id, title: schema.passages.title })
+          .from(schema.passages).where(inArray(schema.passages.id, ids))) titles.set(Number(row.id), row.title);
+        const poolQs: PoolQuestion[] = everything.map((q) => ({
+          id: Number(q.id), passageId: q.passageId ? Number(q.passageId) : null,
+          passagePosition: q.passagePosition, usable: q.approvalStatus === 'approved',
+        }));
+        for (const w of passageWarnings(poolQs, perStudent)) {
+          const label = `${c.subjectName} ${c.levelName}`;
+          if (w.kind === 'incomplete_passage') {
+            warnings.push(`${label}: the passage "${titles.get(w.passageId) ?? 'untitled'}" will reach students with ${w.total - w.unusable} of its ${w.total} questions, because ${w.unusable} ${w.unusable === 1 ? 'is' : 'are'} not approved.`);
+          } else {
+            warnings.push(`${label}: a paper of ${w.target} questions cannot be made without splitting a passage, so students will get ${w.reachable}.`);
+          }
+        }
+      }
+
       if (pool.length > 0) {
         await tx.insert(schema.paperQuestions).values(
           pool.map((q, i) => ({
@@ -402,10 +436,10 @@ export async function composeSeries(
       action: 'exam_series.composed',
       entityType: 'exam_series',
       entityId: seriesId,
-      after: { created, skipped, short },
+      after: { created, skipped, short, warnings },
     });
 
-    return { created, skipped, short };
+    return { created, skipped, short, warnings };
   });
 }
 
@@ -903,4 +937,10 @@ function weekdaysBetween(startsOn: string, endsOn: string | null, cap: number): 
   }
 
   return out;
+}
+
+/** The passage notes as one readable sentence group, or '' when there are none. For the office's status line. */
+export function passageNotes(result: { warnings?: string[] }): string {
+  const w = result.warnings ?? [];
+  return w.length === 0 ? '' : ` Check the passages: ${w.join(' ')}`;
 }

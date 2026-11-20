@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { and, asc, eq, sql } from 'drizzle-orm';
 import { requireSchoolSession, requireRole, SCHOOL_WIDE } from '@/lib/session';
-import { listSeries, createSeries, publishSeries, deleteSeries, composeSeries, questionAvailability, paperOverview, deletePaper } from '@/lib/exam/compose';
+import { listSeries, createSeries, publishSeries, deleteSeries, composeSeries, passageNotes, questionAvailability, paperOverview, deletePaper } from '@/lib/exam/compose';
 import { collectionView, saveCollection } from '@/lib/exam/collection';
 import { caComponents } from '@/lib/ca/validation';
 import { forSchool, schema } from '@/db';
@@ -239,8 +239,8 @@ export default async function ExamPapersPage({
     try {
       const result = await composeSeries(inner, seriesId);
       const message = result.short.length > 0
-        ? `Composed ${result.created} paper(s). Still short of questions: ${result.short.join('; ')}.`
-        : `Composed ${result.created} paper(s).`;
+        ? `Composed ${result.created} paper(s). Still short of questions: ${result.short.join('; ')}.${passageNotes(result)}`
+        : `Composed ${result.created} paper(s).${passageNotes(result)}`;
       destination = `/portal/exams/papers?ok=${encodeURIComponent(message)}`;
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Could not compose that assessment.';
@@ -264,7 +264,7 @@ export default async function ExamPapersPage({
       const result = await composeSeries(inner, seriesId);
       destination = result.short.length > 0
         ? `/portal/exams/papers?error=${encodeURIComponent(`Composed ${result.created} paper(s). Still short of questions: ${result.short.join('; ')}.`)}`
-        : `/portal/exams/papers?ok=${encodeURIComponent(`Composed ${result.created} paper(s).`)}`;
+        : `/portal/exams/papers?ok=${encodeURIComponent(`Composed ${result.created} paper(s).${passageNotes(result)}`)}`;
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Could not compose this paper.';
       destination = `/portal/exams/papers?error=${encodeURIComponent(message)}`;
