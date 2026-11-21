@@ -121,6 +121,7 @@ export default async function QuestionBankPage({ searchParams }: { searchParams:
             subjectId={subjectId} levelId={levelId} departmentId={departmentId}
             examType={examType} delivery={delivery} marks={marks} method={method} waecMode={waecMode}
             theoryOnPaper={!!(loaded?.set as { theoryOnPaper?: boolean } | undefined)?.theoryOnPaper}
+            theoryAnswerCount={(loaded?.set as { theoryAnswerCount?: number } | undefined)?.theoryAnswerCount ?? 0}
             theoryOnPaperLocked={!!loaded && !isEditable(loaded.set.status)}
             theoryAllowed={!!theoryAllowed} lockedDelivery={lockedDelivery} action={openSet}
             opening={<p className="muted">Opening…</p>}

@@ -10,17 +10,25 @@
  *    paper that existed before theory delivery behaves identically.
  */
 import { drawUnits, orderForDelivery, type PoolQuestion } from './passage-units';
+import { drawTheory } from './theory-choice';
 
-export type PaperPoolRow = PoolQuestion & { type: string; sequence: number };
+export type PaperPoolRow = PoolQuestion & { type: string; sequence: number; isCompulsory?: boolean };
 
 export function isTheory(row: { type: string }): boolean { return row.type === 'theory'; }
 
-/** The order of questions one candidate sits: the objective draw, then all theory in authored order. */
-export function candidateOrder(pool: PaperPoolRow[], objectiveTarget: number, shuffle: boolean, random: () => number = Math.random): number[] {
+/**
+ * The order of questions one candidate sits: the objective draw, then theory in authored order.
+ *
+ * `theoryAnswerCount` is the teacher's choice of how many theory questions each student answers. 0 (the default, and
+ * what every paper that existed before it means) gives every candidate ALL the theory. A number above 0 gives each
+ * candidate that many: every compulsory question first, the rest made up by a random pick (see theory-choice.ts).
+ */
+export function candidateOrder(pool: PaperPoolRow[], objectiveTarget: number, shuffle: boolean, random: () => number = Math.random, theoryAnswerCount = 0): number[] {
   const objective = pool.filter((q) => !isTheory(q));
   const theory = pool.filter(isTheory).sort((a, b) => a.sequence - b.sequence || a.id - b.id);
   const drawn = drawUnits(orderForDelivery(objective, shuffle, random), objectiveTarget > 0 ? objectiveTarget : 0);
-  return [...drawn, ...theory.map((q) => q.id)];
+  const dealt = drawTheory(theory.map((q) => ({ id: q.id, isCompulsory: !!q.isCompulsory })), theoryAnswerCount, random);
+  return [...drawn, ...dealt];
 }
 
 /** Ids of the theory questions inside an attempt's stored order (used to give each an answer row at submit). */

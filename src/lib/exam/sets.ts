@@ -24,6 +24,7 @@ import type { Actor } from '@/lib/session';
 import { isSchoolWide } from '@/lib/queries';
 import { waecEligibility } from './authoring-validation';
 import { setFlag } from './theory-delivery';
+import { normaliseAnswerCount, answerCountProblem, compulsoryNotice } from './theory-choice';
 import { sectionProblem, sectionLocked, passageProblem } from './waec-blueprint';
 import { authoringActor, authoringLock, permittedScope, permittedCollection, editableSetAccess } from './authoring-access';
 import { validateQuestion, validateQuestionParts, authoringConfig } from './authoring-validation';
@@ -45,6 +46,8 @@ export type SetScope = {
   defaultMarks?: number | string;
   /** Theory sets only: students read the theory on screen, the teacher enters the marks. Same edit window as deliveryMode. */
   theoryOnPaper?: boolean;
+  /** Theory sets only: how many theory questions each student answers. 0 / blank = every student answers every question. */
+  theoryAnswerCount?: number;
 };
 
 /**
@@ -89,6 +92,10 @@ export async function findOrCreateSet(actor: Actor, scope: SetScope) {
           const wanted = setFlag(existing.examType, scope.theoryOnPaper);
           if (wanted !== existing.theoryOnPaper) patch.theoryOnPaper = wanted;
         }
+        if (scope.theoryAnswerCount !== undefined && existing.examType === 'theory') {
+          const wantedCount = normaliseAnswerCount(scope.theoryAnswerCount);
+          if (wantedCount !== existing.theoryAnswerCount) patch.theoryAnswerCount = wantedCount;
+        }
       }
       if (Object.keys(patch).length === 0) return existing;
       const [updated] = await tx.update(schema.questionSets).set(patch)
@@ -120,9 +127,13 @@ export async function findOrCreateSet(actor: Actor, scope: SetScope) {
       waecMode: scope.waecMode,
       deliveryMode: scope.deliveryMode ?? 'cbt',
       theoryOnPaper: setFlag(scope.examType, scope.theoryOnPaper ?? false),
+      theoryAnswerCount: scope.examType === 'theory' ? normaliseAnswerCount(scope.theoryAnswerCount) : 0,
       defaultMarks: String(scope.defaultMarks ?? 1),
       teacherId: actor.staffId,
-      minRequired: quotas[scope.examType],
+      // A theory set is NOT held to the school-wide quota: a teacher may write as many theory questions as they like and
+      // chooses how many each student answers. Only 1 is needed to hand in; the real rule is checked at hand-in (see
+      // answerCountProblem). Objective keeps its quota exactly as before.
+      minRequired: scope.examType === 'theory' ? 1 : quotas[scope.examType],
     }).returning();
 
     await tx.insert(schema.auditLog).values({ schoolId: actor.schoolId, actorUserId: actor.userId, actorRole: actor.role,
@@ -151,6 +162,8 @@ export async function addQuestion(
     options?: Array<{ text: string; isCorrect: boolean }>;
     /** Optional labelled parts of a theory question; their marks must add up to `marks`. */
     parts?: Array<{ label: string; text: string; marks: number }>;
+    /** Theory only: every student gets this question. Ignored for objective. */
+    isCompulsory?: boolean;
   },
 ) {
   return forSchool(actor.schoolId, async (tx) => {
@@ -164,7 +177,9 @@ export async function addQuestion(
     if (!set) throw new Error('Question set not found.');
     await editableSetAccess(tx, actor, set);
     const parts = validateQuestionParts(input.parts, input.marks, set.examType);
-    input = validateQuestion(input, set.examType);
+    // The validator only knows the fields it checks and drops the rest, so the tick is held aside and put back.
+    const compulsoryTick = input.isCompulsory === true;
+    input = { ...validateQuestion(input, set.examType), isCompulsory: compulsoryTick };
     const sectionIssue = sectionProblem(input.section ?? '', { waecMode: set.waecMode, examType: set.examType });
     if (sectionIssue) throw new Error(sectionIssue);
     const passageIssue = passageProblem(input.section ?? '', input.passageId);
@@ -229,6 +244,7 @@ export async function addQuestion(
       imageUrl: input.imageUrl ?? null,
       noShuffle: input.noShuffle ?? false,
       markingGuide: input.markingGuide ?? null,
+      isCompulsory: set.examType === 'theory' && input.isCompulsory === true,
       sequence: seqRow?.next ?? 1,
       // Pending until a reviewer reads it. Never 'approved' on write.
       approvalStatus: 'pending',
@@ -292,6 +308,16 @@ async function governingAssessmentMode(tx: Tx, schoolId: number, set: typeof sch
   return series?.assessmentMode ?? 'mixed';
 }
 
+/**
+ * How many questions a set needs before it can be handed in. Objective keeps the school's quota exactly as it always
+ * did. A THEORY set is not held to that quota (the teacher writes as many as they like and chooses how many each student
+ * answers), so it needs just one. This is decided here, at hand-in, so a theory set created before this rule existed
+ * (carrying the old quota in its own row) is treated the same as a new one.
+ */
+export function neededToHandIn(set: { examType: string; minRequired: number }): number {
+  return set.examType === 'theory' ? Math.min(1, set.minRequired || 1) : set.minRequired;
+}
+
 export async function submitSet(actor: Actor, setId: number) {
   return forSchool(actor.schoolId, async (tx) => {
     await authoringLock(tx, actor.schoolId);
@@ -349,8 +375,13 @@ export async function submitSet(actor: Actor, setId: number) {
 
     const shortfall: string[] = [];
 
-    if ((own?.n ?? 0) < set.minRequired) {
-      shortfall.push(`${set.examType}: ${own?.n ?? 0} of ${set.minRequired}`);
+    if ((own?.n ?? 0) < neededToHandIn(set)) {
+      shortfall.push(`${set.examType}: ${own?.n ?? 0} of ${neededToHandIn(set)}`);
+    }
+    // Students may not be asked to answer more theory questions than the teacher wrote.
+    if (set.examType === 'theory') {
+      const tooMany = answerCountProblem(set.theoryAnswerCount, own?.n ?? 0);
+      if (tooMany) shortfall.push(tooMany);
     }
 
     if (paired) {
@@ -380,8 +411,12 @@ export async function submitSet(actor: Actor, setId: number) {
             eq(schema.questions.status, 'active'),
           ));
 
-        if ((sn?.n ?? 0) < sibling.minRequired) {
-          shortfall.push(`${siblingType}: ${sn?.n ?? 0} of ${sibling.minRequired}`);
+        if ((sn?.n ?? 0) < neededToHandIn(sibling)) {
+          shortfall.push(`${siblingType}: ${sn?.n ?? 0} of ${neededToHandIn(sibling)}`);
+        }
+        if (siblingType === 'theory') {
+          const tooMany = answerCountProblem(sibling.theoryAnswerCount, sn?.n ?? 0);
+          if (tooMany) shortfall.push(tooMany);
         }
       }
 
@@ -649,7 +684,7 @@ export async function listAllSubmissions(actor: Actor) {
         byScope.set(key, entry);
       }
 
-      const half = { setId: Number(r.id), count: r.questionCount, min: r.minRequired, status: r.status };
+      const half = { setId: Number(r.id), count: r.questionCount, min: neededToHandIn({ examType: r.examType, minRequired: r.minRequired }), status: r.status };
       if (r.examType === 'objective') entry.objective = half; else entry.theory = half;
       if (r.submittedAt && (!entry.submittedAt || r.submittedAt > entry.submittedAt)) entry.submittedAt = r.submittedAt;
       // Prefer whichever teacher submitted the paper over whoever merely opened it first.
@@ -703,6 +738,7 @@ export async function setWithQuestions(actor: Actor, setId: number) {
       id: schema.questions.id, text: schema.questions.questionText, marks: schema.questions.marks,
       sequence: schema.questions.sequence, approvalStatus: schema.questions.approvalStatus,
       reviewerComment: schema.questions.reviewerComment, section: schema.questions.section,
+      isCompulsory: schema.questions.isCompulsory,
     }).from(schema.questions)
       .where(and(eq(schema.questions.questionSetId, setId), eq(schema.questions.status, 'active')))
       .orderBy(asc(schema.questions.sequence));
@@ -740,6 +776,8 @@ export async function updateQuestion(
   patch: {
     text?: string; marks?: number; section?: string; instructions?: string | null; markingGuide?: string | null; passageId?: number | null;
     options?: Array<{ text: string; isCorrect: boolean }>;
+    /** Theory only. Choosing who gets a question is not a change to the question, so it does not send it back for review. */
+    isCompulsory?: boolean;
   },
 ) {
   return forSchool(actor.schoolId, async (tx) => {
@@ -781,6 +819,7 @@ export async function updateQuestion(
       }
       if (patch.marks !== undefined) next.marks = String(checked.marks);
     }
+    if (patch.isCompulsory !== undefined && set.examType === 'theory' && patch.isCompulsory !== q.isCompulsory) next.isCompulsory = patch.isCompulsory;
     if (patch.instructions !== undefined) next.instructions = patch.instructions?.trim() ? patch.instructions.trim() : null;
     if (patch.markingGuide !== undefined) next.markingGuide = patch.markingGuide?.trim() ? patch.markingGuide.trim() : null;
     if (patch.passageId !== undefined) {

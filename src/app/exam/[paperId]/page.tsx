@@ -80,7 +80,7 @@ export default async function ExamPage({
 
   const paperInfo = await forSchool(candidate.schoolId, async (tx) => {
     const [row] = await tx
-      .select({ name: schema.subjects.name, theoryOnPaper: schema.examPapers.theoryOnPaper })
+      .select({ name: schema.subjects.name, theoryOnPaper: schema.examPapers.theoryOnPaper, theoryAnswerCount: schema.examPapers.theoryAnswerCount })
       .from(schema.examPapers)
       .innerJoin(schema.subjects, eq(schema.subjects.id, schema.examPapers.subjectId))
       .where(and(
@@ -89,7 +89,7 @@ export default async function ExamPage({
       ))
       .limit(1);
 
-    return { name: row?.name ?? 'Examination', theoryOnPaper: row?.theoryOnPaper ?? false };
+    return { name: row?.name ?? 'Examination', theoryOnPaper: row?.theoryOnPaper ?? false, theoryAnswerCount: row?.theoryAnswerCount ?? 0 };
   });
 
   return (
@@ -98,10 +98,12 @@ export default async function ExamPage({
       expiresAtIso={result.expiresAt.toISOString()}
       subjectName={paperInfo.name}
       theoryOnPaper={paperInfo.theoryOnPaper}
+      theoryChosen={paperInfo.theoryAnswerCount > 0}
       questions={result.questions.map((q) => ({
         id: q.id,
         number: q.number,
         type: q.type,
+        compulsory: q.compulsory,
         text: q.text,
         imageUrl: q.imageUrl,
         instructions: q.instructions,

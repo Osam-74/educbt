@@ -44,6 +44,7 @@ export default function BankFields({
   method: initialMethod,
   waecMode: initialWaecMode,
   theoryOnPaper: initialTheoryOnPaper,
+  theoryAnswerCount: initialAnswerCount,
   theoryOnPaperLocked,
   theoryAllowed,
   lockedDelivery,
@@ -65,6 +66,8 @@ export default function BankFields({
   waecMode: boolean;
   /** The loaded theory set's stored flag: its theory is written on paper, the teacher enters the marks. */
   theoryOnPaper: boolean;
+  /** The loaded theory set's stored number: how many theory questions each student answers (0 = all of them). */
+  theoryAnswerCount: number;
   /** The set has been handed in, so the flag can no longer change (same rule as the delivery mode). */
   theoryOnPaperLocked: boolean;
   theoryAllowed: boolean;
@@ -97,6 +100,8 @@ export default function BankFields({
   const [theoryOnPaper, setTheoryOnPaper] = useState(initialTheoryOnPaper);
   // The stored value wins whenever the server hands back a different set (scope change, reload).
   useEffect(() => { setTheoryOnPaper(initialTheoryOnPaper); }, [initialTheoryOnPaper]);
+  const [answerCount, setAnswerCount] = useState(initialAnswerCount ? String(initialAnswerCount) : '');
+  useEffect(() => { setAnswerCount(initialAnswerCount ? String(initialAnswerCount) : ''); }, [initialAnswerCount]);
   const submitTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // A change to WHICH paper this is (subject/level/exam type/delivery/waec)
@@ -143,6 +148,9 @@ export default function BankFields({
         <input type="hidden" name="waecMode" value={waecEligible && waecMode ? '1' : ''} />
         {delivery === 'cbt' && examType === 'theory' && !theoryOnPaperLocked ? (
           <input type="hidden" name="theoryOnPaper" value={theoryOnPaper ? '1' : '0'} />
+        ) : null}
+        {examType === 'theory' && !theoryOnPaperLocked ? (
+          <input type="hidden" name="theoryAnswerCount" value={answerCount} />
         ) : null}
 
         <div className="qs-row qs-row--context">
@@ -234,6 +242,21 @@ export default function BankFields({
                 {theoryOnPaperLocked
                   ? 'This set has been handed in, so this can no longer change.'
                   : 'Students read the theory on screen. They write on paper and you enter each mark.'}
+              </span>
+            </div>
+          ) : null}
+          {examType === 'theory' ? (
+            <div className="qs-field qs-field--answercount">
+              <label htmlFor="qs-answer-count">How many theory questions does each student answer?</label>
+              <input id="qs-answer-count" type="number" min={0} step={1} inputMode="numeric" placeholder="All of them" style={{ maxWidth: 140 }}
+                value={answerCount} disabled={theoryOnPaperLocked}
+                onChange={(e) => setAnswerCount(e.target.value.replace(/[^\d]/g, ''))}
+                onBlur={() => { if ((answerCount === '' ? 0 : Number(answerCount)) !== (initialAnswerCount || 0)) submitSoon(); }}
+                onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); (e.target as HTMLInputElement).blur(); } }} />
+              <span className="qs-hint">
+                {theoryOnPaperLocked
+                  ? 'This set has been handed in, so this can no longer change.'
+                  : 'Write as many as you like. Leave empty for every student to answer all of them. Tick Compulsory on a question to give it to every student; the rest are picked at random.'}
               </span>
             </div>
           ) : null}

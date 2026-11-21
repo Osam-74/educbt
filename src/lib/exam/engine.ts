@@ -153,6 +153,7 @@ export async function startAttempt(
       passagePosition: schema.questions.passagePosition,
       type: schema.questions.questionType,
       sequence: schema.questions.sequence,
+      isCompulsory: schema.questions.isCompulsory,
     })
       .from(schema.paperQuestions)
       .innerJoin(schema.questions, eq(schema.questions.id, schema.paperQuestions.questionId))
@@ -174,10 +175,12 @@ export async function startAttempt(
     const chosen = candidateOrder(
       pool.map((p) => ({
         id: Number(p.questionId), passageId: p.passageId ? Number(p.passageId) : null,
-        passagePosition: p.passagePosition, type: p.type, sequence: p.sequence,
+        passagePosition: p.passagePosition, type: p.type, sequence: p.sequence, isCompulsory: p.isCompulsory,
       })),
       paper.questionCount > 0 ? paper.questionCount : 0,
       paper.shuffleQuestions,
+      Math.random,
+      paper.theoryAnswerCount,
     );
 
     const expiresAt = new Date(Date.now() + paper.durationSeconds * 1000);

@@ -73,7 +73,8 @@ export default async function AuthorSetPage({
 
   const { set, questions } = data;
   const editable = isEditable(set.status);
-  const short = questions.length < set.minRequired;
+  const needed = set.examType === 'theory' ? Math.min(1, set.minRequired || 1) : set.minRequired;
+  const short = questions.length < needed;
 
   async function saveQuestion(formData: FormData) {
     'use server';
@@ -161,8 +162,8 @@ export default async function AuthorSetPage({
       ) : null}
 
       <p className={short ? 'short' : 'muted'}>
-        {questions.length} of {set.minRequired} question{set.minRequired === 1 ? '' : 's'}
-        {short ? ` — ${set.minRequired - questions.length} more needed before you can submit.` : ' — ready to submit.'}
+        {questions.length} of {needed} question{needed === 1 ? '' : 's'}
+        {short ? ` — ${needed - questions.length} more needed before you can submit.` : ' — ready to submit.'}
       </p>
 
       {editable ? (

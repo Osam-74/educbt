@@ -240,11 +240,11 @@ function onePracticeKindPerScope<T extends { subjectId: number; levelId: number;
  * The approved theory questions that belong on this candidate's paper: the theory set paired with the objective set
  * (same subject, level, department, terminal bank and WAEC kind). Empty when there is no approved theory set.
  */
-async function theoryQuestionsFor(tx: Tx, schoolId: number, c: PoolCandidate): Promise<{ ids: number[]; setFlags: boolean[] }> {
+async function theoryQuestionsFor(tx: Tx, schoolId: number, c: PoolCandidate): Promise<{ ids: number[]; setFlags: boolean[]; answerCount: number }> {
   const [objectiveSet] = await tx.select({ sessionId: schema.questionSets.sessionId, termId: schema.questionSets.termId })
     .from(schema.questionSets).where(eq(schema.questionSets.id, c.setId)).limit(1);
-  if (!objectiveSet) return { ids: [], setFlags: [] };
-  const rows = await tx.select({ id: schema.questions.id, onPaper: schema.questionSets.theoryOnPaper })
+  if (!objectiveSet) return { ids: [], setFlags: [], answerCount: 0 };
+  const rows = await tx.select({ id: schema.questions.id, onPaper: schema.questionSets.theoryOnPaper, answerCount: schema.questionSets.theoryAnswerCount })
     .from(schema.questions)
     .innerJoin(schema.questionSets, eq(schema.questionSets.id, schema.questions.questionSetId))
     .where(and(
@@ -262,7 +262,8 @@ async function theoryQuestionsFor(tx: Tx, schoolId: number, c: PoolCandidate): P
       eq(schema.questions.approvalStatus, 'approved'),
     ))
     .orderBy(asc(schema.questions.sequence), asc(schema.questions.id));
-  return { ids: rows.map((r) => Number(r.id)), setFlags: rows.map((r) => r.onPaper) };
+  // One theory set per scope, so every row carries the same number; the largest is taken so a stray row can never lower it.
+  return { ids: rows.map((r) => Number(r.id)), setFlags: rows.map((r) => r.onPaper), answerCount: rows.reduce((m, r) => Math.max(m, r.answerCount), 0) };
 }
 
 /**
@@ -457,7 +458,7 @@ export async function composeSeries(
       // count, exactly as for objective. A CA test or practice paper has no theory half, so nothing is attached.
       const theory = series.seriesType === 'examination' && c.deliveryMode !== 'written'
         ? await theoryQuestionsFor(tx, actor.schoolId, c)
-        : { ids: [] as number[], setFlags: [] as boolean[] };
+        : { ids: [] as number[], setFlags: [] as boolean[], answerCount: 0 };
       const theoryPool = theory.ids;
 
       if (pool.length > 0 || theoryPool.length > 0) {
@@ -475,7 +476,7 @@ export async function composeSeries(
       // can all tell a written sitting from a CBT one without re-joining
       // back to the question set every time.
       // theoryOnPaper is true only when EVERY attached theory question comes from an on-paper set (see paperIsOnPaper).
-      await tx.update(schema.examPapers).set({ deliveryMode: c.deliveryMode === 'written' ? 'written' : 'cbt', theoryOnPaper: paperIsOnPaper(theory.setFlags) })
+      await tx.update(schema.examPapers).set({ deliveryMode: c.deliveryMode === 'written' ? 'written' : 'cbt', theoryOnPaper: paperIsOnPaper(theory.setFlags), theoryAnswerCount: theory.answerCount })
         .where(eq(schema.examPapers.id, paperId));
 
       created++;

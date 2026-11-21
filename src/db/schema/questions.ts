@@ -198,6 +198,8 @@ export const questionSets = pgTable('question_sets', {
   waecMode: boolean('waec_mode').default(false).notNull(),
   /** Theory only: the paper is answered on paper; students read it on screen, the teacher enters the marks. */
   theoryOnPaper: boolean('theory_on_paper').default(false).notNull(),
+  /** Theory only: how many theory questions each student answers. 0 = every student answers every question. */
+  theoryAnswerCount: integer('theory_answer_count').default(0).notNull(),
 
   // 0 means the terminal examination. See the note at the top of this file on
   // why this is NOT NULL.
@@ -255,6 +257,8 @@ export const questions = pgTable('questions', {
   // e.g. "paper2:antonyms" for a WAEC-structured paper. Empty otherwise.
   section: varchar('section', { length: 100 }).default('').notNull(),
 
+  /** Theory only: every student's paper carries this question, whatever the draw. */
+  isCompulsory: boolean('is_compulsory').default(false).notNull(),
   marks: numeric('marks', { precision: 6, scale: 2 }).default('1.00').notNull(),
   sequence: integer('sequence').default(0).notNull(),
 

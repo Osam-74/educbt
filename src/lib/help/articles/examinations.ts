@@ -56,6 +56,8 @@ export const examinations: HelpArticle[] = [
         'Choose the **Exam Type**: objective or theory.',
         'Choose the **Delivery Mode** (CBT or Written) if it is shown. Some examinations fix this for every subject, and then the choice is replaced by a note saying so.',
         'For a CBT **theory** set, tick **Theory is answered on paper** if students will write the answers on paper. You can change it only until you hand the set in.',
+        'For a **theory** set, you can also fill **How many theory questions does each student answer?** Leave it empty and every student answers every question you write. Write as many questions as you like: there is no fixed number to reach.',
+        'On a theory question, tick **Compulsory** if every student must get it. You can also use **Make compulsory** or **Make optional** beside a question already in the list, until you hand the set in.',
         'Set **Default Marks** for the questions you are about to add.',
         'Pick a **Method** to add questions: **Manual Entry**, **Paste in Format** or **CSV / Excel Import**.',
       ] },
@@ -98,7 +100,7 @@ export const examinations: HelpArticle[] = [
     icon: 'exam',
     blocks: [
       { type: 'steps', title: 'Submit a set', items: [
-        'Make sure the set has at least the **minimum number of questions** the exam office requires. If you are short, EduCBT tells you how many you have against how many are needed.',
+        'Make sure the set has at least the **minimum number of questions** the exam office requires. If you are short, EduCBT tells you how many you have against how many are needed. A **theory** set is different: it only needs one question, and at least as many as the number you chose for each student to answer. If you chose more than you wrote, EduCBT says so and does not submit the set.',
         'Select **Submit for review**.',
         'The set now waits for the exam office. You cannot edit it while it waits.',
       ] },
@@ -284,7 +286,9 @@ export const examinations: HelpArticle[] = [
         'You can only mark scripts for a class and subject you are assigned to teach.',
         'Only scripts that have been submitted appear. A sitting still in progress does not.',
         'Every student who sat the paper has a script for **every** theory question, even one they left blank. Give a blank answer **0** so the result can be completed. A result stays incomplete until every theory question has a mark.',
-        'In an examination, students answer the objective questions first and then **all** the theory questions, which are the same for every student. Each theory question has its own answer box.',
+        'In an examination, students answer the objective questions first and then the theory questions. Unless the teacher chose a number, every student gets **all** of them, the same for everyone. Each theory question has its own answer box.',
+        'If the teacher chose how many theory questions each student answers, every student gets the questions ticked **Compulsory**, and the rest of their number is picked at random from the others. Students on the same paper can therefore have different theory questions. Each one sees **Answer all N of the theory questions on this paper** and a note on the compulsory ones.',
+        'Marking follows what each student was given. A student who was given 3 of 5 questions is marked out of those 3 and is never left waiting on a question they did not see.',
       ] },
       { type: 'h', text: 'Theory answered on paper' },
       { type: 'p', text: 'Some subjects write the theory on paper. When the theory set was marked **Theory is answered on paper**, students read each theory question on screen, with no answer box, and write on their answer paper. Their objective answers are still taken on the computer.' },

@@ -59,6 +59,8 @@ export const examPapers = pgTable('exam_papers', {
   durationSeconds: integer('duration_seconds').default(3600).notNull(),
   /** True only when EVERY theory question on the paper comes from an on-paper set. Worked out at compose time. */
   theoryOnPaper: boolean('theory_on_paper').default(false).notNull(),
+  /** The teacher's number, copied from the theory set when the paper is built. 0 = every student answers every theory question. */
+  theoryAnswerCount: integer('theory_answer_count').default(0).notNull(),
 
   /**
    * Set by the scheduling step: scheduledAt + durationSeconds. The timetable

@@ -36,6 +36,8 @@ type Option = { id: number; key: string | null; text: string };
 type Question = {
   id: number;
   number: number;
+  /** Theory only: the teacher required every student to answer this one. */
+  compulsory?: boolean;
   /** 'theory' renders an answer box; everything else renders options. */
   type: string;
   text: string;
@@ -54,6 +56,7 @@ export default function ExamRoom({
   questions,
   subjectName,
   theoryOnPaper = false,
+  theoryChosen = false,
 }: {
   attemptId: number;
   expiresAtIso: string;
@@ -61,6 +64,8 @@ export default function ExamRoom({
   subjectName: string;
   /** The theory is written on paper: shown here to read, never answered here, and not counted as unanswered. */
   theoryOnPaper?: boolean;
+  /** The teacher chose how many theory questions each student answers, so say how many this student has. */
+  theoryChosen?: boolean;
 }) {
   const storageKey = `educbt:attempt:${attemptId}`;
   const textStorageKey = `educbt:attempt:${attemptId}:text`;
@@ -353,6 +358,14 @@ export default function ExamRoom({
                 <p key={i}>{p}</p>
               ))}
             </div>
+          ) : null}
+
+          {q.type === 'theory' && theoryChosen ? (
+            /* Shown in typed AND on-paper mode: the student must know how many theory questions to answer. */
+            <p className="exam__theory-rule note" role="note" data-testid="theory-rule">
+              <strong>Answer all {questions.filter((x) => x.type === 'theory').length} of the theory questions on this paper.</strong>
+              {q.compulsory ? ' This question is compulsory.' : ''}
+            </p>
           ) : null}
 
           {q.instructions ? <p className="exam__instr">{q.instructions}</p> : null}

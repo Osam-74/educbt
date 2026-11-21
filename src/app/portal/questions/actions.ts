@@ -6,6 +6,7 @@ import { findOrCreateSet, addQuestion, addQuestionsBulk, submitSet, type SetScop
 import { snapshotSet } from '@/lib/exam/vault';
 import { createPassage, editPassage, passageDeletePreview, deletePassageWithQuestions, ensurePassagesForImport } from '@/lib/exam/passages';
 import { getSetSubject, updateQuestion } from '@/lib/exam/sets';
+import { normaliseAnswerCount } from '@/lib/exam/theory-choice';
 import type { ParsedRow } from './parsers';
 
 function backToQuestions(params: URLSearchParams, error?: string, ok?: string) {
@@ -29,6 +30,8 @@ function scopeParams(form: FormData) {
     waecMode: form.get('waecMode') === '1',
     // Only sent by the form for a CBT theory set; '1' = on paper, '0' = typed on screen, absent = leave as it is.
     theoryOnPaper: form.has('theoryOnPaper') ? form.get('theoryOnPaper') === '1' : undefined,
+    // Only sent by the form for a theory set. Blank or 0 = every student answers every theory question; absent = leave as it is.
+    theoryAnswerCount: form.has('theoryAnswerCount') ? normaliseAnswerCount(form.get('theoryAnswerCount')) : undefined,
   };
 }
 
@@ -83,6 +86,7 @@ export async function openSet(form: FormData) {
       deliveryMode: forcedDelivery ?? scope.delivery,
       defaultMarks: scope.marks,
       theoryOnPaper: scope.theoryOnPaper,
+      theoryAnswerCount: scope.theoryAnswerCount,
     };
     const set = await findOrCreateSet(actor, setScope);
     params.set('setId', String(set.id));
@@ -126,6 +130,7 @@ export async function saveManualQuestion(form: FormData) {
       passageId: Number(form.get('passageId')) || null,
       section: String(form.get('section') ?? '').trim(),
       markingGuide: String(form.get('markingGuide') ?? '').trim() || null,
+      isCompulsory: form.get('isCompulsory') === '1',
       options,
       ...(parts.length > 0 ? { parts } : {}),
     });
@@ -187,7 +192,11 @@ export async function handInSet(form: FormData) {
   }
 
   if (!result.success) {
-    returnParams.set('error', `Not enough questions — ${result.shortfall.join('; ')}.`);
+    // Two kinds of shortfall: "theory: 2 of 5" (not enough written) and a plain sentence (students asked to answer more
+    // theory than was written). Only the first kind reads as "Not enough questions".
+    const counts = result.shortfall.filter((x) => /^\w+: /.test(x));
+    const sentences = result.shortfall.filter((x) => !/^\w+: /.test(x));
+    returnParams.set('error', [counts.length ? `Not enough questions — ${counts.join('; ')}.` : '', ...sentences].filter(Boolean).join(' '));
     backToQuestions(returnParams);
     return;
   }
@@ -267,6 +276,19 @@ export async function saveQuestionEdit(form: FormData) {
     if (form.has('markingGuide')) patch.markingGuide = String(form.get('markingGuide') ?? '');
     await updateQuestion(actor, Number(form.get('questionId')), patch);
     returnParams.set('ok', 'Question updated.');
+  } catch (e) {
+    returnParams.set('error', e instanceof Error ? e.message : 'That question could not be changed.');
+  }
+  backToQuestions(returnParams);
+}
+
+/** Tick or untick "Compulsory" on a theory question already written. Allowed while the set is a draft or sent back. */
+export async function setQuestionCompulsory(form: FormData) {
+  const actor = await requireSchoolSession();
+  const returnParams = new URLSearchParams(String(form.get('returnParams') ?? ''));
+  try {
+    await updateQuestion(actor, Number(form.get('questionId')), { isCompulsory: form.get('isCompulsory') === '1' });
+    returnParams.set('ok', form.get('isCompulsory') === '1' ? 'Marked compulsory.' : 'No longer compulsory.');
   } catch (e) {
     returnParams.set('error', e instanceof Error ? e.message : 'That question could not be changed.');
   }

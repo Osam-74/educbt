@@ -45,6 +45,8 @@ export type PublicQuestion = {
   instructions: string | null;
   marks: number;
   section: string;
+  /** Theory only: the teacher required every student to answer this question. */
+  compulsory: boolean;
   passage: { id: number; title: string; instructions: string | null; body: string; imageUrl: string | null } | null;
   options: PublicOption[];
 };
@@ -90,6 +92,7 @@ export async function paperForCandidateTx(
         instructions: schema.questions.instructions,
         marks: schema.questions.marks,
         section: schema.questions.section,
+        compulsory: schema.questions.isCompulsory,
         sequence: schema.questions.sequence,
         passageId: schema.questions.passageId,
       })
@@ -160,6 +163,7 @@ export async function paperForCandidateTx(
       instructions: r.instructions,
       marks: Number(r.marks),
       section: r.section,
+      compulsory: r.type === 'theory' && r.compulsory,
       passage: r.passageId ? passageById.get(Number(r.passageId)) ?? null : null,
       options: optionsByQuestion.get(Number(r.id)) ?? [],
     }));
