@@ -24,7 +24,7 @@ import type { Actor } from '@/lib/session';
 import { isSchoolWide } from '@/lib/queries';
 import { waecEligibility } from './authoring-validation';
 import { setFlag } from './theory-delivery';
-import { sectionProblem, sectionLocked } from './waec-blueprint';
+import { sectionProblem, sectionLocked, passageProblem } from './waec-blueprint';
 import { authoringActor, authoringLock, permittedScope, permittedCollection, editableSetAccess } from './authoring-access';
 import { validateQuestion, validateQuestionParts, authoringConfig } from './authoring-validation';
 
@@ -167,6 +167,8 @@ export async function addQuestion(
     input = validateQuestion(input, set.examType);
     const sectionIssue = sectionProblem(input.section ?? '', { waecMode: set.waecMode, examType: set.examType });
     if (sectionIssue) throw new Error(sectionIssue);
+    const passageIssue = passageProblem(input.section ?? '', input.passageId);
+    if (passageIssue) throw new Error(passageIssue);
     const [duplicate] = await tx.select({ id: schema.questions.id }).from(schema.questions).where(and(
       eq(schema.questions.questionSetId, setId), eq(schema.questions.status, 'active'),
       sql`lower(trim(${schema.questions.questionText})) = lower(trim(${input.text}))`));
@@ -763,6 +765,10 @@ export async function updateQuestion(
       const issue = sectionProblem(patch.section, { waecMode: set.waecMode, examType: set.examType });
       if (issue) throw new Error(issue);
       next.section = patch.section.trim();
+      // Moving a question INTO cloze/comprehension/summary needs a passage: the one it already has, or the one chosen now.
+      const passageAfter = patch.passageId !== undefined ? patch.passageId : q.passageId;
+      const moved = passageProblem(next.section, passageAfter);
+      if (moved) throw new Error(moved);
     }
     if (patch.text !== undefined || patch.marks !== undefined) {
       const checked = validateQuestion({ text: patch.text ?? q.questionText, marks: patch.marks ?? Number(q.marks), options: patch.options ?? [{ text: 'a', isCorrect: true }, { text: 'b', isCorrect: false }] } as never, set.examType);
@@ -784,6 +790,11 @@ export async function updateQuestion(
         if (!passage) throw new Error('Choose a passage for this subject in this school.');
       }
       next.passageId = patch.passageId;
+      // Taking the passage off a question that sits in a passage section would break the paper.
+      if (patch.passageId === null) {
+        const lost = passageProblem((next.section ?? q.section) ?? '', null);
+        if (lost) throw new Error(lost);
+      }
     }
     if (Object.keys(next).length === 0) return q;
 

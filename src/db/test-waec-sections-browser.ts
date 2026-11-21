@@ -89,6 +89,18 @@ async function main() {
         await addQ('Unplaced question about grammar.');
         assert.match((await page.getByTestId('waec-unplaced').textContent()) ?? '', /1 question is not in a section yet/);
       });
+      await check('a cloze question with no passage chosen is refused with a clear message, and nothing is saved', async () => {
+        const before = (await questions()).length;
+        await page.getByLabel('Question', { exact: true }).fill('A cloze gap that has no passage behind it.');
+        await page.locator('input[name="opt_a"]').fill('Yes'); await page.locator('input[name="opt_b"]').fill('No');
+        await page.locator('select[name="section"]').first().selectOption('paper1:cloze');
+        await page.getByRole('button', { name: 'Save question', exact: true }).click();
+        const alert = page.getByRole('alert').filter({ hasText: /written about a passage/ });
+        await alert.waitFor();
+        assert.match((await alert.textContent()) ?? '', /Section 5 — Cloze Passage.*Choose or add the passage first/);
+        assert.equal((await questions()).length, before, 'nothing was saved');
+        await page.goto(clean(), { waitUntil: 'networkidle' });
+      });
       await check('the unplaced question can be given a section from the list', async () => {
         const q = (await questions()).find((x) => x.section === '')!;
         await page.locator(`#sec-${q.id}`).selectOption('paper1:grammar');

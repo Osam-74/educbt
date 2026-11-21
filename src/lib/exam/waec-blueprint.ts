@@ -61,6 +61,18 @@ export function sectionProblem(section: string, set: { waecMode: boolean; examTy
   return null;
 }
 
+/**
+ * A question in a cloze, comprehension or summary section is written about a passage. Without one a cloze gap is
+ * shuffled as a loose question (its number then no longer matches the blank in the text) and a comprehension question
+ * reaches the student with nothing to read. Judged only when a question is added or moved into such a section, never
+ * on rows that already exist.
+ */
+export function passageProblem(section: string, passageId: number | null | undefined): string | null {
+  const found = BY_KEY.get(section.trim());
+  if (!found || !found.needsPassage) return null;
+  return passageId ? null : `${found.label} questions are written about a passage. Choose or add the passage first.`;
+}
+
 /** How far along a set is, section by section, from the sections its questions carry. */
 export function sectionProgress(examType: 'objective' | 'theory', questions: Array<{ section: string }>) {
   const counts = new Map<string, number>();

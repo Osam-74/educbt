@@ -47,7 +47,8 @@ async function main() {
     const waecTheory = await findOrCreateSet(teacher, scope('theory', true));
     const plain = await findOrCreateSet(teacher, scope('objective', false));
     const sectionOf = async (id: number) => (await db.select().from(schema.questions).where(eq(schema.questions.id, id)))[0]!.section;
-    const add = async (set: { id: number }, text: string, section = '') => Number(((await addQuestion(teacher, set.id, { text, marks: 1, options: opts, section })) as { id: number }).id);
+    const [shared] = await db.insert(schema.passages).values({ schoolId, subjectId: english!.id, title: 'Shared cloze passage', body: 'A cloze passage with blanks that is long enough to be valid here.' }).returning();
+    const add = async (set: { id: number }, text: string, section = '', passageId?: number) => Number(((await addQuestion(teacher, set.id, { text, marks: 1, options: opts, section, ...(passageId ? { passageId } : {}) })) as { id: number }).id);
 
     await check('a question is saved with the section the teacher chose, by its real key', async () => { assert.equal(await sectionOf(await add(waecObj, 'Pick the antonym of "brave"?', 'paper1:antonyms')), 'paper1:antonyms'); });
     await check('a question saved with no section keeps none (it is not placed yet)', async () => { assert.equal(await sectionOf(await add(waecObj, 'Unplaced question one?')), ''); });
@@ -109,11 +110,11 @@ async function main() {
     });
     await check('once the SET is handed in, nothing can be changed', async () => {
       await db.update(schema.questionSets).set({ status: 'submitted' }).where(eq(schema.questionSets.id, waecObj.id));
-      await assert.rejects(updateQuestion(teacher, q, { section: 'paper1:cloze' }), /submitted and can no longer be edited/);
+      await assert.rejects(updateQuestion(teacher, q, { section: 'paper1:cloze', passageId: shared!.id }), /submitted and can no longer be edited/);
       await assert.rejects(updateQuestion(teacher, q, { text: 'Sneaky rewording of the question?' }), /submitted and can no longer be edited/);
       await db.update(schema.questionSets).set({ status: 'returned' }).where(eq(schema.questionSets.id, waecObj.id));
     });
-    await check('a set the office sent back (returned) can be edited again', async () => { await updateQuestion(teacher, q, { section: 'paper1:cloze' }); assert.equal(await sectionOf(q), 'paper1:cloze'); });
+    await check('a set the office sent back (returned) can be edited again', async () => { await updateQuestion(teacher, q, { section: 'paper1:cloze', passageId: shared!.id }); assert.equal(await sectionOf(q), 'paper1:cloze'); });
     await check('a question students have already answered cannot be changed at all', async () => {
       const a = await add(waecObj, 'Answered question?', 'paper1:rhymes'.replace('paper1', 'paper3'));
       const [stu] = await db.insert(schema.students).values({ schoolId, admissionNumber: 'A' + randomUUID().slice(0, 6), firstName: 'S', lastName: 'T' } as never).returning();
@@ -153,10 +154,39 @@ async function main() {
     });
     await check('a question can be attached to a passage of its own subject, and a foreign passage is refused', async () => {
       const [mine] = await db.insert(schema.passages).values({ schoolId, subjectId: english!.id, title: 'Sections passage', body: 'A passage that is long enough to be valid here.' }).returning();
-      const c = await add(waecObj, 'Question for a passage?', 'paper1:cloze');
+      const c = await add(waecObj, 'Question for a passage?', 'paper1:grammar');
       await updateQuestion(teacher, c, { passageId: mine!.id });
       assert.equal((await db.select().from(schema.questions).where(eq(schema.questions.id, c)))[0]!.passageId, mine!.id);
       await assert.rejects(updateQuestion(teacher, c, { passageId: 99999999 }), /passage/);
+    });
+    await check('a NEW cloze, comprehension or summary question without a passage is refused, and nothing is saved', async () => {
+      const before = (await db.select().from(schema.questions).where(eq(schema.questions.questionSetId, waecObj.id))).length;
+      await assert.rejects(addQuestion(teacher, waecObj.id, { text: 'A gap with no passage at all?', marks: 1, options: opts, section: 'paper1:cloze' }), /written about a passage/);
+      assert.equal((await db.select().from(schema.questions).where(eq(schema.questions.questionSetId, waecObj.id))).length, before);
+      await assert.rejects(addQuestion(teacher, waecTheory.id, { text: 'Answer the questions on the text.', marks: 5, section: 'paper2:comprehension' }), /written about a passage/);
+      await assert.rejects(addQuestion(teacher, waecTheory.id, { text: 'Summarise the text.', marks: 5, section: 'paper2:summary' }), /written about a passage/);
+    });
+    await check('the same questions are accepted once they carry a passage', async () => {
+      const id = await add(waecObj, 'Gap 1 with its passage?', 'paper1:cloze', shared!.id);
+      assert.equal((await db.select().from(schema.questions).where(eq(schema.questions.id, id)))[0]!.passageId, shared!.id);
+    });
+    await check('sections that need no passage are unaffected', async () => { await add(waecObj, 'A plain antonym, no passage needed?', 'paper1:antonyms'); await add(waecObj, 'No section yet, no passage needed?'); });
+    await check('moving a question INTO a passage section needs a passage; with one it works', async () => {
+      const m = await add(waecObj, 'Question to move into cloze?', 'paper1:grammar');
+      await assert.rejects(updateQuestion(teacher, m, { section: 'paper1:cloze' }), /written about a passage/);
+      assert.equal(await sectionOf(m), 'paper1:grammar');
+      await updateQuestion(teacher, m, { section: 'paper1:cloze', passageId: shared!.id }); assert.equal(await sectionOf(m), 'paper1:cloze');
+    });
+    await check('the passage cannot be taken OFF a question that sits in a passage section', async () => {
+      const m = await add(waecObj, 'Cloze gap that must keep its passage?', 'paper1:cloze', shared!.id);
+      await assert.rejects(updateQuestion(teacher, m, { passageId: null }), /written about a passage/);
+      assert.equal((await db.select().from(schema.questions).where(eq(schema.questions.id, m)))[0]!.passageId, shared!.id);
+    });
+    await check('a question ALREADY in a passage section without a passage (older data) can still be edited, never re-judged', async () => {
+      const old = await add(waecObj, 'Older cloze gap saved before this rule?', 'paper1:grammar');
+      await db.update(schema.questions).set({ section: 'paper1:cloze' }).where(eq(schema.questions.id, old));
+      await updateQuestion(teacher, old, { instructions: 'Fill the gap.' });
+      assert.equal(await sectionOf(old), 'paper1:cloze');
     });
     await check('a change is written to the audit trail', async () => {
       assert.ok((await db.select().from(schema.auditLog).where(eq(schema.auditLog.schoolId, schoolId))).some((r) => r.action === 'question.updated'));

@@ -1,13 +1,21 @@
 import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { WAEC_SECTIONS, sectionsFor, waecSection, sectionProblem, sectionProgress } from './waec-blueprint';
+import { WAEC_SECTIONS, sectionsFor, waecSection, sectionProblem, sectionProgress, passageProblem } from './waec-blueprint';
 
 let count = 0;
 const check = (name: string, fn: () => void) => { fn(); count++; console.log('PASS  ' + name); };
 
 check('there are 3 papers and 14 sections', () => { assert.equal(WAEC_SECTIONS.length, 14); assert.deepEqual([...new Set(WAEC_SECTIONS.map((s) => s.paperKey))], ['paper1', 'paper2', 'paper3']); });
 check('every key is unique and follows paper:section', () => { assert.equal(new Set(WAEC_SECTIONS.map((s) => s.key)).size, 14); for (const s of WAEC_SECTIONS) assert.match(s.key, /^paper[123]:[a-z_]+$/); });
+check('exactly the three passage sections demand a passage, and the rest never do', () => {
+  for (const s of WAEC_SECTIONS) {
+    if (s.needsPassage) { assert.match(passageProblem(s.key, null) ?? '', /written about a passage/, s.key); assert.match(passageProblem(s.key, 0) ?? '', /written about a passage/); assert.equal(passageProblem(s.key, 7), null, s.key); }
+    else { assert.equal(passageProblem(s.key, null), null, s.key); assert.equal(passageProblem(s.key, 7), null, s.key); }
+  }
+});
+check('no section, a blank section or an unknown key is never a passage problem (sectionProblem judges those)', () => { for (const k of ['', '  ', 'paper9:nothing']) assert.equal(passageProblem(k, null), null); });
+check('the refusal names the section so the teacher knows what to do', () => { assert.match(passageProblem('paper2:summary', undefined) ?? '', /Section C — Summary.*Choose or add the passage first/); });
 check('the paper totals are the WASSCE ones: 40, 100 and 30 marks (170 in all)', () => {
   const total = (p: string) => WAEC_SECTIONS.filter((s) => s.paperKey === p).reduce((n, s) => n + s.marks, 0);
   assert.equal(total('paper1'), 40); assert.equal(total('paper2'), 100); assert.equal(total('paper3'), 30);
