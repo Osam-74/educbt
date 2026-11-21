@@ -3,8 +3,8 @@ import './calendar.css';
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { requireSchoolSession } from '@/lib/session';
-import { loadCalendar, saveEvent, cancelEvent, deleteEvent, setCalendarState, CalendarError } from '@/lib/calendar/service';
-import { occurrences, buildPeriods, stateOf, progress, nextResumption, daysToNextExam, type CalEvent } from '@/lib/calendar/engine';
+import { loadCalendar, saveEvent, cancelEvent, deleteEvent, setCalendarState, setTermDates, CalendarError } from '@/lib/calendar/service';
+import { occurrences, buildPeriods, stateOf, progress, nextResumption, daysToNextExam, dayStatus, isNonInstructional, type CalEvent } from '@/lib/calendar/engine';
 import { addDays, addMonths, eachDay, startOfWeek, weekday, isDateStr } from '@/lib/calendar/dates';
 import { CATEGORIES, AUDIENCES } from '@/lib/calendar/validate';
 import { forSchool, schema } from '@/db';
@@ -14,7 +14,7 @@ export const dynamic = 'force-dynamic';
 
 const CATEGORY_LABEL: Record<string, string> = {
   academic: 'Academic', examination: 'Examination', school_event: 'School event', public_holiday: 'Public holiday',
-  school_holiday: 'School holiday', administrative: 'Administrative', deadline: 'Deadline', ceremonial: 'Ceremony',
+  school_holiday: 'School holiday', mid_term_break: 'Mid-term break', non_instructional: 'Non-instructional day', administrative: 'Administrative', deadline: 'Deadline', ceremonial: 'Ceremony',
 };
 const AUDIENCE_LABEL: Record<string, string> = { everyone: 'Everyone', staff: 'Staff only', teachers: 'Teachers', students: 'Students', guardians: 'Parents and guardians', classes: 'Chosen classes' };
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
@@ -73,6 +73,16 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
       }
     } catch (e) { message = e instanceof CalendarError ? e.message : 'That could not be done.'; }
     redirect(`/portal/calendar?session=${sid}${message ? `&error=${encodeURIComponent(message)}` : `&ok=${ok}`}`);
+  }
+
+  async function saveTerms(fd: FormData) {
+    'use server';
+    const a = await requireSchoolSession();
+    const sid = Number(fd.get('sessionId')), termId = Number(fd.get('termId'));
+    let message = '';
+    try { await setTermDates(a, sid, { termId, startsOn: String(fd.get('resumesOn') ?? ''), endsOn: String(fd.get('closesOn') ?? '') }); }
+    catch (e) { message = e instanceof CalendarError ? e.message : 'The term dates could not be saved.'; }
+    redirect(`/portal/calendar?session=${sid}${message ? `&error=${encodeURIComponent(message)}` : '&ok=Term+dates+saved'}`);
   }
 
   if (!view.session) {
@@ -137,6 +147,21 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
               </li>); })}
           </ol>
         )}
+        {view.canManage && view.terms.length > 0 ? (
+          <details className="cal-termedit" open={q.terms === '1' || undefined}>
+            <summary>Change term dates</summary>
+            <p className="muted">The resumption and closing date of each term. School days, weekends and the progress above all follow these dates.</p>
+            {view.terms.map((t) => (
+              <form key={t.id} action={saveTerms} className="cal-termform" data-term={t.id}>
+                <input type="hidden" name="sessionId" value={sessionId} /><input type="hidden" name="termId" value={t.id} />
+                <strong>{t.title}</strong>
+                <label>Resumes<input type="date" name="resumesOn" defaultValue={t.startsOn ?? ''} required /></label>
+                <label>Closes<input type="date" name="closesOn" defaultValue={t.endsOn ?? ''} required /></label>
+                <button className="sa-btn" type="submit">Save dates</button>
+              </form>
+            ))}
+          </details>
+        ) : null}
       </div>
 
       <div className="card sa-card">
@@ -164,9 +189,11 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
             {eachDay(gridStart, gridEnd).map((d) => {
               const todays = inGrid.filter((e) => e.startsOn <= d && d <= e.endsOn);
               const out = d.slice(0, 7) !== first.slice(0, 7), wk = weekday(d) === 0 || weekday(d) === 6;
+              const ds = dayStatus(d, view.terms, view.events);
               return (
-                <div key={d} role="gridcell" className={`cal-cell${out ? ' cal-cell--out' : ''}${wk ? ' cal-cell--wk' : ''}${d === view.today ? ' cal-cell--today' : ''}`}>
+                <div key={d} role="gridcell" className={`cal-cell${out ? ' cal-cell--out' : ''}${wk ? ' cal-cell--wk' : ''}${ds.state === 'off' ? ' cal-cell--off' : ''}${d === view.today ? ' cal-cell--today' : ''}`} data-day={d} data-state={ds.state}>
                   <span className="cal-day">{Number(d.slice(8))}</span>
+                  {ds.state !== 'none' ? <span className={`cal-state cal-state--${ds.state}`}>{ds.state === 'school_day' ? 'School day' : ds.state === 'weekend' ? 'Weekend' : ds.by ? CATEGORY_LABEL[ds.by.category] : 'Day off'}</span> : null}
                   {todays.slice(0, 3).map((e) => <span key={e.key} className={pill(e)} title={`${e.title} · ${CATEGORY_LABEL[e.category]}`}>{e.title}</span>)}
                   {todays.length > 3 ? <span className="muted cal-more">+{todays.length - 3} more</span> : null}
                 </div>
@@ -186,7 +213,7 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
                   {view.canManage && e.source === 'event' ? (
                     <div className="tt-actions">
                       <Link className="tt-link" href={here({ edit: String(e.id) })}>Edit</Link>
-                      {e.status !== 'cancelled' ? <form action={act}><input type="hidden" name="id" value={e.id} /><input type="hidden" name="sessionId" value={sessionId} /><input type="hidden" name="what" value="cancel" /><button className="tt-link" type="submit">Cancel</button></form> : null}
+                      {e.status !== 'cancelled' ? <form action={act}><input type="hidden" name="id" value={e.id} /><input type="hidden" name="sessionId" value={sessionId} /><input type="hidden" name="what" value="cancel" /><button className="tt-link" type="submit">{isNonInstructional(e.category) ? 'Restore default' : 'Cancel'}</button></form> : null}
                       <form action={act}><input type="hidden" name="id" value={e.id} /><input type="hidden" name="sessionId" value={sessionId} /><input type="hidden" name="what" value="delete" /><button className="tt-link" type="submit">Delete</button></form>
                     </div>
                   ) : null}

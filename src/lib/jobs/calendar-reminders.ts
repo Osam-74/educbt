@@ -19,7 +19,7 @@ import { schoolTimeZone } from '@/lib/calendar/service';
 
 export type ReminderSummary = { schoolsConsidered: number; remindersSent: number; notificationsCreated: number; failures: Array<{ schoolId: number; error: string }> };
 
-const CATEGORY_WORD: Record<string, string> = { examination: 'Examination', ceremonial: 'Ceremony', deadline: 'Deadline', public_holiday: 'Public holiday', school_holiday: 'School holiday' };
+const CATEGORY_WORD: Record<string, string> = { examination: 'Examination', ceremonial: 'Ceremony', deadline: 'Deadline', public_holiday: 'Public holiday', school_holiday: 'School holiday', mid_term_break: 'Mid-term break', non_instructional: 'Non-instructional day' };
 
 /** The user ids an event is for. Mirrors canSee() in access.ts, resolved to people. */
 async function audienceUsers(tx: Tx, schoolId: number, sessionId: number, audience: string, classIds: number[]): Promise<number[]> {

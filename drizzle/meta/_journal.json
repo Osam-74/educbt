@@ -263,6 +263,13 @@
       "when": 1791033600000,
       "tag": "0036_theory_on_paper",
       "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1791120000000,
+      "tag": "0037_calendar_breaks",
+      "breakpoints": true
     }
   ]
 }

@@ -9,7 +9,15 @@ import {
 
 export type Category =
   | 'academic' | 'examination' | 'school_event' | 'public_holiday'
-  | 'school_holiday' | 'administrative' | 'deadline' | 'ceremonial';
+  | 'school_holiday' | 'mid_term_break' | 'non_instructional' | 'administrative' | 'deadline' | 'ceremonial';
+
+/**
+ * The categories that take a day OFF teaching. ONE list, used by instructional days, conflicts and the timetable, so a
+ * new kind of break can never be honoured in one place and forgotten in another. A special event (school_event) does not
+ * shade a date: it happens on a school day.
+ */
+export const NON_INSTRUCTIONAL: readonly Category[] = ['public_holiday', 'school_holiday', 'mid_term_break', 'non_instructional'];
+export const isNonInstructional = (c: Category): boolean => NON_INSTRUCTIONAL.includes(c);
 
 export type CalEvent = {
   /** 'e12' for a stored event, 'x7' for an examination read from the exam records. */
@@ -110,7 +118,7 @@ export function instructionalDays(terms: Term[], events: CalEvent[]): Set<DateSt
   const off = new Set<DateStr>();
   for (const e of events) {
     if (e.status === 'cancelled') continue;
-    if (e.category !== 'public_holiday' && e.category !== 'school_holiday') continue;
+    if (!isNonInstructional(e.category)) continue;
     for (const d of eachDay(e.startsOn, e.endsOn)) off.add(d);
   }
   const days = new Set<DateStr>();
@@ -119,6 +127,34 @@ export function instructionalDays(terms: Term[], events: CalEvent[]): Set<DateSt
     for (const d of eachDay(t.startsOn, t.endsOn)) if (!isWeekend(d) && !off.has(d)) days.add(d);
   }
   return days;
+}
+
+/**
+ * What a date is BEFORE anyone overrides it, worked out from the term dates alone (nothing is stored, so changing a
+ * term's dates changes every day at once). Monday to Friday inside a term is a school day, Saturday and Sunday inside a
+ * term are a weekend, and a date outside every term has no default at all.
+ */
+export type DefaultStatus = 'school_day' | 'weekend' | 'none';
+export function defaultStatus(date: DateStr, terms: Term[]): DefaultStatus {
+  for (const t of terms) {
+    if (!t.startsOn || !t.endsOn) continue;
+    if (cmp(date, t.startsOn) < 0 || cmp(date, t.endsOn) > 0) continue;
+    return isWeekend(date) ? 'weekend' : 'school_day';
+  }
+  return 'none';
+}
+
+/**
+ * What a date really is once the school's own entries are applied: the default, unless a holiday, break or
+ * non-instructional entry covers it (then it is `off`, and `by` names the entry, so the office can undo it by cancelling
+ * that entry: "restore default"). A weekend or a date outside any term stays as it is: a holiday there changes nothing.
+ */
+export type DayStatus = { state: 'school_day' | 'weekend' | 'off' | 'none'; default: DefaultStatus; by: CalEvent | null };
+export function dayStatus(date: DateStr, terms: Term[], events: CalEvent[]): DayStatus {
+  const def = defaultStatus(date, terms);
+  if (def !== 'school_day') return { state: def, default: def, by: null };
+  const by = events.find((e) => e.status !== 'cancelled' && isNonInstructional(e.category) && cmp(date, e.startsOn) >= 0 && cmp(date, e.endsOn) <= 0) ?? null;
+  return by ? { state: 'off', default: def, by } : { state: 'school_day', default: def, by: null };
 }
 
 export type Progress = {
@@ -193,7 +229,7 @@ export function conflictsFor(
 ): Conflict[] {
   if (ev.status === 'cancelled' || ev.status === 'draft') return [];
   const out: Conflict[] = [];
-  const holidays = ctx.others.filter((o) => o.key !== ev.key && o.status !== 'cancelled' && (o.category === 'school_holiday' || o.category === 'public_holiday'));
+  const holidays = ctx.others.filter((o) => o.key !== ev.key && o.status !== 'cancelled' && isNonInstructional(o.category));
 
   if (ev.category === 'examination') {
     const h = holidays.find((o) => overlaps(ev.startsOn, ev.endsOn, o.startsOn, o.endsOn));

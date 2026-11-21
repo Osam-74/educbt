@@ -11,6 +11,7 @@ import { type DateStr, addDays, isValidTimeZone, toLocalDate, toLocalTime, today
 import { type CalEvent, type Conflict, type Term, conflictsFor, occurrences } from './engine';
 import { canPublish, canSee, canSeeExam, isManager, type Viewer } from './access';
 import { validateEvent, type EventInput } from './validate';
+import { termDatesProblem } from './term-dates';
 
 export class CalendarError extends Error {}
 
@@ -275,6 +276,27 @@ export async function cancelEvent(actor: Actor, id: number): Promise<void> {
     if (!row) throw new CalendarError('That event was not found.');
     await tx.update(schema.calendarEvents).set({ status: 'cancelled', updatedAt: new Date() }).where(eq(schema.calendarEvents.id, id));
     await audit(tx, actor, 'calendar.event_cancelled', 'calendar_events', id, { status: row.status }, { status: 'cancelled' });
+  });
+}
+
+/**
+ * Set a term's resumption and closing dates from the calendar. Writes the SAME terms table School Settings edits (one
+ * source of truth), dates only: the title, position and everything results hang off are untouched. Managers only.
+ */
+export async function setTermDates(actor: Actor, sessionId: number, input: { termId: number; startsOn: string; endsOn: string }): Promise<void> {
+  requireManager(actor);
+  await forSchool(actor.schoolId, async (tx) => {
+    const [session] = await tx.select().from(schema.academicSessions)
+      .where(and(eq(schema.academicSessions.id, sessionId), eq(schema.academicSessions.schoolId, actor.schoolId))).limit(1);
+    if (!session) throw new CalendarError('That session was not found.');
+    const terms = await termsOf(tx, actor.schoolId, sessionId);
+    const problem = termDatesProblem(input, terms, { startsOn: iso(session.startsOn), endsOn: iso(session.endsOn) });
+    if (problem) throw new CalendarError(problem);
+    const before = terms.find((t) => t.id === input.termId)!;
+    await tx.update(schema.terms).set({ startsOn: new Date(input.startsOn), endsOn: new Date(input.endsOn) })
+      .where(and(eq(schema.terms.id, input.termId), eq(schema.terms.schoolId, actor.schoolId), eq(schema.terms.sessionId, sessionId)));
+    await audit(tx, actor, 'calendar.term_dates_changed', 'terms', input.termId,
+      { startsOn: before.startsOn, endsOn: before.endsOn }, { startsOn: input.startsOn, endsOn: input.endsOn });
   });
 }
 

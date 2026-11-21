@@ -28,7 +28,7 @@ import { staff } from './people';
 
 export const calendarCategory = pgEnum('calendar_category', [
   'academic', 'examination', 'school_event', 'public_holiday',
-  'school_holiday', 'administrative', 'deadline', 'ceremonial',
+  'school_holiday', 'mid_term_break', 'non_instructional', 'administrative', 'deadline', 'ceremonial',
 ]);
 
 /** draft: only managers see it. scheduled: planned. completed / cancelled: kept for the record, never deleted silently. */

@@ -5,7 +5,7 @@
 import { isDateStr } from './dates';
 import type { Category } from './engine';
 
-export const CATEGORIES: Category[] = ['academic', 'examination', 'school_event', 'public_holiday', 'school_holiday', 'administrative', 'deadline', 'ceremonial'];
+export const CATEGORIES: Category[] = ['academic', 'examination', 'school_event', 'public_holiday', 'school_holiday', 'mid_term_break', 'non_instructional', 'administrative', 'deadline', 'ceremonial'];
 export const STATUSES = ['draft', 'scheduled', 'completed', 'cancelled'] as const;
 export const REPEATS = ['none', 'daily', 'weekly', 'monthly', 'yearly'] as const;
 export const AUDIENCES = ['everyone', 'staff', 'teachers', 'students', 'guardians', 'classes'] as const;
