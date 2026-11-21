@@ -43,6 +43,8 @@ export default function BankFields({
   marks: initialMarks,
   method: initialMethod,
   waecMode: initialWaecMode,
+  theoryOnPaper: initialTheoryOnPaper,
+  theoryOnPaperLocked,
   theoryAllowed,
   lockedDelivery,
   action,
@@ -61,6 +63,10 @@ export default function BankFields({
   marks: number;
   method: 'manual' | 'paste' | 'csv';
   waecMode: boolean;
+  /** The loaded theory set's stored flag: its theory is written on paper, the teacher enters the marks. */
+  theoryOnPaper: boolean;
+  /** The set has been handed in, so the flag can no longer change (same rule as the delivery mode). */
+  theoryOnPaperLocked: boolean;
   theoryAllowed: boolean;
   /** When set, this series has already decided the format for every subject
    * — the Delivery Mode toggle is hidden and forced to this value. Null under
@@ -88,6 +94,9 @@ export default function BankFields({
   const [marks, setMarks] = useState(initialMarks);
   const [method, setMethod] = useState(initialMethod);
   const [waecMode, setWaecMode] = useState(initialWaecMode);
+  const [theoryOnPaper, setTheoryOnPaper] = useState(initialTheoryOnPaper);
+  // The stored value wins whenever the server hands back a different set (scope change, reload).
+  useEffect(() => { setTheoryOnPaper(initialTheoryOnPaper); }, [initialTheoryOnPaper]);
   const submitTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // A change to WHICH paper this is (subject/level/exam type/delivery/waec)
@@ -132,6 +141,9 @@ export default function BankFields({
         <input type="hidden" name="marks" value={marks} />
         <input type="hidden" name="method" value={method} />
         <input type="hidden" name="waecMode" value={waecEligible && waecMode ? '1' : ''} />
+        {delivery === 'cbt' && examType === 'theory' && !theoryOnPaperLocked ? (
+          <input type="hidden" name="theoryOnPaper" value={theoryOnPaper ? '1' : '0'} />
+        ) : null}
 
         <div className="qs-row qs-row--context">
           <div className="qs-field">
@@ -209,6 +221,20 @@ export default function BankFields({
                 <option value="paste">Paste in Format</option>
                 <option value="csv">CSV / Excel Import</option>
               </select>
+            </div>
+          ) : null}
+          {delivery === 'cbt' && examType === 'theory' ? (
+            <div className="qs-field qs-field--onpaper">
+              <label>
+                <input type="checkbox" name="theoryOnPaperBox" checked={theoryOnPaper} disabled={theoryOnPaperLocked}
+                  onChange={(e) => { setTheoryOnPaper(e.target.checked); submitSoon(); }} />
+                Theory is answered on paper
+              </label>
+              <span className="qs-hint">
+                {theoryOnPaperLocked
+                  ? 'This set has been handed in, so this can no longer change.'
+                  : 'Students read the theory on screen. They write on paper and you enter each mark.'}
+              </span>
             </div>
           ) : null}
           {waecEligible ? (

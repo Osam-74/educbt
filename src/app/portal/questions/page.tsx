@@ -5,7 +5,7 @@ import { requireSchoolSession } from '@/lib/session';
 import { isSchoolWide } from '@/lib/queries';
 import { forSchool, schema } from '@/db';
 import { collectionView } from '@/lib/exam/collection';
-import { setWithQuestions } from '@/lib/exam/sets';
+import { setWithQuestions, isEditable } from '@/lib/exam/sets';
 import { listPassages } from '@/lib/exam/passages';
 import { caComponents } from '@/lib/ca/validation';
 import { openSet } from './actions';
@@ -120,6 +120,8 @@ export default async function QuestionBankPage({ searchParams }: { searchParams:
             scopes={data.scopes.filter((s): s is typeof s & { subjectId: number } => s.subjectId !== null)}
             subjectId={subjectId} levelId={levelId} departmentId={departmentId}
             examType={examType} delivery={delivery} marks={marks} method={method} waecMode={waecMode}
+            theoryOnPaper={!!(loaded?.set as { theoryOnPaper?: boolean } | undefined)?.theoryOnPaper}
+            theoryOnPaperLocked={!!loaded && !isEditable(loaded.set.status)}
             theoryAllowed={!!theoryAllowed} lockedDelivery={lockedDelivery} action={openSet}
             opening={<p className="muted">Opening…</p>}
             writtenIntent={loaded ? (

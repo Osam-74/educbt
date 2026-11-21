@@ -64,6 +64,8 @@ export async function markingQueue(actor: Actor) {
         studentName: sql<string>`${schema.students.firstName} || ' ' || ${schema.students.lastName}`,
         admissionNumber: schema.students.admissionNumber,
         subjectName: schema.subjects.name,
+        /** The student wrote this answer on paper: there is no typed text, the teacher marks the paper script. */
+        onPaper: schema.examPapers.theoryOnPaper,
       })
       .from(schema.attemptAnswers)
       .innerJoin(schema.questions, eq(schema.questions.id, schema.attemptAnswers.questionId))

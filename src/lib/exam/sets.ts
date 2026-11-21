@@ -23,6 +23,7 @@ import { forSchool, schema, type Tx } from '@/db';
 import type { Actor } from '@/lib/session';
 import { isSchoolWide } from '@/lib/queries';
 import { waecEligibility } from './authoring-validation';
+import { setFlag } from './theory-delivery';
 import { sectionProblem, sectionLocked } from './waec-blueprint';
 import { authoringActor, authoringLock, permittedScope, permittedCollection, editableSetAccess } from './authoring-access';
 import { validateQuestion, validateQuestionParts, authoringConfig } from './authoring-validation';
@@ -42,6 +43,8 @@ export type SetScope = {
   // per-question default without starting a new paper.
   deliveryMode?: 'cbt' | 'written';
   defaultMarks?: number | string;
+  /** Theory sets only: students read the theory on screen, the teacher enters the marks. Same edit window as deliveryMode. */
+  theoryOnPaper?: boolean;
 };
 
 /**
@@ -82,6 +85,10 @@ export async function findOrCreateSet(actor: Actor, scope: SetScope) {
         if (scope.deliveryMode && scope.deliveryMode !== existing.deliveryMode) patch.deliveryMode = scope.deliveryMode;
         const nextMarks = scope.defaultMarks !== undefined ? Number(scope.defaultMarks) : undefined;
         if (nextMarks && Number(existing.defaultMarks) !== nextMarks) patch.defaultMarks = String(nextMarks);
+        if (scope.theoryOnPaper !== undefined) {
+          const wanted = setFlag(existing.examType, scope.theoryOnPaper);
+          if (wanted !== existing.theoryOnPaper) patch.theoryOnPaper = wanted;
+        }
       }
       if (Object.keys(patch).length === 0) return existing;
       const [updated] = await tx.update(schema.questionSets).set(patch)
@@ -112,6 +119,7 @@ export async function findOrCreateSet(actor: Actor, scope: SetScope) {
       seriesId: scope.seriesId,
       waecMode: scope.waecMode,
       deliveryMode: scope.deliveryMode ?? 'cbt',
+      theoryOnPaper: setFlag(scope.examType, scope.theoryOnPaper ?? false),
       defaultMarks: String(scope.defaultMarks ?? 1),
       teacherId: actor.staffId,
       minRequired: quotas[scope.examType],

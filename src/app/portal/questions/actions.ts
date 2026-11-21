@@ -27,6 +27,8 @@ function scopeParams(form: FormData) {
     marks: Number(form.get('marks')) || 1,
     method: (['manual', 'paste', 'csv'].includes(String(form.get('method'))) ? form.get('method') : 'manual') as 'manual' | 'paste' | 'csv',
     waecMode: form.get('waecMode') === '1',
+    // Only sent by the form for a CBT theory set; '1' = on paper, '0' = typed on screen, absent = leave as it is.
+    theoryOnPaper: form.has('theoryOnPaper') ? form.get('theoryOnPaper') === '1' : undefined,
   };
 }
 
@@ -80,6 +82,7 @@ export async function openSet(form: FormData) {
       waecMode: scope.waecMode,
       deliveryMode: forcedDelivery ?? scope.delivery,
       defaultMarks: scope.marks,
+      theoryOnPaper: scope.theoryOnPaper,
     };
     const set = await findOrCreateSet(actor, setScope);
     params.set('setId', String(set.id));

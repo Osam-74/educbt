@@ -43,3 +43,23 @@ export function paperWorth(pool: Array<{ type: string; marks: number }>, objecti
     theoryCount: theory.length,
   };
 }
+
+/**
+ * Whether a paper's theory is answered ON PAPER. A set carries the flag (theory sets only); a paper is on paper only
+ * when it carries theory AND every theory question comes from a flagged set. One ordinary theory set on the same paper
+ * means students must type, so the whole paper falls back to typing: a half-and-half paper would have students typing
+ * some answers and writing others, and the teacher marking two different ways on one script.
+ */
+export function paperIsOnPaper(theorySetFlags: boolean[]): boolean {
+  return theorySetFlags.length > 0 && theorySetFlags.every(Boolean);
+}
+
+/** Only a theory set can carry the flag. An objective set asked to carry it is simply not on paper. */
+export function setFlag(examType: string, requested: boolean): boolean {
+  return examType === 'theory' && requested;
+}
+
+/** May a typed answer be stored for this question? Never for a theory question on an on-paper paper. */
+export function typedAnswerRefused(paperOnPaper: boolean, questionType: string): boolean {
+  return paperOnPaper && questionType === 'theory';
+}

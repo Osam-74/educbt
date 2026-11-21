@@ -91,7 +91,9 @@ export default async function MarkingPage({
                 ) : null}
 
                 <div className="answer-box" style={{ marginTop: 10 }}>
-                  {a.textAnswer || <em className="muted">No answer given.</em>}
+                  {a.onPaper
+                    ? <em className="muted">Answered on paper. Mark the paper script, then enter the mark below.</em>
+                    : a.textAnswer || <em className="muted">No answer given.</em>}
                 </div>
 
                 <form action={award} className="eo-review-card__form">

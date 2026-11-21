@@ -24,7 +24,7 @@
 import { and, eq, sql, inArray } from 'drizzle-orm';
 import { forSchool, schema } from '@/db';
 import { paperForCandidateTx, type PublicQuestion } from './paper';
-import { candidateOrder, theoryIdsInOrder } from './theory-delivery';
+import { candidateOrder, theoryIdsInOrder, typedAnswerRefused } from './theory-delivery';
 
 export type StartResult =
   | { ok: true; attemptId: number; expiresAt: Date; questions: PublicQuestion[]; resumed: boolean }
@@ -209,7 +209,7 @@ export async function saveAnswer(
   attemptId: number,
   studentId: number,
   input: { questionId: number; optionId?: number | null; text?: string | null; idempotencyKey?: string },
-): Promise<{ ok: boolean; reason?: 'expired' | 'not_yours' | 'closed' }> {
+): Promise<{ ok: boolean; reason?: 'expired' | 'not_yours' | 'closed' | 'on_paper' }> {
   return forSchool(schoolId, async (tx) => {
     const [attempt] = await tx.select().from(schema.attempts)
       .where(and(
@@ -232,6 +232,16 @@ export async function saveAnswer(
     // student could post answers to questions they were never shown.
     if (!attempt.questionOrder.includes(input.questionId)) {
       return { ok: false, reason: 'not_yours' as const };
+    }
+
+    // THEORY ON PAPER: the student reads the question on screen and writes the answer on paper, so the server never
+    // stores a typed theory answer for such a paper, whatever a client sends. Objective answers are unaffected.
+    const [paperRow] = await tx.select({ onPaper: schema.examPapers.theoryOnPaper }).from(schema.examPapers)
+      .where(and(eq(schema.examPapers.id, attempt.paperId), eq(schema.examPapers.schoolId, schoolId))).limit(1);
+    if (paperRow?.onPaper) {
+      const [question] = await tx.select({ type: schema.questions.questionType }).from(schema.questions)
+        .where(and(eq(schema.questions.id, input.questionId), eq(schema.questions.schoolId, schoolId))).limit(1);
+      if (typedAnswerRefused(true, question?.type ?? '')) return { ok: false, reason: 'on_paper' as const };
     }
 
     await tx.insert(schema.attemptAnswers).values({

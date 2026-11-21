@@ -57,6 +57,8 @@ export const examPapers = pgTable('exam_papers', {
 
   scheduledAt: timestamp('scheduled_at', { withTimezone: true }),
   durationSeconds: integer('duration_seconds').default(3600).notNull(),
+  /** True only when EVERY theory question on the paper comes from an on-paper set. Worked out at compose time. */
+  theoryOnPaper: boolean('theory_on_paper').default(false).notNull(),
 
   /**
    * Set by the scheduling step: scheduledAt + durationSeconds. The timetable

@@ -196,6 +196,8 @@ export const questionSets = pgTable('question_sets', {
   examType: examType('exam_type').notNull(),
   deliveryMode: deliveryMode('delivery_mode').default('cbt').notNull(),
   waecMode: boolean('waec_mode').default(false).notNull(),
+  /** Theory only: the paper is answered on paper; students read it on screen, the teacher enters the marks. */
+  theoryOnPaper: boolean('theory_on_paper').default(false).notNull(),
 
   // 0 means the terminal examination. See the note at the top of this file on
   // why this is NOT NULL.

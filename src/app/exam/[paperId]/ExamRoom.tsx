@@ -53,11 +53,14 @@ export default function ExamRoom({
   expiresAtIso,
   questions,
   subjectName,
+  theoryOnPaper = false,
 }: {
   attemptId: number;
   expiresAtIso: string;
   questions: Question[];
   subjectName: string;
+  /** The theory is written on paper: shown here to read, never answered here, and not counted as unanswered. */
+  theoryOnPaper?: boolean;
 }) {
   const storageKey = `educbt:attempt:${attemptId}`;
   const textStorageKey = `educbt:attempt:${attemptId}:text`;
@@ -270,6 +273,9 @@ export default function ExamRoom({
   // An option question is answered when a choice exists; a theory question
   // when the box holds something other than whitespace.
   function isAnswered(item: Question): boolean {
+    // Theory on paper is written on paper, so there is nothing to answer here: it counts as done, and never
+    // triggers the "unanswered" warning at submit.
+    if (item.type === 'theory' && theoryOnPaper) return true;
     return item.type === 'theory'
       ? (textAnswers[item.id] ?? '').trim() !== ''
       : answers[item.id] !== undefined;
@@ -307,6 +313,7 @@ export default function ExamRoom({
   if (!q) return <p>This paper has no questions.</p>;
 
   const answeredCount = questions.filter(isAnswered).length;
+  const paperTheoryCount = theoryOnPaper ? questions.filter((q) => q.type === 'theory').length : 0;
   const mm = String(Math.floor(remaining / 60)).padStart(2, '0');
   const ss = String(remaining % 60).padStart(2, '0');
   const low = remaining < 300;
@@ -359,7 +366,12 @@ export default function ExamRoom({
 
           {q.imageUrl ? <img className="exam__img" src={q.imageUrl} alt="" /> : null}
 
-          {q.type === 'theory' ? (
+          {q.type === 'theory' && theoryOnPaper ? (
+            /* Theory answered on paper: the question is read here, there is no box to type in. */
+            <p className="exam__onpaper note" role="note">
+              <strong>Answer this question on your answer paper.</strong> Do not type it here. Your teacher will mark what you write.
+            </p>
+          ) : q.type === 'theory' ? (
             /* The theory answer box. Spellcheck is off: an examiner marks the
                content, and browser suggestions would help some candidates
                more than others. */
@@ -415,7 +427,9 @@ export default function ExamRoom({
 
         <aside className="exam__palette">
           <p className="muted">
-            {answeredCount} of {questions.length} answered
+            {theoryOnPaper
+              ? `${answeredCount - paperTheoryCount} of ${questions.length - paperTheoryCount} answered on screen · ${paperTheoryCount} on paper`
+              : `${answeredCount} of ${questions.length} answered`}
           </p>
           <div className="palette">
             {questions.map((item, i) => (

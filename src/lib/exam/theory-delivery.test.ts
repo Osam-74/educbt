@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { candidateOrder, paperWorth, theoryIdsInOrder, type PaperPoolRow } from './theory-delivery';
+import { candidateOrder, paperWorth, theoryIdsInOrder, paperIsOnPaper, setFlag, typedAnswerRefused, type PaperPoolRow } from './theory-delivery';
 
 let passed = 0;
 function check(name: string, fn: () => void) { fn(); passed++; console.log('PASS  ' + name); }
@@ -52,5 +52,20 @@ check('theory ids are found in an attempt order', () => {
 check('paper worth: objective is the drawn share, theory is all of it', () => {
   const w = paperWorth([...objective(10).map(() => ({ type: 'single_choice', marks: 2 })), { type: 'theory', marks: 5 }, { type: 'theory', marks: 10 }], 4);
   assert.deepEqual(w, { objective: 8, theory: 15, theoryCount: 2 });
+});
+check('a paper is on paper only when it has theory and EVERY theory set is flagged', () => {
+  assert.equal(paperIsOnPaper([true]), true); assert.equal(paperIsOnPaper([true, true]), true);
+  assert.equal(paperIsOnPaper([true, false]), false, 'one ordinary theory set means students must type');
+  assert.equal(paperIsOnPaper([false]), false);
+  assert.equal(paperIsOnPaper([]), false, 'no theory at all is not an on-paper paper');
+});
+check('only a theory set can carry the flag', () => {
+  assert.equal(setFlag('theory', true), true); assert.equal(setFlag('theory', false), false);
+  assert.equal(setFlag('objective', true), false, 'an objective set is never on paper');
+});
+check('a typed answer is refused only for theory on an on-paper paper', () => {
+  assert.equal(typedAnswerRefused(true, 'theory'), true);
+  assert.equal(typedAnswerRefused(true, 'single_choice'), false, 'objective questions are still answered on the computer');
+  assert.equal(typedAnswerRefused(false, 'theory'), false, 'an ordinary paper still takes typed theory');
 });
 console.log(`${passed} theory delivery rule checks passed`);

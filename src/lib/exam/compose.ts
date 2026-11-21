@@ -26,6 +26,7 @@ import { forSchool, schema, type Tx } from '@/db';
 import type { Actor } from '@/lib/session';
 import { isSchoolWide } from '@/lib/queries';
 import { caComponents } from '@/lib/ca/validation';
+import { paperIsOnPaper } from './theory-delivery';
 
 export type ComposeResult = {
   created: number;
@@ -239,11 +240,11 @@ function onePracticeKindPerScope<T extends { subjectId: number; levelId: number;
  * The approved theory questions that belong on this candidate's paper: the theory set paired with the objective set
  * (same subject, level, department, terminal bank and WAEC kind). Empty when there is no approved theory set.
  */
-async function theoryQuestionsFor(tx: Tx, schoolId: number, c: PoolCandidate): Promise<number[]> {
+async function theoryQuestionsFor(tx: Tx, schoolId: number, c: PoolCandidate): Promise<{ ids: number[]; setFlags: boolean[] }> {
   const [objectiveSet] = await tx.select({ sessionId: schema.questionSets.sessionId, termId: schema.questionSets.termId })
     .from(schema.questionSets).where(eq(schema.questionSets.id, c.setId)).limit(1);
-  if (!objectiveSet) return [];
-  const rows = await tx.select({ id: schema.questions.id })
+  if (!objectiveSet) return { ids: [], setFlags: [] };
+  const rows = await tx.select({ id: schema.questions.id, onPaper: schema.questionSets.theoryOnPaper })
     .from(schema.questions)
     .innerJoin(schema.questionSets, eq(schema.questionSets.id, schema.questions.questionSetId))
     .where(and(
@@ -261,7 +262,7 @@ async function theoryQuestionsFor(tx: Tx, schoolId: number, c: PoolCandidate): P
       eq(schema.questions.approvalStatus, 'approved'),
     ))
     .orderBy(asc(schema.questions.sequence), asc(schema.questions.id));
-  return rows.map((r) => Number(r.id));
+  return { ids: rows.map((r) => Number(r.id)), setFlags: rows.map((r) => r.onPaper) };
 }
 
 /**
@@ -454,9 +455,10 @@ export async function composeSeries(
       // subject, level, department and kind, in the terminal bank) is attached after the objective pool; each
       // candidate then gets all of it (see theory-delivery.ts). Only approved sets and approved, active questions
       // count, exactly as for objective. A CA test or practice paper has no theory half, so nothing is attached.
-      const theoryPool = series.seriesType === 'examination' && c.deliveryMode !== 'written'
+      const theory = series.seriesType === 'examination' && c.deliveryMode !== 'written'
         ? await theoryQuestionsFor(tx, actor.schoolId, c)
-        : [];
+        : { ids: [] as number[], setFlags: [] as boolean[] };
+      const theoryPool = theory.ids;
 
       if (pool.length > 0 || theoryPool.length > 0) {
         await tx.insert(schema.paperQuestions).values(
@@ -472,7 +474,8 @@ export async function composeSeries(
       // Denormalized onto the paper so scheduling, invigilation and results
       // can all tell a written sitting from a CBT one without re-joining
       // back to the question set every time.
-      await tx.update(schema.examPapers).set({ deliveryMode: c.deliveryMode === 'written' ? 'written' : 'cbt' })
+      // theoryOnPaper is true only when EVERY attached theory question comes from an on-paper set (see paperIsOnPaper).
+      await tx.update(schema.examPapers).set({ deliveryMode: c.deliveryMode === 'written' ? 'written' : 'cbt', theoryOnPaper: paperIsOnPaper(theory.setFlags) })
         .where(eq(schema.examPapers.id, paperId));
 
       created++;
