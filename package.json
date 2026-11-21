@@ -113,7 +113,10 @@
     "test:calendar-browser": "tsx src/db/test-calendar-browser.ts",
     "test:assignment-audit": "tsx src/lib/people/assignment-audit.test.ts",
     "test:calendar-reminders": "tsx src/db/test-calendar-reminders.ts",
-    "test:calendar-glance": "tsx src/lib/calendar/glance.test.ts"
+    "test:calendar-glance": "tsx src/lib/calendar/glance.test.ts",
+    "test:day-status": "tsx src/lib/calendar/day-status.test.ts",
+    "test:term-dates": "tsx src/lib/calendar/term-dates.test.ts",
+    "test:calendar-breaks": "tsx src/db/test-calendar-breaks.ts"
   },
   "dependencies": {
     "@google-cloud/storage": "^7.22.0",

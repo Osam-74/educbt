@@ -173,10 +173,46 @@ async function main() {
   });
   await check('a student or parent still cannot edit a published timetable', async () => { assert.equal((await tt.loadTimetable(SG, F.sessionId)).canEdit, false); });
   await check('taking it back to a draft hides it from students again', async () => { await tt.setTimetablePublished(GOLD, F.sessionId, F.c1.id, false); assert.equal((await tt.loadTimetable(SG, F.sessionId)).lessons.length, 0); });
+  await check('a DRAFT class timetable is visible only to those who build it: principal, exam officer and that class\'s teacher', async () => {
+    for (const who of [P, EO, GOLD]) { const v = await tt.loadTimetable(who, F.sessionId, F.c1.id); assert.ok(v.lessons.length >= 3, 'a builder sees the draft'); assert.equal(v.published, false); }
+  });
+  await check('a subject teacher, another class teacher, a student and a parent see NOTHING of a draft, not even its lessons', async () => {
+    for (const who of [MATHS, ENG, GREEN, SG, PG]) { const v = await tt.loadTimetable(who, F.sessionId, F.c1.id); assert.ok(!v.lessons.some((l) => l.classId === F.c1.id), 'draft lessons leaked'); assert.equal(v.todaysLessons.filter((l) => l.classId === F.c1.id).length, 0, 'draft lessons leaked into today'); }
+  });
+  await check('publishing it shows the lessons to the subject teacher of that class at once', async () => {
+    await tt.setTimetablePublished(GOLD, F.sessionId, F.c1.id, true);
+    assert.ok((await tt.loadTimetable(MATHS, F.sessionId, F.c1.id)).lessons.length >= 3); assert.equal((await tt.loadTimetable(MATHS, F.sessionId, F.c1.id)).canEdit, false);
+    await tt.setTimetablePublished(GOLD, F.sessionId, F.c1.id, false);
+  });
 
   console.log('── a teacher\'s own week ──');
-  await check('the Maths teacher sees their lessons across both classes, read-only, and no one else\'s', async () => {
-    const w = await tt.myTeachingWeek(MATHS, F.sessionId); assert.ok(w.lessons.length >= 3); assert.ok(w.lessons.every((l) => l.staffId === F.maths.s.id)); assert.ok(new Set(w.lessons.map((l) => l.className)).size === 2);
+  await check('a class teacher sees their own class\'s DRAFT lessons in their week (they build it); a subject teacher does not', async () => {
+    // Gold is a draft right now. Put one Gold lesson on the Gold class teacher, then compare who sees it in their week.
+    const P1 = (await tt.loadTimetable(P, F.sessionId)).periods.find((x) => !x.isBreak)!;
+    const [extra] = await db.insert(schema.staffAssignments).values({ schoolId: F.schoolId, staffId: F.gold.s.id, classId: F.c1.id, assignmentType: 'subject_teacher', status: 'active', subjectId: F.mth.id } as never).returning();
+    const r = await tt.saveLesson(GOLD, F.sessionId, { classId: F.c1.id, periodId: P1.id, weekday: 5, subjectId: F.mth.id, staffId: F.gold.s.id, room: 'Own' }); assert.ok(r.ok, fail(r));
+    assert.ok((await tt.myTeachingWeek(GOLD, F.sessionId)).lessons.some((l) => l.classId === F.c1.id && l.room === 'Own'), 'the builder sees their own draft lesson');
+    assert.ok(!(await tt.myTeachingWeek(MATHS, F.sessionId)).lessons.some((l) => l.room === 'Own'), 'a teacher of other lessons never sees it');
+    await tt.removeLesson(GOLD, Number((r as { id: number }).id));
+    await db.delete(schema.staffAssignments).where(eq(schema.staffAssignments.id, extra!.id));
+  });
+  await check('a timetable published in ANOTHER session never opens this session\'s draft', async () => {
+    // Green is a draft this session. Publishing Green in an older session must not make its current lessons reach the Maths teacher.
+    const [old] = await db.insert(schema.academicSessions).values({ schoolId: F.schoolId, title: '2025/26', isCurrent: false, startsOn: new Date('2025-09-01T00:00:00Z'), endsOn: new Date('2026-07-31T00:00:00Z') } as never).returning();
+    await db.insert(schema.timetablePublication).values({ schoolId: F.schoolId, sessionId: old!.id, classId: F.c2.id, publishedBy: F.principal.id } as never);
+    try {
+      assert.ok(!(await tt.myTeachingWeek(MATHS, F.sessionId)).lessons.some((l) => l.classId === F.c2.id), 'another session\'s publication leaked into this one');
+      assert.ok(!(await tt.loadTimetable(MATHS, F.sessionId, F.c2.id)).lessons.some((l) => l.classId === F.c2.id), 'and into the class view');
+    } finally { await db.delete(schema.academicSessions).where(eq(schema.academicSessions.id, old!.id)); }
+  });
+  await check('a teacher\'s week holds only lessons from PUBLISHED class timetables (plus the class they build themselves); never anyone else\'s', async () => {
+    // At this point Gold is back to a draft and Green was never published, so the Maths teacher (who builds neither) has no week yet.
+    const draft = await tt.myTeachingWeek(MATHS, F.sessionId); assert.equal(draft.lessons.length, 0, 'unpublished lessons must not reach a subject teacher');
+    await tt.setTimetablePublished(GOLD, F.sessionId, F.c1.id, true);
+    const w = await tt.myTeachingWeek(MATHS, F.sessionId); assert.ok(w.lessons.length >= 1); assert.ok(w.lessons.every((l) => l.staffId === F.maths.s.id));
+    assert.ok(w.lessons.every((l) => l.classId === F.c1.id), 'only the published class (Gold) shows; Green is still a draft');
+    await tt.setTimetablePublished(GREEN, F.sessionId, F.c2.id, true);
+    const both = await tt.myTeachingWeek(MATHS, F.sessionId); assert.ok(new Set(both.lessons.map((l) => l.className)).size === 2, 'once Green publishes, both classes show');
     const e = await tt.myTeachingWeek(ENG, F.sessionId); assert.ok(e.lessons.every((l) => l.staffId === F.eng.s.id));
   });
 

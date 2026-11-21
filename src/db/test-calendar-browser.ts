@@ -60,7 +60,16 @@ async function main() {
     assert.equal(await t.$$eval('details summary:has-text("School periods")', (a: Element[]) => a.length), 0); ok('a class teacher cannot see the school-wide period editor');
     await t.goto('/portal/calendar'); await t.waitForSelector('.cal-stats');
     assert.equal(await t.$$eval('a:has-text("Add event")', (a: Element[]) => a.length), 0); ok('a class teacher has no Add event button on the academic calendar');
-    await t.goto('/portal/calendar/timetable'); await t.click('button:has-text("Publish to students and parents")'); await t.waitForSelector('.ok'); assert.match(await t.textContent('.cal-badge') ?? '', /Published/); ok('publishing shows the Published badge');
+    {
+      // Still a DRAFT here: the Maths teacher (not the class teacher) must see none of the class timetable, in the class view or on the dashboard.
+      const dm = await open(tMath.id, 'cal-e2e-maths-draft');
+      await dm.goto('/portal/calendar/timetable'); await dm.waitForSelector('h1');
+      const draftText = (await dm.textContent('main')) ?? '';
+      assert.doesNotMatch(draftText, /Room 7/); assert.match(draftText, /has not been published yet/); ok('before it is published, a subject teacher sees none of the class timetable, only that it is not published');
+      await dm.goto('/portal?scope=mine'); await dm.waitForSelector('.sd-panels');
+      assert.doesNotMatch((await dm.textContent('main')) ?? '', /Room 7/); ok('and the draft lesson is not on their dashboard either');
+    }
+    await t.goto('/portal/calendar/timetable'); await t.click('button:has-text("Publish timetable")'); await t.waitForSelector('.ok'); assert.match(await t.textContent('.cal-badge') ?? '', /Published/); ok('publishing shows the Published badge');
 
     console.log('── the principal, in the browser ──');
     const p = await open(principal.id, 'cal-e2e-principal');

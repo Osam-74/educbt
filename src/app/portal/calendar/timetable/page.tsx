@@ -118,7 +118,7 @@ export default async function ClassTimetablePage({ searchParams }: { searchParam
                     <input type="hidden" name="classId" value={view.classId ?? ''} /><input type="hidden" name="sessionId" value={sessionId} />
                     <input type="hidden" name="publish" value={view.published ? '0' : '1'} />
                     <span className={`cal-badge ${view.published ? 'cal-badge--on' : ''}`}>{view.published ? 'Published' : 'Draft'}</span>{' '}
-                    <button className="sa-btn" type="submit">{view.published ? 'Return to draft' : 'Publish to students and parents'}</button>
+                    <button className="sa-btn" type="submit">{view.published ? 'Return to draft' : 'Publish timetable'}</button>
                   </form>
                 ) : null}
               </div>

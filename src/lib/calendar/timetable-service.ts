@@ -10,7 +10,7 @@ import { notifyMany } from '@/lib/comms/notifications';
 import { CalendarError, listSessions, termsOf, schoolTimeZone } from './service';
 import { isManager } from './access';
 import { canEditClassTimetable, canEditPeriods, lessonProblems, periodsProblems, type Period, type LessonRow } from './timetable-rules';
-import { instructionalDays, type CalEvent } from './engine';
+import { instructionalDays, NON_INSTRUCTIONAL, type CalEvent } from './engine';
 import { todayIn } from './dates';
 
 const hhmm = (t: string | null) => (t ? t.slice(0, 5) : '');
@@ -118,8 +118,9 @@ export async function loadTimetable(actor: Actor, sessionId?: number, wantedClas
 
     const [pub] = await tx.select().from(schema.timetablePublication).where(and(eq(schema.timetablePublication.schoolId, actor.schoolId), eq(schema.timetablePublication.sessionId, session.id), eq(schema.timetablePublication.classId, chosen.id))).limit(1);
     const editor = chosen.canEdit;
-    // Students and parents see a timetable only once it is published; staff see the working draft of the classes they can open.
-    if (!editor && ['student', 'parent'].includes(actor.role) && !pub) return { ...empty, classes, classId: chosen.id, className: chosen.name };
+    // Only the people who build a class's timetable see the working draft (the principal, the exam officer, that class's teacher).
+    // Everyone else (students, parents and subject teachers) sees it only once it is published.
+    if (!editor && !pub) return { ...empty, classes, classId: chosen.id, className: chosen.name };
 
     const rows = await tx.select({ l: schema.timetableLessons, subject: schema.subjects.name, first: schema.staff.firstName, last: schema.staff.lastName })
       .from(schema.timetableLessons).innerJoin(schema.subjects, eq(schema.subjects.id, schema.timetableLessons.subjectId)).leftJoin(schema.staff, eq(schema.staff.id, schema.timetableLessons.staffId))
@@ -138,7 +139,7 @@ export async function loadTimetable(actor: Actor, sessionId?: number, wantedClas
 
     // Today's lessons honour the academic calendar: a holiday or break empties the day.
     const terms = await termsOf(tx, actor.schoolId, session.id);
-    const evRows = await tx.select().from(schema.calendarEvents).where(and(eq(schema.calendarEvents.schoolId, actor.schoolId), eq(schema.calendarEvents.sessionId, session.id), inArray(schema.calendarEvents.category, ['public_holiday', 'school_holiday'])));
+    const evRows = await tx.select().from(schema.calendarEvents).where(and(eq(schema.calendarEvents.schoolId, actor.schoolId), eq(schema.calendarEvents.sessionId, session.id), inArray(schema.calendarEvents.category, [...NON_INSTRUCTIONAL])));
     const holidays: CalEvent[] = evRows.filter((e) => e.status !== 'cancelled' && e.published).map((e) => ({ key: `e${e.id}`, id: Number(e.id), source: 'event', title: e.title, category: e.category, status: e.status, startsOn: e.startsOn, endsOn: e.endsOn, startTime: null, endTime: null, allDay: true, venue: '', description: '', audience: e.audience, classIds: [], published: true, repeat: 'none', repeatEvery: 1, repeatUntil: null }));
     const teaching = instructionalDays(terms, holidays);
     const wd = new Date(`${today}T00:00:00Z`).getUTCDay(), tw = wd === 0 ? 7 : wd;
@@ -239,9 +240,14 @@ export async function myTeachingWeek(actor: Actor, sessionId?: number): Promise<
     const session = sessions.find((s) => s.id === sessionId) ?? sessions.find((s) => s.isCurrent) ?? sessions[0];
     const periods = await periodsOf(tx, actor.schoolId);
     if (!session || !actor.staffId) return { periods, lessons: [] };
-    const rows = await tx.select({ l: schema.timetableLessons, subject: schema.subjects.name, cls: schema.classes.displayName })
+    const allRows = await tx.select({ l: schema.timetableLessons, subject: schema.subjects.name, cls: schema.classes.displayName })
       .from(schema.timetableLessons).innerJoin(schema.subjects, eq(schema.subjects.id, schema.timetableLessons.subjectId)).innerJoin(schema.classes, eq(schema.classes.id, schema.timetableLessons.classId))
       .where(and(eq(schema.timetableLessons.schoolId, actor.schoolId), eq(schema.timetableLessons.sessionId, session.id), eq(schema.timetableLessons.staffId, actor.staffId)));
+    // A lesson reaches a teacher's week only once its class timetable is published; the class teacher, who builds it, sees their own class's draft.
+    const published = new Set((await tx.select({ c: schema.timetablePublication.classId }).from(schema.timetablePublication)
+      .where(and(eq(schema.timetablePublication.schoolId, actor.schoolId), eq(schema.timetablePublication.sessionId, session.id)))).map((r) => Number(r.c)));
+    const built = new Set(await classTeacherClasses(tx, actor));
+    const rows = allRows.filter((r) => published.has(Number(r.l.classId)) || built.has(Number(r.l.classId)));
     return { periods, lessons: rows.map((r) => ({ id: Number(r.l.id), classId: Number(r.l.classId), periodId: Number(r.l.periodId), weekday: r.l.weekday, subjectId: Number(r.l.subjectId), staffId: actor.staffId, subjectName: r.subject, staffName: '', room: r.l.room, className: r.cls })) };
   });
 }
