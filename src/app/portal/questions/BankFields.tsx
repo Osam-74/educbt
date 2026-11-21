@@ -20,6 +20,7 @@
  * the same full round-trip as the other fields for no reason).
  */
 import { useEffect, useRef, useState } from 'react';
+import { waecEligibility } from '@/lib/exam/authoring-validation';
 
 export type BankScope = {
   subjectId: number;
@@ -28,6 +29,8 @@ export type BankScope = {
   subject: string;
   level: string;
   department: string | null;
+  /** The level's own junior / senior / both setting from Classes. */
+  stage: 'junior' | 'senior' | 'both';
 };
 
 export default function BankFields({
@@ -114,9 +117,9 @@ export default function BankFields({
 
   const subject = scopes.find((s) => s.subjectId === subjectId)?.subject ?? '';
   const level = scopes.find((s) => s.levelId === levelId)?.level ?? '';
-  const isEnglish = subject.toLowerCase().includes('english');
-  const isSenior = /\bss?s?\s*[123]\b/i.test(level) || level.toLowerCase().includes('senior');
-  const waecEligible = isEnglish && isSenior && delivery !== 'written';
+  const stage = scopes.find((s) => s.subjectId === subjectId && s.levelId === levelId)?.stage ?? null;
+  const waec = waecEligibility({ subject, stage, delivery });
+  const waecEligible = waec.eligible;
 
   return (
     <>
@@ -215,6 +218,12 @@ export default function BankFields({
                 WAEC Standard
               </label>
               <span className="qs-hint">60-obj English structure</span>
+            </div>
+          ) : null}
+          {/* Say WHY the option is missing for an English paper, so a teacher does not think it is broken. */}
+          {!waecEligible && subjectId && levelId && subject.toLowerCase().includes('english') && waec.reason ? (
+            <div className="qs-field qs-field--waec">
+              <span className="qs-hint" data-testid="waec-why">WAEC Standard is not available: {waec.reason}</span>
             </div>
           ) : null}
         </div>

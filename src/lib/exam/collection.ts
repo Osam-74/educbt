@@ -11,7 +11,7 @@ export async function collectionView(actor: Actor) {
     const school = await authoringActor(tx, actor);
     const scopes = await tx.select({ subjectId: schema.staffAssignments.subjectId, levelId: schema.classes.levelId,
       departmentId: schema.classes.departmentId, subject: schema.subjects.name, level: schema.classLevels.name,
-      department: schema.departments.name }).from(schema.staffAssignments)
+      department: schema.departments.name, stage: schema.classLevels.stage }).from(schema.staffAssignments)
       .innerJoin(schema.classes, eq(schema.classes.id, schema.staffAssignments.classId))
       .innerJoin(schema.classLevels, eq(schema.classLevels.id, schema.classes.levelId))
       .innerJoin(schema.subjects, eq(schema.subjects.id, schema.staffAssignments.subjectId))

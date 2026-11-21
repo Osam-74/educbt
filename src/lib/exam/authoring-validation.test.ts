@@ -42,4 +42,20 @@ check('a part with no text, no label, zero or negative marks is refused', () => 
 check('more than ten parts are refused', () => assert.throws(() => validateQuestionParts(Array.from({ length: 11 }, (_, i) => ({ label: 'p' + i, text: 't', marks: 1 })), 11, 'theory'), /at most 10/));
 check('part marks with three decimals are refused', () => assert.throws(() => validateQuestionParts([{ label: 'a', text: 'x', marks: 1.005 }], 1.005, 'theory')));
 
+// WAEC eligibility comes from the level's stage setting, never from guessing at its name.
+import { waecEligibility } from './authoring-validation';
+check('a senior level is eligible whatever it is called', () => assert.equal(waecEligibility({ subject: 'English Language', stage: 'senior', delivery: 'cbt' }).eligible, true));
+check('a level spanning junior and senior counts as senior', () => assert.equal(waecEligibility({ subject: 'English', stage: 'both', delivery: 'cbt' }).eligible, true));
+check('a junior level is not eligible, even if its name looks like SS1', () => assert.equal(waecEligibility({ subject: 'English', stage: 'junior', delivery: 'cbt' }).eligible, false));
+check('only English is eligible', () => assert.equal(waecEligibility({ subject: 'Mathematics', stage: 'senior', delivery: 'cbt' }).eligible, false));
+check('English variants are all recognised', () => { for (const n of ['English', 'english language', 'ENGLISH STUDIES', 'Use of English']) assert.equal(waecEligibility({ subject: n, stage: 'senior', delivery: 'cbt' }).eligible, true, n); });
+check('written delivery is not eligible', () => assert.equal(waecEligibility({ subject: 'English', stage: 'senior', delivery: 'written' }).eligible, false));
+check('nothing chosen yet is not eligible, and the reason is about choosing, not about English', () => { const r = waecEligibility({ subject: '', stage: null, delivery: 'cbt' }); assert.equal(r.eligible, false); assert.match(r.reason!, /Choose a subject/); });
+check('every refusal says why, so the page can explain a hidden option', () => {
+  assert.match(waecEligibility({ subject: 'Mathematics', stage: 'senior', delivery: 'cbt' }).reason!, /English/);
+  assert.match(waecEligibility({ subject: 'English', stage: 'junior', delivery: 'cbt' }).reason!, /senior/i);
+  assert.match(waecEligibility({ subject: 'English', stage: 'senior', delivery: 'written' }).reason!, /computer|CBT/i);
+  assert.equal(waecEligibility({ subject: 'English', stage: 'senior', delivery: 'cbt' }).reason, null);
+});
+
 console.log(`${count} authoring validation checks passed`);

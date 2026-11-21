@@ -22,6 +22,7 @@ import { and, eq, count, asc, sql, inArray } from 'drizzle-orm';
 import { forSchool, schema, type Tx } from '@/db';
 import type { Actor } from '@/lib/session';
 import { isSchoolWide } from '@/lib/queries';
+import { waecEligibility } from './authoring-validation';
 import { authoringActor, authoringLock, permittedScope, permittedCollection, editableSetAccess } from './authoring-access';
 import { validateQuestion, validateQuestionParts, authoringConfig } from './authoring-validation';
 
@@ -85,6 +86,18 @@ export async function findOrCreateSet(actor: Actor, scope: SetScope) {
       const [updated] = await tx.update(schema.questionSets).set(patch)
         .where(eq(schema.questionSets.id, existing.id)).returning();
       return updated!;
+    }
+
+    // A NEW WAEC-structured set needs an English subject, a senior level and CBT delivery. This is enforced here,
+    // not only by hiding the checkbox. A set that already exists is never re-judged: a school's earlier WAEC sets
+    // (including ones brought across from the plugin) must stay usable whatever its level is now called or set to.
+    if (scope.waecMode) {
+      const [subj] = await tx.select({ name: schema.subjects.name }).from(schema.subjects)
+        .where(and(eq(schema.subjects.id, scope.subjectId), eq(schema.subjects.schoolId, actor.schoolId))).limit(1);
+      const [lvl] = await tx.select({ stage: schema.classLevels.stage }).from(schema.classLevels)
+        .where(and(eq(schema.classLevels.id, scope.levelId), eq(schema.classLevels.schoolId, actor.schoolId))).limit(1);
+      const check = waecEligibility({ subject: subj?.name ?? '', stage: lvl?.stage ?? null, delivery: scope.deliveryMode ?? 'cbt' });
+      if (!check.eligible) throw new Error(check.reason ?? 'This scope cannot be a WAEC-structured paper.');
     }
 
     const [created] = await tx.insert(schema.questionSets).values({

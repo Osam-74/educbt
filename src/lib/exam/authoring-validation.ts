@@ -64,3 +64,19 @@ export function collectionIsOpen(series: { status: string; seriesType: string; q
   return Boolean(series.questionsOpenFrom && series.questionsOpenTo &&
     now >= series.questionsOpenFrom && now < series.questionsOpenTo);
 }
+
+/**
+ * May this scope be set as a WAEC-structured paper?
+ *
+ * Decided from the level's STAGE setting (junior / senior / both), which the school sets once on its classes.
+ * It is never decided by reading the level's name: a school that calls its senior classes "Year 10" or "Form 4"
+ * would otherwise never be offered the option, and a junior class named "SS1 prep" would wrongly be.
+ * Returns the reason when not eligible, so the page can say why the option is not there.
+ */
+export function waecEligibility(input: { subject: string; stage: 'junior' | 'senior' | 'both' | null; delivery: string }): { eligible: boolean; reason: string | null } {
+  if (!input.subject.trim()) return { eligible: false, reason: 'Choose a subject and class level first.' };
+  if (!input.subject.toLowerCase().includes('english')) return { eligible: false, reason: 'WAEC-structured papers are for English only.' };
+  if (input.stage !== 'senior' && input.stage !== 'both') return { eligible: false, reason: 'WAEC-structured papers are for senior classes. This level is set as junior in Classes.' };
+  if (input.delivery === 'written') return { eligible: false, reason: 'A WAEC-structured paper is taken on the computer (CBT), not on paper.' };
+  return { eligible: true, reason: null };
+}
