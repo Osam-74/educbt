@@ -23,6 +23,7 @@ import { forSchool, schema, type Tx } from '@/db';
 import type { Actor } from '@/lib/session';
 import { isSchoolWide } from '@/lib/queries';
 import { waecEligibility } from './authoring-validation';
+import { sectionProblem, sectionLocked } from './waec-blueprint';
 import { authoringActor, authoringLock, permittedScope, permittedCollection, editableSetAccess } from './authoring-access';
 import { validateQuestion, validateQuestionParts, authoringConfig } from './authoring-validation';
 
@@ -156,6 +157,8 @@ export async function addQuestion(
     await editableSetAccess(tx, actor, set);
     const parts = validateQuestionParts(input.parts, input.marks, set.examType);
     input = validateQuestion(input, set.examType);
+    const sectionIssue = sectionProblem(input.section ?? '', { waecMode: set.waecMode, examType: set.examType });
+    if (sectionIssue) throw new Error(sectionIssue);
     const [duplicate] = await tx.select({ id: schema.questions.id }).from(schema.questions).where(and(
       eq(schema.questions.questionSetId, setId), eq(schema.questions.status, 'active'),
       sql`lower(trim(${schema.questions.questionText})) = lower(trim(${input.text}))`));
@@ -689,7 +692,7 @@ export async function setWithQuestions(actor: Actor, setId: number) {
     const questions = await tx.select({
       id: schema.questions.id, text: schema.questions.questionText, marks: schema.questions.marks,
       sequence: schema.questions.sequence, approvalStatus: schema.questions.approvalStatus,
-      reviewerComment: schema.questions.reviewerComment,
+      reviewerComment: schema.questions.reviewerComment, section: schema.questions.section,
     }).from(schema.questions)
       .where(and(eq(schema.questions.questionSetId, setId), eq(schema.questions.status, 'active')))
       .orderBy(asc(schema.questions.sequence));
@@ -711,5 +714,76 @@ export async function getSetSubject(actor: Actor, setId: number): Promise<number
     if (!set) throw new Error('Question set not found.');
     await editableSetAccess(tx, actor, set);
     return Number(set.subjectId);
+  });
+}
+
+
+/**
+ * Change a question a teacher has already written. Words, marks, marking guide, instruction, passage and
+ * (for a WAEC-structured set) the section can be corrected while the set is a draft or has been sent back.
+ * The SECTION is the one thing that locks earlier, as soon as the question is approved. Nothing here ever
+ * touches another teacher's question, another school's, or a question that has been answered by a student.
+ */
+export async function updateQuestion(
+  actor: Actor,
+  questionId: number,
+  patch: {
+    text?: string; marks?: number; section?: string; instructions?: string | null; markingGuide?: string | null; passageId?: number | null;
+    options?: Array<{ text: string; isCorrect: boolean }>;
+  },
+) {
+  return forSchool(actor.schoolId, async (tx) => {
+    await authoringLock(tx, actor.schoolId);
+    const [q] = await tx.select().from(schema.questions)
+      .where(and(eq(schema.questions.id, questionId), eq(schema.questions.schoolId, actor.schoolId), eq(schema.questions.status, 'active'))).limit(1);
+    if (!q) throw new Error('That question was not found.');
+    const [set] = await tx.select().from(schema.questionSets)
+      .where(and(eq(schema.questionSets.id, q.questionSetId), eq(schema.questionSets.schoolId, actor.schoolId))).limit(1);
+    if (!set) throw new Error('Question set not found.');
+    await editableSetAccess(tx, actor, set);
+    if (!isEditable(set.status)) throw new Error('This set has been submitted and can no longer be edited. Ask the exam office to send it back.');
+    if (!isSchoolWide(actor.role) && set.teacherId !== actor.staffId) throw new Error('This set belongs to another teacher.');
+
+    const [answered] = await tx.select({ n: sql<number>`count(*)`.mapWith(Number) }).from(schema.attemptAnswers)
+      .where(and(eq(schema.attemptAnswers.schoolId, actor.schoolId), eq(schema.attemptAnswers.questionId, questionId)));
+    if ((answered?.n ?? 0) > 0) throw new Error('Students have already answered this question, so it can no longer be changed.');
+
+    const next: Partial<typeof schema.questions.$inferInsert> = {};
+    if (patch.section !== undefined && patch.section.trim() !== q.section) {
+      const lock = sectionLocked({ approvalStatus: q.approvalStatus }, { status: set.status });
+      if (lock.locked) throw new Error(lock.reason!);
+      const issue = sectionProblem(patch.section, { waecMode: set.waecMode, examType: set.examType });
+      if (issue) throw new Error(issue);
+      next.section = patch.section.trim();
+    }
+    if (patch.text !== undefined || patch.marks !== undefined) {
+      const checked = validateQuestion({ text: patch.text ?? q.questionText, marks: patch.marks ?? Number(q.marks), options: patch.options ?? [{ text: 'a', isCorrect: true }, { text: 'b', isCorrect: false }] } as never, set.examType);
+      if (patch.text !== undefined) {
+        const [dup] = await tx.select({ id: schema.questions.id }).from(schema.questions).where(and(
+          eq(schema.questions.questionSetId, q.questionSetId), eq(schema.questions.status, 'active'), sql`${schema.questions.id} <> ${questionId}`,
+          sql`lower(trim(${schema.questions.questionText})) = lower(trim(${checked.text}))`));
+        if (dup) throw new Error('This question already exists in the set.');
+        next.questionText = checked.text;
+      }
+      if (patch.marks !== undefined) next.marks = String(checked.marks);
+    }
+    if (patch.instructions !== undefined) next.instructions = patch.instructions?.trim() ? patch.instructions.trim() : null;
+    if (patch.markingGuide !== undefined) next.markingGuide = patch.markingGuide?.trim() ? patch.markingGuide.trim() : null;
+    if (patch.passageId !== undefined) {
+      if (patch.passageId !== null) {
+        const [passage] = await tx.select({ id: schema.passages.id }).from(schema.passages).where(and(
+          eq(schema.passages.id, patch.passageId), eq(schema.passages.schoolId, actor.schoolId), eq(schema.passages.subjectId, set.subjectId)));
+        if (!passage) throw new Error('Choose a passage for this subject in this school.');
+      }
+      next.passageId = patch.passageId;
+    }
+    if (Object.keys(next).length === 0) return q;
+
+    // Any change to the words or marks puts the question back in front of the reviewer.
+    if (next.questionText !== undefined || next.marks !== undefined) next.approvalStatus = 'pending';
+    const [row] = await tx.update(schema.questions).set(next).where(eq(schema.questions.id, questionId)).returning();
+    await tx.insert(schema.auditLog).values({ schoolId: actor.schoolId, actorUserId: actor.userId, actorRole: actor.role,
+      action: 'question.updated', entityType: 'questions', entityId: questionId, before: { section: q.section, text: q.questionText }, after: next });
+    return row!;
   });
 }

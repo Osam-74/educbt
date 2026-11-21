@@ -5,7 +5,7 @@ import { collectionView } from '@/lib/exam/collection';
 import { findOrCreateSet, addQuestion, addQuestionsBulk, submitSet, type SetScope } from '@/lib/exam/sets';
 import { snapshotSet } from '@/lib/exam/vault';
 import { createPassage, editPassage, passageDeletePreview, deletePassageWithQuestions, ensurePassagesForImport } from '@/lib/exam/passages';
-import { getSetSubject } from '@/lib/exam/sets';
+import { getSetSubject, updateQuestion } from '@/lib/exam/sets';
 import type { ParsedRow } from './parsers';
 
 function backToQuestions(params: URLSearchParams, error?: string, ok?: string) {
@@ -121,6 +121,8 @@ export async function saveManualQuestion(form: FormData) {
       marks: Number(form.get('marks') ?? 1) || 1,
       instructions: String(form.get('instructions') ?? '').trim() || null,
       passageId: Number(form.get('passageId')) || null,
+      section: String(form.get('section') ?? '').trim(),
+      markingGuide: String(form.get('markingGuide') ?? '').trim() || null,
       options,
       ...(parts.length > 0 ? { parts } : {}),
     });
@@ -247,6 +249,23 @@ export async function removePassage(form: FormData) {
     returnParams.set('ok', r.deletedQuestions > 0 ? `Passage deleted with its ${r.deletedQuestions} question${r.deletedQuestions === 1 ? '' : 's'}.` : 'Passage deleted.');
   } catch (e) {
     returnParams.set('error', e instanceof Error ? e.message : 'That passage could not be deleted.');
+  }
+  backToQuestions(returnParams);
+}
+
+
+/** Change a question already written: its section (until it is approved), words, marks, marking guide. */
+export async function saveQuestionEdit(form: FormData) {
+  const actor = await requireSchoolSession();
+  const returnParams = new URLSearchParams(String(form.get('returnParams') ?? ''));
+  try {
+    const patch: Parameters<typeof updateQuestion>[2] = {};
+    if (form.has('section')) patch.section = String(form.get('section') ?? '');
+    if (form.has('markingGuide')) patch.markingGuide = String(form.get('markingGuide') ?? '');
+    await updateQuestion(actor, Number(form.get('questionId')), patch);
+    returnParams.set('ok', 'Question updated.');
+  } catch (e) {
+    returnParams.set('error', e instanceof Error ? e.message : 'That question could not be changed.');
   }
   backToQuestions(returnParams);
 }

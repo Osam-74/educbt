@@ -96,3 +96,14 @@
 .qs-linkbtn { background:none; border:0; color:#14532d; font:inherit; font-weight:600; cursor:pointer; text-decoration:underline; padding:0; }
 .qs-danger { background:#b42318 !important; border-color:#b42318 !important; color:#fff !important; }
 .qs-passage__new { max-width:none; margin:12px 0 0; }
+
+/* WAEC sections: progress table and the per-question section control. */
+.qs-waec { padding: 16px 18px; }
+.qs-waec__table { width: 100%; }
+.qs-waec__table td, .qs-waec__table th { padding: 8px 10px; text-align: left; }
+.qs-waec__ok { color: #1f7a3d; font-weight: 700; }
+.qs-waec__edit { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.qs-waec__edit select { max-width: 100%; min-width: 0; flex: 1 1 220px; }
+.qs-waec__section { font-size: 13px; }
+.question-bank .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
+@media (max-width: 480px) { .qs-waec__table td, .qs-waec__table th { padding: 6px 6px; font-size: 13px; } }

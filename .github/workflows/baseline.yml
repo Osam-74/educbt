@@ -72,7 +72,7 @@ jobs:
           test "$ready" = 1
           export CA_TEST_HTTP_URL=http://127.0.0.1:3017
           failed=0
-          for suite in verify scope auth auth-recovery leak vault engine authoring results practice passage-units passage-draw passage-authoring passage-compose passage-import parsers passage-browser passage-import-browser waec-eligibility waec-browser jobs domain config backup platform ca-validation ca analysis staff-prefill classes result-workflow result-workflow-rerun report-summary people dashboards marking-sessions timetable promotion subjects comms operational roles totp settings-validation settings question-validation question-bank registration rosters school-backup-registry school-backup-format school-backup-export school-backup-remap school-backup-restore school-backup-upload school-backup-passwords school-backup-guard school-backup-chunker school-backup-from-plugin legacy-password issue-principal-password term-notes calendar-engine calendar timetable-rules timetable-classes calendar-reminders calendar-glance assignment-audit help print print69; do
+          for suite in verify scope auth auth-recovery leak vault engine authoring results practice passage-units passage-draw passage-authoring passage-compose passage-import parsers passage-browser passage-import-browser waec-eligibility waec-browser waec-blueprint waec-sections waec-sections-browser jobs domain config backup platform ca-validation ca analysis staff-prefill classes result-workflow result-workflow-rerun report-summary people dashboards marking-sessions timetable promotion subjects comms operational roles totp settings-validation settings question-validation question-bank registration rosters school-backup-registry school-backup-format school-backup-export school-backup-remap school-backup-restore school-backup-upload school-backup-passwords school-backup-guard school-backup-chunker school-backup-from-plugin legacy-password issue-principal-password term-notes calendar-engine calendar timetable-rules timetable-classes calendar-reminders calendar-glance assignment-audit help print print69; do
             case "$suite" in
               verify) command=(npm run db:verify) ;;
               ca-validation) command=(npx tsx src/lib/ca/validation.test.ts) ;;
@@ -87,6 +87,7 @@ jobs:
               passage-browser) command=(env QUESTION_BROWSER_MODULE=/tmp/educbt-browser/node_modules/playwright/index.mjs npx tsx src/db/test-passage-browser.ts) ;;
               passage-import-browser) command=(env QUESTION_BROWSER_MODULE=/tmp/educbt-browser/node_modules/playwright/index.mjs npx tsx src/db/test-passage-import-browser.ts) ;;
               waec-browser) command=(env QUESTION_BROWSER_MODULE=/tmp/educbt-browser/node_modules/playwright/index.mjs npx tsx src/db/test-waec-browser.ts) ;;
+              waec-sections-browser) command=(env QUESTION_BROWSER_MODULE=/tmp/educbt-browser/node_modules/playwright/index.mjs npx tsx src/db/test-waec-sections-browser.ts) ;;
               settings) command=(env SETTINGS_BROWSER_MODULE=/tmp/educbt-browser/node_modules/playwright/index.mjs npx tsx src/db/test-settings.ts) ;;
               print69) command=(/tmp/educbt-print69/bin/python scripts/test-print.py) ;;
               print) command=(/tmp/educbt-print/bin/python scripts/test-print.py) ;;

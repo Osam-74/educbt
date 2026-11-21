@@ -1,5 +1,6 @@
 import { saveManualQuestion, handInSet } from './actions';
 import TheoryParts from './TheoryParts';
+import { WaecProgress, SectionSelect, SectionEditor } from './WaecPanel';
 import PassagePanel, { type PassageRow } from './PassagePanel';
 
 /**
@@ -16,8 +17,8 @@ export default function ManualEntry({
   passages = [],
   selectedPassageId = 0,
 }: {
-  set: { id: number; examType: string; status: string; minRequired: number; defaultMarks: string; reviewerComment: string | null };
-  questions: Array<{ id: number; text: string; marks: string; approvalStatus: string; reviewerComment: string | null; parts?: Array<{ label: string; text: string; marks: string }> }>;
+  set: { id: number; examType: string; status: string; minRequired: number; defaultMarks: string; reviewerComment: string | null; waecMode?: boolean };
+  questions: Array<{ id: number; text: string; marks: string; approvalStatus: string; reviewerComment: string | null; section?: string; parts?: Array<{ label: string; text: string; marks: string }> }>;
   returnParams: string;
   subjectId?: number;
   passages?: PassageRow[];
@@ -25,6 +26,8 @@ export default function ManualEntry({
 }) {
   const editable = set.status === 'draft' || set.status === 'returned';
   const short = questions.length < set.minRequired;
+  const waec = !!set.waecMode;
+  const kind = set.examType === 'theory' ? 'theory' : 'objective';
 
   return (
     <>
@@ -37,6 +40,8 @@ export default function ManualEntry({
         {short ? ` — ${set.minRequired - questions.length} more needed before you can submit.` : ' — ready to submit.'}
       </p>
 
+      {waec ? <WaecProgress examType={kind} questions={questions.map((q) => ({ section: q.section ?? '' }))} /> : null}
+
       {subjectId > 0 && set.examType === 'objective' ? (
         <PassagePanel subjectId={subjectId} returnParams={returnParams} passages={passages} selectedId={selectedPassageId} editable={editable} />
       ) : null}
@@ -46,6 +51,8 @@ export default function ManualEntry({
           <input type="hidden" name="setId" value={set.id} />
           <input type="hidden" name="returnParams" value={returnParams} />
           {selectedPassageId > 0 ? <input type="hidden" name="passageId" value={selectedPassageId} /> : null}
+
+          {waec ? <SectionSelect examType={kind} /> : null}
 
           <label htmlFor="instructions">Instructions (optional)</label>
           <input id="instructions" name="instructions" type="text"
@@ -72,6 +79,12 @@ export default function ManualEntry({
             defaultValue={set.examType === 'objective' ? Number(set.defaultMarks) : 1} style={{ maxWidth: 100 }} />
 
           {set.examType === 'theory' ? <TheoryParts marksInputId="marks" /> : null}
+          {set.examType === 'theory' ? (
+            <>
+              <label htmlFor="markingGuide">Marking guide (optional)</label>
+              <textarea id="markingGuide" name="markingGuide" rows={2} placeholder="What a good answer contains, for whoever marks it" />
+            </>
+          ) : null}
 
           <button type="submit" className="sd-action">Save question</button>
         </form>
@@ -87,6 +100,7 @@ export default function ManualEntry({
               <li key={q.id}>
                 <span>{q.text}</span>
                 <span className="muted"> · {Number(q.marks)} mark{Number(q.marks) === 1 ? '' : 's'}</span>
+                {waec ? <div style={{ marginTop: 6 }}><SectionEditor question={{ id: q.id, section: q.section ?? '', approvalStatus: q.approvalStatus as 'pending' | 'approved' | 'revision' }} set={{ status: set.status, examType: kind }} returnParams={returnParams} /></div> : null}
                 {q.parts && q.parts.length > 0 ? (
                   <ul className="muted" style={{ margin: '4px 0 0 18px', listStyle: 'none', padding: 0 }}>
                     {q.parts.map(p => <li key={p.label}>({p.label}) {p.text} <span>· {Number(p.marks)} mark{Number(p.marks) === 1 ? '' : 's'}</span></li>)}
