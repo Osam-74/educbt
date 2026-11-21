@@ -173,6 +173,7 @@ type PoolCandidate = {
   levelName: string;
   available: number;
   deliveryMode: string;
+  waecMode: boolean;
 };
 
 /**
@@ -195,6 +196,7 @@ async function poolCandidates(
       subjectName: schema.subjects.name,
       levelName: schema.classLevels.name,
       deliveryMode: schema.questionSets.deliveryMode,
+      waecMode: schema.questionSets.waecMode,
       available: sql<number>`(
         SELECT count(*) FROM ${schema.questions} q
         WHERE q.question_set_id = ${schema.questionSets.id}
@@ -214,7 +216,22 @@ async function poolCandidates(
       seriesType === 'examination'
         ? eq(schema.questionSets.seriesId, 0)
         : eq(schema.questionSets.seriesId, seriesId),
-    ));
+      // WAEC-structured sets are WAEC practice material. They never reach a school examination or a CA test,
+      // whatever order the sets were written in. A practice series may use either kind (see below).
+      seriesType === 'practice' ? undefined : eq(schema.questionSets.waecMode, false),
+    ))
+    .then((rows) => (seriesType === 'practice' ? onePracticeKindPerScope(rows) : rows));
+}
+
+/**
+ * A practice series can hold both a WAEC-structured set and an ordinary one for the same subject and level.
+ * The composer makes one paper per subject and level, so mixing them would blend two different papers. When both
+ * exist for a scope the WAEC one is kept: choosing WAEC practice is deliberate, an ordinary set beside it is not.
+ */
+function onePracticeKindPerScope<T extends { subjectId: number; levelId: number; departmentId: number | null; waecMode?: boolean }>(rows: T[]): T[] {
+  const key = (r: T) => `${r.subjectId}:${r.levelId}:${r.departmentId ?? ''}`;
+  const hasWaec = new Set(rows.filter((r) => r.waecMode).map(key));
+  return rows.filter((r) => r.waecMode || !hasWaec.has(key(r)));
 }
 
 /**

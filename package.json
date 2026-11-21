@@ -39,6 +39,7 @@
     "test:waec-eligibility": "tsx src/db/test-waec-eligibility.ts",
     "test:waec-browser": "tsx src/db/test-waec-browser.ts",
     "test:waec-sections": "tsx src/db/test-waec-sections.ts",
+    "test:waec-compose": "tsx src/db/test-waec-compose.ts",
     "test:waec-blueprint": "tsx src/lib/exam/waec-blueprint.test.ts",
     "test:waec-sections-browser": "tsx src/db/test-waec-sections-browser.ts",
     "test:passage-browser": "tsx src/db/test-passage-browser.ts",
