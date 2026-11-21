@@ -236,6 +236,35 @@ function onePracticeKindPerScope<T extends { subjectId: number; levelId: number;
 }
 
 /**
+ * The approved theory questions that belong on this candidate's paper: the theory set paired with the objective set
+ * (same subject, level, department, terminal bank and WAEC kind). Empty when there is no approved theory set.
+ */
+async function theoryQuestionsFor(tx: Tx, schoolId: number, c: PoolCandidate): Promise<number[]> {
+  const [objectiveSet] = await tx.select({ sessionId: schema.questionSets.sessionId, termId: schema.questionSets.termId })
+    .from(schema.questionSets).where(eq(schema.questionSets.id, c.setId)).limit(1);
+  if (!objectiveSet) return [];
+  const rows = await tx.select({ id: schema.questions.id })
+    .from(schema.questions)
+    .innerJoin(schema.questionSets, eq(schema.questionSets.id, schema.questions.questionSetId))
+    .where(and(
+      eq(schema.questionSets.schoolId, schoolId),
+      eq(schema.questionSets.sessionId, objectiveSet.sessionId),
+      eq(schema.questionSets.termId, objectiveSet.termId),
+      eq(schema.questionSets.subjectId, c.subjectId),
+      eq(schema.questionSets.levelId, c.levelId),
+      c.departmentId === null ? sql`${schema.questionSets.departmentId} IS NULL` : eq(schema.questionSets.departmentId, c.departmentId),
+      eq(schema.questionSets.examType, 'theory'),
+      eq(schema.questionSets.seriesId, 0),
+      eq(schema.questionSets.waecMode, c.waecMode),
+      eq(schema.questionSets.status, 'approved'),
+      eq(schema.questions.status, 'active'),
+      eq(schema.questions.approvalStatus, 'approved'),
+    ))
+    .orderBy(asc(schema.questions.sequence), asc(schema.questions.id));
+  return rows.map((r) => Number(r.id));
+}
+
+/**
  * What the office needs to see BEFORE composing: for every subject and level,
  * how many questions the paper requires and how many approved questions exist.
  *
@@ -421,12 +450,20 @@ export async function composeSeries(
         }
       }
 
-      if (pool.length > 0) {
+      // THEORY. A subject's examination is its objective AND its theory together. The paired theory set (same
+      // subject, level, department and kind, in the terminal bank) is attached after the objective pool; each
+      // candidate then gets all of it (see theory-delivery.ts). Only approved sets and approved, active questions
+      // count, exactly as for objective. A CA test or practice paper has no theory half, so nothing is attached.
+      const theoryPool = series.seriesType === 'examination' && c.deliveryMode !== 'written'
+        ? await theoryQuestionsFor(tx, actor.schoolId, c)
+        : [];
+
+      if (pool.length > 0 || theoryPool.length > 0) {
         await tx.insert(schema.paperQuestions).values(
-          pool.map((q, i) => ({
+          [...pool.map((q) => Number(q.id)), ...theoryPool].map((questionId, i) => ({
             schoolId: actor.schoolId,
             paperId,
-            questionId: Number(q.id),
+            questionId,
             sortOrder: i,
           })),
         );

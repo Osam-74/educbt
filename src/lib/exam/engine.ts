@@ -24,7 +24,7 @@
 import { and, eq, sql, inArray } from 'drizzle-orm';
 import { forSchool, schema } from '@/db';
 import { paperForCandidateTx, type PublicQuestion } from './paper';
-import { orderForDelivery, drawUnits } from './passage-units';
+import { candidateOrder, theoryIdsInOrder } from './theory-delivery';
 
 export type StartResult =
   | { ok: true; attemptId: number; expiresAt: Date; questions: PublicQuestion[]; resumed: boolean }
@@ -151,6 +151,8 @@ export async function startAttempt(
       questionId: schema.paperQuestions.questionId,
       passageId: schema.questions.passageId,
       passagePosition: schema.questions.passagePosition,
+      type: schema.questions.questionType,
+      sequence: schema.questions.sequence,
     })
       .from(schema.paperQuestions)
       .innerJoin(schema.questions, eq(schema.questions.id, schema.paperQuestions.questionId))
@@ -161,15 +163,22 @@ export async function startAttempt(
     // A comprehension passage travels as a UNIT: a candidate gets a passage with
     // ALL of its questions or none of it, and the questions inside a passage
     // always stay in reading order. Only whole units are shuffled and drawn.
-    const units = orderForDelivery(
-      pool.map((p) => ({ id: Number(p.questionId), passageId: p.passageId ? Number(p.passageId) : null, passagePosition: p.passagePosition })),
-      paper.shuffleQuestions,
-    );
-
+    //
+    // A paper that carries THEORY gives every candidate ALL of it, after the objective part. The paper's own
+    // question count means objective questions only, so adding theory never shrinks the objective draw, and a
+    // paper without theory is delivered exactly as before (see theory-delivery.ts).
+    //
     // A paper asking for more questions than the pool holds gives everyone the
     // whole pool rather than failing — a short pool is the setter's problem to
     // fix, not a reason to stop a candidate sitting.
-    const chosen = drawUnits(units, paper.questionCount > 0 ? paper.questionCount : 0);
+    const chosen = candidateOrder(
+      pool.map((p) => ({
+        id: Number(p.questionId), passageId: p.passageId ? Number(p.passageId) : null,
+        passagePosition: p.passagePosition, type: p.type, sequence: p.sequence,
+      })),
+      paper.questionCount > 0 ? paper.questionCount : 0,
+      paper.shuffleQuestions,
+    );
 
     const expiresAt = new Date(Date.now() + paper.durationSeconds * 1000);
 
@@ -309,6 +318,18 @@ export async function submitAttempt(
       Number(c.questionId),
       { optionId: Number(c.optionId), marks: Number(c.marks) },
     ]));
+
+    // Every THEORY question on this candidate's paper gets an answer row, typed or not. The marking queue and the
+    // result gate both read answer rows: a theory question left with no row would never be offered to the teacher,
+    // and a blank answer would silently look like "nothing to mark". The row stays unmarked (awarded_marks null)
+    // until the teacher gives it a mark, which keeps the result incomplete until then.
+    const types = await tx.select({ id: schema.questions.id, type: schema.questions.questionType })
+      .from(schema.questions).where(inArray(schema.questions.id, attempt.questionOrder));
+    const theoryIds = theoryIdsInOrder(attempt.questionOrder, new Map(types.map((t) => [Number(t.id), t.type])));
+    for (const questionId of theoryIds) {
+      await tx.insert(schema.attemptAnswers).values({ schoolId, attemptId, questionId, updatedAt: new Date() })
+        .onConflictDoNothing({ target: [schema.attemptAnswers.attemptId, schema.attemptAnswers.questionId] });
+    }
 
     let score = 0;
     let maxScore = 0;

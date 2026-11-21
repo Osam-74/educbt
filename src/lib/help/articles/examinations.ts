@@ -273,6 +273,8 @@ export const examinations: HelpArticle[] = [
         'The mark must be between 0 and the question\'s maximum.',
         'You can only mark scripts for a class and subject you are assigned to teach.',
         'Only scripts that have been submitted appear. A sitting still in progress does not.',
+        'Every student who sat the paper has a script for **every** theory question, even one they left blank. Give a blank answer **0** so the result can be completed. A result stays incomplete until every theory question has a mark.',
+        'In an examination, students answer the objective questions first and then **all** the theory questions, which are the same for every student. Each theory question has its own answer box.',
       ] },
       { type: 'warning', text: 'If a student\'s results for the term have already been reviewed, published or locked, marks cannot be changed until the results are reopened. EduCBT will say "Reopen reviewed, published or locked results before correcting examination marks."' },
       { type: 'h', text: 'For the examination office' },

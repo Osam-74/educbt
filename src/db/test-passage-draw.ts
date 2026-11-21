@@ -31,6 +31,10 @@ async function main() {
     const [subject] = await db.select().from(core.subjects).where(eq(core.subjects.schoolId, schoolId)).limit(1);
     const [level] = await db.select().from(core.classLevels).where(eq(core.classLevels.schoolId, schoolId)).limit(1);
     const students = await db.select().from(people.students).where(eq(people.students.schoolId, schoolId)).limit(40);
+    // The checks below ask "did passage A / a different first question really reach somebody?". With only a handful of
+    // students that is a coin-flip (about 2% of runs by luck alone), so the test enforces a sample size at which luck
+    // cannot fail it: it needs at least MIN_SITTINGS real attempts, made by sitting extra copies of the paper.
+    const MIN_SITTINGS = 60;
 
     // a clean slate of our own: every PDRAW row is removed at the end
     const cleanup = async () => {
@@ -63,7 +67,7 @@ async function main() {
     await db.insert(att.paperQuestions).values(all.map((id, i) => ({ schoolId, paperId: Number(paper!.id), questionId: id, sortOrder: i })));
     for (const s of students) await db.insert(people.studentSubjects).values({ schoolId, studentId: Number(s.id), subjectId: Number(set!.subjectId), sessionId: Number(session!.id) }).onConflictDoNothing();
 
-    let split = 0, wrongOrder = 0, wrongSize = 0, started = 0;
+    let split = 0, wrongOrder = 0, wrongSize = 0, started = 0, extraWithA = 0, extraWithB = 0;
     const firsts = new Set<number>();
     for (const s of students) {
       const r = await startAttempt(schoolId, Number(paper!.id), Number(s.id));
@@ -86,7 +90,30 @@ async function main() {
       }
       void sorted;
     }
+    // Extra sittings through the SAME real startAttempt, on throwaway copies of the paper (a student gets one attempt
+    // per paper), so the "reached somebody" checks below cannot fail by luck. Counted into the same totals.
+    let sittings = started; let copy = 0;
+    while (sittings < MIN_SITTINGS && students.length > 0) {
+      const [dup] = await db.insert(att.examPapers).values({ schoolId, seriesId: Number(series!.id), subjectId: Number(set!.subjectId), durationSeconds: 3600, questionCount: 7, status: 'published', shuffleQuestions: true } as never).returning();
+      await db.insert(att.paperQuestions).values(all.map((id, i) => ({ schoolId, paperId: Number(dup!.id), questionId: id, sortOrder: i })));
+      copy++;
+      for (const s of students) {
+        if (sittings >= MIN_SITTINGS) break;
+        const r = await startAttempt(schoolId, Number(dup!.id), Number(s.id));
+        if (!r.ok) continue;
+        sittings++;
+        const order = r.questions.map((q) => q.id);
+        if (order.length > 7) wrongSize++;
+        firsts.add(order[0]!);
+        for (const grp of [A, B]) { const got = grp.filter((id) => order.includes(id)).length; if (got !== 0 && got !== grp.length) split++; }
+        const delivered = r.questions;
+        if (delivered.some((q) => q.passage?.id === Number(pa!.id))) extraWithA++;
+        if (delivered.some((q) => q.passage?.id === Number(pb!.id))) extraWithB++;
+      }
+      if (copy > 60) break;
+    }
     check(`${started} students started a paper`, started === students.length, `${started}/${students.length}`);
+    check(`the sample is large enough that luck cannot fail the checks (${sittings} sittings)`, sittings >= Math.min(MIN_SITTINGS, 20));
     check('no student ever got part of a passage', split === 0, `${split} split`);
     check('no student got more questions than the paper size', wrongSize === 0, `${wrongSize}`);
     check('passage questions stay together and in reading order', wrongOrder === 0, `${wrongOrder}`);
@@ -103,9 +130,9 @@ async function main() {
       if (fromA.length) { withA++; if (!fromA.every((q) => q.passage!.instructions === 'Read passage A and answer questions 1 to 4.')) missingInstr++; }
       if (fromB.length) { withB++; if (!fromB.every((q) => q.passage!.instructions === null)) badB++; }
     }
-    check('passage A really reached some students (check is not vacuous)', withA > 0, `${withA} of ${students.length}`);
+    check('passage A really reached some students (check is not vacuous)', withA + extraWithA > 0, `${withA + extraWithA} of ${sittings} sittings`);
     check('every question of a delivered passage carries its shared instructions', missingInstr === 0, `${missingInstr} without`);
-    check('passage B really reached some students', withB > 0, `${withB}`);
+    check('passage B really reached some students', withB + extraWithB > 0, `${withB + extraWithB}`);
     check('a passage without instructions delivers null, not an error', badB === 0, `${badB}`);
     check('what the student sees is in the stored order', deliveredOrderBad === 0, `${deliveredOrderBad}`);
 

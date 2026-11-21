@@ -17,6 +17,10 @@ The English-specific legacy WAEC blueprint includes three papers, section counts
 
 Initial confirmed defects: absent submission ownership check; paired sibling lookup omits department; service validation allows multiple correct answers in single-choice items; creation lacks assigned-scope validation. Changes remain in Question Bank and its focused tests.
 
+## Update 2026-11-21: theory delivery
+
+The "objective-only" statement above is no longer true for a school's own examination. `composeSeries` now attaches the approved theory questions of the paired theory set (same subject, level, department, terminal bank, same WAEC kind) after the objective pool. Each candidate sits the objective draw (the paper's question count, unchanged) followed by ALL the theory, in authored order (`src/lib/exam/theory-delivery.ts`). At submit every theory question gets an unmarked answer row, so the teacher's marking queue lists it and the result stays incomplete until it is marked. CA tests, practice papers and WAEC sets never carry theory. WAEC choice/grouping across sections is still not implemented.
+
 ## Implementation checkpoint (not yet accepted)
 
 Implemented office collection selection/closing, quota configuration for new sets, assigned-scope start/continue controls, active-account checks, teacher ownership/assignment checks, school-scoped entity validation, date-window enforcement, exact department pairing, single-answer/marks/duplicate validation, review transition restrictions and audit entries. A returned half may be resubmitted without altering its approved partner. School settings storage is reused through a single JSON key, with the existing configuration lock; no migration or document CSS changes.
