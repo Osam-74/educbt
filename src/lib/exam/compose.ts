@@ -24,6 +24,7 @@ import { and, eq, sql, asc, inArray } from 'drizzle-orm';
 import { z } from 'zod';
 import { forSchool, schema, type Tx } from '@/db';
 import type { Actor } from '@/lib/session';
+import { isSchoolWide } from '@/lib/queries';
 import { caComponents } from '@/lib/ca/validation';
 
 export type ComposeResult = {
@@ -960,4 +961,34 @@ function weekdaysBetween(startsOn: string, endsOn: string | null, cap: number): 
 export function passageNotes(result: { warnings?: string[] }): string {
   const w = result.warnings ?? [];
   return w.length === 0 ? '' : ` Check the passages: ${w.join(' ')}`;
+}
+
+
+/**
+ * Give a practice series a limited time to be open, or clear it. Practice is open all the time unless the exam
+ * office sets a window here. Only practice: an examination or CA test sits to its timetable. Either end may be
+ * left open. It decides who can START; a student already sitting is never cut off.
+ */
+export async function setPracticeWindow(actor: Actor, seriesId: number, input: { opensAt: string | null; closesAt: string | null }) {
+  if (!isSchoolWide(actor.role)) throw new Error('Only the exam office can set when practice is open.');
+  const parse = (v: string | null, label: string) => {
+    if (v === null || v === '') return null;
+    const d = new Date(v);
+    if (Number.isNaN(d.getTime())) throw new Error(`The ${label} is not a valid date and time.`);
+    return d;
+  };
+  const opensAt = parse(input.opensAt, 'opening time'), closesAt = parse(input.closesAt, 'closing time');
+  if (opensAt && closesAt && closesAt.getTime() <= opensAt.getTime()) throw new Error('Practice must close after it opens.');
+
+  return forSchool(actor.schoolId, async (tx) => {
+    const [series] = await tx.select().from(schema.examSeries)
+      .where(and(eq(schema.examSeries.id, seriesId), eq(schema.examSeries.schoolId, actor.schoolId))).limit(1);
+    if (!series) throw new Error('Practice exam not found.');
+    if (series.seriesType !== 'practice') throw new Error('An open window like this is only for practice papers. An examination or CA test sits to its timetable.');
+    await tx.update(schema.examSeries).set({ sittingOpensAt: opensAt, sittingClosesAt: closesAt }).where(eq(schema.examSeries.id, seriesId));
+    await tx.insert(schema.auditLog).values({ schoolId: actor.schoolId, actorUserId: actor.userId, actorRole: actor.role,
+      action: 'exam_series.practice_window', entityType: 'exam_series', entityId: seriesId,
+      before: { opensAt: series.sittingOpensAt, closesAt: series.sittingClosesAt }, after: { opensAt, closesAt } });
+    return { opensAt, closesAt };
+  });
 }

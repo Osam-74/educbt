@@ -94,3 +94,28 @@ export function isValidTimeZone(tz: string): boolean {
 
 /** The date in the school's timezone right now, which is what "today" means to the school. */
 export const todayIn = (timeZone: string, now: Date = new Date()): DateStr => toLocalDate(now, timeZone);
+
+/**
+ * The instant for a wall-clock time written in the SCHOOL's timezone ("2026-11-21T09:00" in Lagos).
+ * A form's date-time box has no zone and the server runs in UTC, so reading it directly would be off by the
+ * school's offset. Returns null when the text is not a real date and time.
+ * Works for any zone, including ones with daylight saving: the offset is looked up at that moment.
+ */
+export function localToInstant(local: string, timeZone: string): Date | null {
+  const m = /^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})$/.exec(local.trim());
+  if (!m) return null;
+  const [y, mo, d, h, mi] = m.slice(1).map(Number) as [number, number, number, number, number];
+  const asUtc = Date.UTC(y, mo - 1, d, h, mi);
+  const check = new Date(asUtc);
+  // Reject 31 February, hour 25, and the like: the parts must survive a round trip.
+  if (check.getUTCFullYear() !== y || check.getUTCMonth() !== mo - 1 || check.getUTCDate() !== d || check.getUTCHours() !== h || check.getUTCMinutes() !== mi) return null;
+  const offsetAt = (ms: number) => {
+    const p = new Intl.DateTimeFormat('en-US', { timeZone, hourCycle: 'h23', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' }).formatToParts(new Date(ms));
+    const g = (t: string) => Number(p.find((x) => x.type === t)!.value);
+    return Date.UTC(g('year'), g('month') - 1, g('day'), g('hour'), g('minute'), g('second')) - Math.floor(ms / 1000) * 1000;
+  };
+  // Two passes settle the offset even when the guess lands on the other side of a daylight-saving change.
+  let guess = asUtc - offsetAt(asUtc);
+  guess = asUtc - offsetAt(guess);
+  return new Date(guess);
+}

@@ -32,6 +32,8 @@ export type StartResult =
     | 'not_published' | 'not_registered' | 'already_submitted' | 'no_questions'
     // Sitting-window refusals, formal examinations only.
     | 'not_scheduled' | 'window_not_open' | 'window_closed'
+    // The same two refusals for a practice paper, worded for practice (it is not an examination).
+    | 'practice_not_open' | 'practice_closed'
     | 'access_code_required' | 'access_code_wrong' };
 
 /**
@@ -137,6 +139,12 @@ export async function startAttempt(
 
       if (now < series.opensAt.getTime()) return { ok: false, reason: 'window_not_open' };
       if (now > series.closesAt.getTime()) return { ok: false, reason: 'window_closed' };
+    } else if (series?.t === 'practice') {
+      // Practice is open all the time unless the exam office gave it a limited window. Same rule as above: it
+      // decides who may START; someone already sitting resumed earlier in this function and is never cut off.
+      const now = Date.now();
+      if (series.opensAt && now < series.opensAt.getTime()) return { ok: false, reason: 'practice_not_open' };
+      if (series.closesAt && now > series.closesAt.getTime()) return { ok: false, reason: 'practice_closed' };
     }
 
     const pool = await tx.select({

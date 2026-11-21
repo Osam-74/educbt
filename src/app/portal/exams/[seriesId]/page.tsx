@@ -5,9 +5,13 @@ import {
   composeSeries,
   passageNotes,
   scheduleSeries,
+  setPracticeWindow,
   publishSeries,
   seriesPapers,
 } from '@/lib/exam/compose';
+import { forSchool } from '@/db';
+import { schoolTimeZone } from '@/lib/calendar/service';
+import { localToInstant, toLocalDate, toLocalTime } from '@/lib/calendar/dates';
 import { TYPE_LABEL, STATUS_LABEL, fmtDay, fmtTime, addMinutes } from '../labels';
 
 export const dynamic = 'force-dynamic';
@@ -44,6 +48,9 @@ export default async function SeriesPage({
   }
 
   const { series, papers } = data;
+  const zone = await forSchool(actor.schoolId, (tx) => schoolTimeZone(tx, actor.schoolId));
+  const say = (d: Date) => new Intl.DateTimeFormat('en-GB', { timeZone: zone, weekday: 'short', day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true }).format(d);
+  const local = (d: Date | null) => (d ? `${toLocalDate(d, zone)}T${toLocalTime(d, zone)}` : '');
   const isPractice = series.seriesType === 'practice';
   const published = series.status === 'published';
   const unscheduled = papers.filter((p) => !p.scheduledAt && p.status !== 'cancelled').length;
@@ -72,6 +79,36 @@ export default async function SeriesPage({
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Composition failed.';
       destination = `/portal/exams/${seriesId}?error=${encodeURIComponent(message)}`;
+    }
+
+    redirect(destination);
+  }
+
+  async function practiceWindow(formData: FormData) {
+    'use server';
+
+    const inner = await requireSchoolSession();
+    requireRole(inner, SCHOOL_WIDE);
+
+    let destination: string;
+
+    try {
+      // The browser sends a wall-clock time with no zone. It means the SCHOOL's local time, not the server's.
+      const zone = await forSchool(inner.schoolId, (tx) => schoolTimeZone(tx, inner.schoolId));
+      const read = (name: string, label: string) => {
+        const raw = String(formData.get(name) ?? '').trim();
+        if (!raw) return null;
+        const at = localToInstant(raw, zone);
+        if (!at) throw new Error(`The ${label} is not a valid date and time.`);
+        return at.toISOString();
+      };
+      const clear = formData.get('clear') === '1';
+      await setPracticeWindow(inner, seriesId, clear
+        ? { opensAt: null, closesAt: null }
+        : { opensAt: read('opensAt', 'opening time'), closesAt: read('closesAt', 'closing time') });
+      destination = `/portal/exams/${seriesId}?ok=${encodeURIComponent(clear ? 'Practice is open all the time again.' : 'Practice opening times saved.')}`;
+    } catch (err) {
+      destination = `/portal/exams/${seriesId}?error=${encodeURIComponent(err instanceof Error ? err.message : 'The opening times could not be saved.')}`;
     }
 
     redirect(destination);
@@ -211,6 +248,36 @@ export default async function SeriesPage({
       <form action={compose}>
         <button type="submit">Compose papers</button>
       </form>
+
+      {/* ── Practice only: when students may start it ───────────────────── */}
+      {isPractice ? (
+        <section className="card" aria-label="When practice is open" data-testid="practice-window">
+          <h2 className="sub-head" style={{ marginTop: 0 }}>When is this practice open?</h2>
+          <p className="muted" style={{ marginTop: -6 }}>
+            Students see this practice only once it is published. Leave both boxes empty and it stays open all the time, or
+            give it a limited time. Times are in the school&rsquo;s time zone ({zone}). Someone who has already started can
+            still finish after it closes.
+          </p>
+          <p data-testid="practice-window-now">
+            {series.sittingOpensAt || series.sittingClosesAt
+              ? <>Now: {series.sittingOpensAt ? <>opens <strong>{say(series.sittingOpensAt)}</strong></> : 'open from the start'}
+                  {', '}{series.sittingClosesAt ? <>closes <strong>{say(series.sittingClosesAt)}</strong></> : 'with no closing time'}.</>
+              : <>Now: open all the time.</>}
+          </p>
+          <form action={practiceWindow} style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+            <div>
+              <label htmlFor="opensAt">Opens</label>
+              <input id="opensAt" name="opensAt" type="datetime-local" defaultValue={local(series.sittingOpensAt)} />
+            </div>
+            <div>
+              <label htmlFor="closesAt">Closes</label>
+              <input id="closesAt" name="closesAt" type="datetime-local" defaultValue={local(series.sittingClosesAt)} />
+            </div>
+            <button type="submit" className="sd-action">Save times</button>
+            {series.sittingOpensAt || series.sittingClosesAt ? <button type="submit" name="clear" value="1" className="sd-action">Open all the time</button> : null}
+          </form>
+        </section>
+      ) : null}
 
       {/* ── Step 3: scheduling ────────────────────────────────────────────── */}
       {papers.length > 0 && !isPractice ? (

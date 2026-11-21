@@ -37,7 +37,18 @@ export type PracticePaperRow = {
   // available / in progress / completed.
   attemptStatus: 'in_progress' | 'submitted' | 'auto_submitted' | 'expired' | 'cancelled' | null;
   score: number | null;
+  /** The limited time this practice is open, set by the exam office. Both null means it is always open. */
+  opensAt: string | null;
+  closesAt: string | null;
+  /** Where now sits in that window. A closed paper can still be reviewed, but not started. */
+  windowState: 'open' | 'not_open' | 'closed';
 };
+
+export function practiceWindowState(opensAt: Date | null, closesAt: Date | null, now = Date.now()): 'open' | 'not_open' | 'closed' {
+  if (opensAt && now < opensAt.getTime()) return 'not_open';
+  if (closesAt && now > closesAt.getTime()) return 'closed';
+  return 'open';
+}
 
 export async function practicePapersFor(
   schoolId: number,
@@ -56,6 +67,8 @@ export async function practicePapersFor(
         attemptId: schema.attempts.id,
         attemptStatus: schema.attempts.status,
         score: schema.attempts.score,
+        opensAt: schema.examSeries.sittingOpensAt,
+        closesAt: schema.examSeries.sittingClosesAt,
       })
       .from(schema.examPapers)
       .innerJoin(schema.examSeries, eq(schema.examSeries.id, schema.examPapers.seriesId))
@@ -88,6 +101,9 @@ export async function practicePapersFor(
     attemptId: r.attemptId === null ? null : Number(r.attemptId),
     attemptStatus: r.attemptStatus ?? null,
     score: r.score === null ? null : Number(r.score),
+    opensAt: r.opensAt ? r.opensAt.toISOString() : null,
+    closesAt: r.closesAt ? r.closesAt.toISOString() : null,
+    windowState: practiceWindowState(r.opensAt, r.closesAt),
   })));
 }
 

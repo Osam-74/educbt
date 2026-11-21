@@ -1,7 +1,21 @@
 import { requireSchoolSession, requireRole } from '@/lib/session';
-import { practicePapersFor } from '@/lib/exam/practice';
+import { practicePapersFor, type PracticePaperRow } from '@/lib/exam/practice';
+import { forSchool } from '@/db';
+import { schoolTimeZone } from '@/lib/calendar/service';
 
 export const dynamic = 'force-dynamic';
+
+/** "Fri 21 Nov, 9:00 am" on the school's own clock, not the server's. */
+function when(iso: string, zone: string): string {
+  return new Date(iso).toLocaleString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit', hour12: true, timeZone: zone });
+}
+
+function windowNote(p: PracticePaperRow, zone: string): string | null {
+  if (p.windowState === 'not_open' && p.opensAt) return `Opens ${when(p.opensAt, zone)}`;
+  if (p.windowState === 'closed' && p.closesAt) return `Closed ${when(p.closesAt, zone)}`;
+  if (p.windowState === 'open' && p.closesAt) return `Open until ${when(p.closesAt, zone)}`;
+  return null;
+}
 
 // Student-facing practice area. Deliberately separate from the dashboard's
 // formal paper list: practice never counts towards results, and showing the
@@ -10,6 +24,7 @@ export default async function PracticePage() {
   const actor = await requireSchoolSession();
   requireRole(actor, ['student']);
 
+  const zone = await forSchool(actor.schoolId, (tx) => schoolTimeZone(tx, actor.schoolId));
   const papers = actor.studentId
     ? await practicePapersFor(actor.schoolId, actor.studentId)
     : [];
@@ -36,12 +51,14 @@ export default async function PracticePage() {
           </thead>
           <tbody>
             {available.map((p) => (
-              <tr key={p.paperId}>
+              <tr key={p.paperId} data-window={p.windowState}>
                 <td>{p.subjectName} <span className="muted">({p.subjectCode})</span></td>
-                <td>{p.seriesTitle}</td>
+                <td>{p.seriesTitle}{windowNote(p, zone) ? <div className="muted" data-testid={`window-note-${p.paperId}`}>{windowNote(p, zone)}</div> : null}</td>
                 <td>{p.questionCount}</td>
                 <td>{Math.round(p.durationSeconds / 60)} min</td>
-                <td><a className="primary-wide" href={`/exam/${p.paperId}`}>Start Practice</a></td>
+                <td>{p.windowState === 'open'
+                  ? <a className="primary-wide" href={`/exam/${p.paperId}`}>Start Practice</a>
+                  : <span className="muted" data-testid={`window-${p.windowState}-${p.paperId}`}>{p.windowState === 'closed' ? 'Closed' : 'Not open yet'}</span>}</td>
               </tr>
             ))}
           </tbody>

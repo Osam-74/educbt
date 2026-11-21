@@ -17,6 +17,8 @@ const REASON: Record<string, string> = {
   not_scheduled: 'This paper has not been given a timetable slot yet.',
   window_not_open: 'This examination has not started yet. Check your timetable for the day and time.',
   window_closed: 'This examination has closed. It can no longer be started.',
+  practice_not_open: 'This practice paper is not open yet. Check the practice page for when it opens.',
+  practice_closed: 'This practice paper has closed. It can no longer be started.',
   access_code_required: 'This paper needs the access code your invigilator will read out.',
   access_code_wrong: 'That access code is not right. Check with your invigilator.',
 };
