@@ -1,4 +1,6 @@
 import Link from 'next/link';
+import PopulationChart from './PopulationChart';
+import type { ClassPopulation } from '@/lib/population/rules';
 import CalendarGlance from './CalendarGlance';
 import type { teacherDashboard } from '@/lib/teacher-dashboard';
 import { PortalIcon } from './PortalShell';
@@ -27,7 +29,7 @@ const PIPELINE_STAGES: Array<{ state: string; label: string; color: string }> = 
  * that exists and that the teacher is authorised for — there is no analytics
  * here that the database does not already hold.
  */
-export default function TeacherDashboard({ data, canReview }: { data: NonNullable<Awaited<ReturnType<typeof teacherDashboard>>>; canReview: boolean }) {
+export default function TeacherDashboard({ data, canReview, population }: { data: NonNullable<Awaited<ReturnType<typeof teacherDashboard>>>; canReview: boolean; population?: ClassPopulation[] | null }) {
   const currentTerm = data.term;
   const caHref = (classId: number, subjectId: number) =>
     `/portal/ca?pair=${classId}%3A${subjectId}${currentTerm ? `&termId=${currentTerm.id}` : ''}`;
@@ -59,6 +61,7 @@ export default function TeacherDashboard({ data, canReview }: { data: NonNullabl
       <div className="sd-stat"><span className="sd-icon"><PortalIcon name="check" /></span><strong>{data.marking.outstanding}</strong><span>To mark</span></div>
     </div>
 
+    {population ? <section className="sd-panel sd-panel--wide" data-testid="pop-panel" style={{ marginBottom: 16 }}><header><h2>Students in my class{population.length === 1 ? '' : 'es'}</h2></header><PopulationChart classes={population} /></section> : null}
     <div className="sd-panels">
       <CalendarGlance />
       <section className="sd-panel sd-panel--wide">

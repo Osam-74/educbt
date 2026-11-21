@@ -4,8 +4,10 @@ import type { schoolDashboard } from '@/lib/portal-dashboard';
 import { activityTitle, activityAllowed } from '@/lib/portal-dashboard';
 import { PortalIcon } from './PortalShell';
 import NewTermDialog from './NewTermDialog';
+import PopulationChart from './PopulationChart';
+import type { ClassPopulation } from '@/lib/population/rules';
 
-export default function SchoolDashboard({ data, role }: { data: NonNullable<Awaited<ReturnType<typeof schoolDashboard>>>; role: string }) {
+export default function SchoolDashboard({ data, role, population }: { data: NonNullable<Awaited<ReturnType<typeof schoolDashboard>>>; role: string; population?: ClassPopulation[] | null }) {
   const title = role === 'principal' ? 'Principal’s Dashboard' : role === 'vice_principal' ? 'Vice Principal’s Dashboard' : 'School Overview';
   const stages: Record<string, string> = { draft: 'Draft', compiled: 'Compiled', reviewed: 'Reviewed', published: 'Published', locked: 'Locked' };
   return <div className="school-dashboard">
@@ -24,6 +26,7 @@ export default function SchoolDashboard({ data, role }: { data: NonNullable<Awai
         <div className="sd-links"><Link href="/portal/students?status=pending_approval">Student approvals waiting: {data.pendingApprovals} — review them →</Link></div>
       </section>
     )}
+    {population ? <section className="sd-panel sd-panel--wide" data-testid="pop-panel"><header><h2><PortalIcon name="school"/>Students by class</h2><span className="sd-term">{data.session?.title ?? ''}</span></header><PopulationChart classes={population} /></section> : null}
     <div className="sd-panels">
       <CalendarGlance />
       <section className="sd-panel"><header><h2><PortalIcon name="chart"/>Results Pipeline</h2><span className="sd-term">{data.term?.title ?? 'No current term'}</span></header>

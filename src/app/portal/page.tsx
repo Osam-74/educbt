@@ -6,6 +6,7 @@ import { guardianChildren } from '@/lib/results/family';
 import { schoolDashboard } from '@/lib/portal-dashboard';
 import { teacherDashboard } from '@/lib/teacher-dashboard';
 import { canManageResults } from '@/lib/results/config';
+import { populationByClass } from '@/lib/population/service';
 import SchoolDashboard from './SchoolDashboard';
 import TeacherDashboard from './TeacherDashboard';
 import CalendarGlance from './CalendarGlance';
@@ -33,18 +34,22 @@ export default async function PortalHome({
   // never hand a dashboard to someone whose role does not earn it.
   if (!mine) {
     const dashboard = await schoolDashboard(actor);
-    if (dashboard) return <SchoolDashboard data={dashboard} role={actor.role} />;
+    if (dashboard) return <SchoolDashboard data={dashboard} role={actor.role} population={await populationByClass(actor)} />;
   }
 
   const teaching = await teacherDashboard(actor, { mine });
-  if (teaching) return <TeacherDashboard data={teaching} canReview={canManageResults(actor)} />;
+  if (teaching) {
+    // A class teacher sees their own class(es); a subject teacher gets an empty list, which means no card at all.
+    const pop = await populationByClass(actor, { mine });
+    return <TeacherDashboard data={teaching} canReview={canManageResults(actor)} population={pop.length ? pop : null} />;
+  }
 
   if (mine) {
     // ?scope=mine was requested but this actor holds no teaching assignment
     // (staffId) — fall back to the office overview rather than falling all
     // the way through to the bare "Dashboard" placeholder below.
     const dashboard = await schoolDashboard(actor);
-    if (dashboard) return <SchoolDashboard data={dashboard} role={actor.role} />;
+    if (dashboard) return <SchoolDashboard data={dashboard} role={actor.role} population={await populationByClass(actor)} />;
   }
 
   if (actor.role === 'parent') {

@@ -1,0 +1,16 @@
+/* Enrolled students by class. Visually hidden table is defined here so it never depends on a global screen-reader class. */
+.pop-chart { position: relative; overflow: hidden; }
+.pop-sr-only { position: absolute !important; width: 1px; height: 1px; margin: -1px; padding: 0; border: 0; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; left: 0; top: 0; }
+.pop-legend { display: flex; flex-wrap: wrap; gap: 6px 18px; align-items: center; margin: 0 0 8px; font-size: 13px; color: #37453d; }
+.pop-legend i { display: inline-block; width: 12px; height: 12px; border-radius: 4px; margin-right: 5px; vertical-align: -1px; }
+.pop-legend b { margin-left: 3px; color: #152019; }
+.pop-legend__total { margin-left: auto; }
+.pop-scroll { overflow-x: auto; }
+.pop-stage { position: relative; }
+.pop-stage svg { display: block; width: 100%; height: auto; max-height: 520px; }
+.pop-xlabel { font-family: inherit; }
+.pop-bar { cursor: pointer; outline: none; }
+.pop-bar .pop-seg { transition: opacity .12s; }
+.pop-bar:hover .pop-seg, .pop-bar:focus-visible .pop-seg { filter: brightness(1.08); }
+.pop-bar:focus-visible .pop-hit { stroke: #2f7d4f; stroke-width: 2; fill: rgba(47, 125, 79, .06); }
+@media print { .pop-scroll { overflow: visible; } .pop-stage { min-width: 0 !important; } }
