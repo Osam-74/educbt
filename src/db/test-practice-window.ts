@@ -16,7 +16,7 @@ async function main() {
     assert(['localhost', '127.0.0.1', '[::1]'].includes(url.hostname) && url.pathname.endsWith('_ca_test'), 'Disposable local database required');
   }
   const { schema, client } = await import('@/db');
-  const { createSeries, composeSeries, publishSeries, setPracticeWindow } = await import('@/lib/exam/compose');
+  const { createSeries, composeSeries, publishSeries, setPracticeWindow, listSeries } = await import('@/lib/exam/compose');
   const { startAttempt } = await import('@/lib/exam/engine');
   const { practicePapersFor } = await import('@/lib/exam/practice');
   const owner = postgres(process.env.DATABASE_URL_UNPOOLED!, { max: 1 });
@@ -135,6 +135,13 @@ async function main() {
       const [session] = await db.select().from(schema.academicSessions).where(eq(schema.academicSessions.schoolId, f.schoolId));
       const entries = await forSchool(f.schoolId, (tx) => examEntries(tx, f.schoolId, Number(session!.id), 'Africa/Lagos'));
       assert.equal(entries.filter((e) => e.id === Number(f.series.id)).length, 0, 'practice is not a calendar exam');
+    });
+    await check('the exam office series list counts each series\' own papers (it once reported 0 for every series)', async () => {
+      const f = await fixture();
+      const [other] = await db.select().from(schema.examSeries).where(eq(schema.examSeries.id, Number(f.series.id)));
+      const rows = await listSeries(f.officer);
+      const mine = rows.find((r) => r.id === Number(other!.id))!;
+      assert.equal(mine.paperCount, 1, 'the practice series has one composed paper'); assert.equal(mine.unscheduledCount, 1, 'and it is not scheduled');
     });
     await check('a formal examination is still bound to its timetable window, exactly as before', async () => {
       const f = await fixture();

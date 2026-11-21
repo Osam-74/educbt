@@ -921,11 +921,11 @@ export async function listSeries(actor: Actor) {
       sittingOpensAt: schema.examSeries.sittingOpensAt,
       sittingClosesAt: schema.examSeries.sittingClosesAt,
       paperCount: sql<number>`(
-        SELECT count(*) FROM ${schema.examPapers} p WHERE p.series_id = ${schema.examSeries.id}
+        SELECT count(*) FROM ${schema.examPapers} p WHERE p.series_id = exam_series.id
       )`.mapWith(Number),
       unscheduledCount: sql<number>`(
         SELECT count(*) FROM ${schema.examPapers} p
-        WHERE p.series_id = ${schema.examSeries.id} AND p.scheduled_at IS NULL
+        WHERE p.series_id = exam_series.id AND p.scheduled_at IS NULL
       )`.mapWith(Number),
     })
       .from(schema.examSeries)

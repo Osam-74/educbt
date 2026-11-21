@@ -2,14 +2,46 @@ import Link from 'next/link';
 import '../school-table.css';
 import { requireSchoolSession } from '@/lib/session';
 import { isSchoolWide, listStudents, listClasses, pendingApprovalCount, headedClassIds, myStudents } from '@/lib/queries';
+import ArmPanel from './ArmPanel';
+import { armSources, armTargets, armRoster } from '@/lib/people/arm-assignment';
 import { RegisterStudentForm, ImportStudentsForm, StudentRowForm, AutoSubmitSelect } from './StudentForms';
 
 export const dynamic = 'force-dynamic';
 
+
+/** What the arm panel needs: the classes that can be split, where each can go, and who is in each. Same scope as the move. */
+async function armPanelData(actor: Awaited<ReturnType<typeof requireSchoolSession>>) {
+  const sources = await armSources(actor);
+  const targetsByClass: Record<number, Array<{ id: number; name: string }>> = {};
+  const rosterByClass: Record<number, Awaited<ReturnType<typeof armRoster>>> = {};
+  for (const c of sources) {
+    targetsByClass[c.id] = (await armTargets(actor, c.id)).map((t) => ({ id: t.id, name: t.name }));
+    rosterByClass[c.id] = await armRoster(actor, c.id);
+  }
+  return { sources, targetsByClass, rosterByClass };
+}
+
+function ArmOutcome({ ok, error, skipped }: { ok?: string; error?: string; skipped?: string }) {
+  let rows: Array<{ n: string; r: string }> = [];
+  try { rows = skipped ? JSON.parse(skipped) : []; } catch { rows = []; }
+  if (!ok && !error) return null;
+  return (
+    <section className="card sa-card" role="status" data-testid="arm-outcome" style={{ borderLeft: `4px solid ${error ? '#b3261e' : '#1f7a3d'}` }}>
+      <strong>{error ?? ok}</strong>
+      {rows.length ? (
+        <>
+          <p className="muted" style={{ margin: '8px 0 4px' }}>{rows.length} not moved:</p>
+          <ul data-testid="arm-skipped" style={{ margin: 0, paddingLeft: 18 }}>{rows.map((x, i) => <li key={i}><strong>{x.n}</strong>: {x.r}</li>)}</ul>
+        </>
+      ) : null}
+    </section>
+  );
+}
+
 export default async function StudentsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; status?: string; class?: string; scope?: string }>;
+  searchParams: Promise<{ q?: string; status?: string; class?: string; scope?: string; armOk?: string; armError?: string; armSkipped?: string }>;
 }) {
   const params = await searchParams;
   const actor = await requireSchoolSession();
@@ -57,6 +89,9 @@ export default async function StudentsPage({
               </form>
             )}
           </section>
+
+          <ArmOutcome ok={params.armOk} error={params.armError} skipped={params.armSkipped} />
+          <ArmPanel {...(await armPanelData(actor))} selectedClass={classId ?? 0} returnParams="scope=mine" />
 
           {visibleClasses.length > 0 && (
             <section className="card sa-card">
@@ -130,6 +165,9 @@ export default async function StudentsPage({
             </div>
           </section>
         )}
+
+        <ArmOutcome ok={params.armOk} error={params.armError} skipped={params.armSkipped} />
+        {office ? <ArmPanel {...(await armPanelData(actor))} selectedClass={params.class ? Number(params.class) : 0} returnParams={new URLSearchParams(Object.entries({ q: params.q ?? '', status: params.status ?? '', class: params.class ?? '' }).filter(([, v]) => v)).toString()} /> : null}
 
         <section className="card sa-card">
           <h2>Enrolled students <span className="muted">({rows.length})</span></h2>
