@@ -66,6 +66,8 @@
     "test:people": "tsx src/db/test-people.ts",
     "test:classes": "tsx src/db/test-classes.ts",
     "test:print": "python3 scripts/test-print.py",
+    "test:templates-print": "python3 scripts/test-templates.py",
+    "test:templates": "tsx src/db/test-templates.ts",
     "test:config": "tsx src/db/test-config.ts",
     "benchmark:db": "tsx scripts/benchmark-db-latency.ts",
     "backup:db": "tsx scripts/backup-database.ts",

@@ -633,3 +633,17 @@ DROP POLICY IF EXISTS tenant_isolation ON timetable_publication;
 CREATE POLICY tenant_isolation ON timetable_publication
   USING (school_id = current_school_id() OR is_platform_admin())
   WITH CHECK (school_id = current_school_id() OR is_platform_admin());
+
+-- school_document_templates (per-school print templates): a school may READ its own row (print pages resolve
+-- their template inside forSchool). Only a platform admin may write.
+ALTER TABLE school_document_templates ENABLE ROW LEVEL SECURITY;
+ALTER TABLE school_document_templates FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_read ON school_document_templates;
+CREATE POLICY tenant_read ON school_document_templates
+  FOR SELECT
+  USING (school_id = current_school_id() OR is_platform_admin());
+DROP POLICY IF EXISTS platform_admin_write ON school_document_templates;
+CREATE POLICY platform_admin_write ON school_document_templates
+  FOR ALL
+  USING (is_platform_admin())
+  WITH CHECK (is_platform_admin());

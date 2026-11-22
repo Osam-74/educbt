@@ -295,7 +295,7 @@ const statusChangeSchema = z.object({
  * touched. The check is not a duplicate: the route guard can be forgotten
  * when a new page is added; this one cannot.
  */
-function assertPlatformAdmin(actor: PlatformActor): void {
+export function assertPlatformAdmin(actor: PlatformActor): void {
   if (actor.role !== 'platform_admin') throw new PlatformPermissionError();
 }
 

@@ -7,6 +7,7 @@ import { ReportSheet } from '@/components/reports/ReportSheet';
 import { PrintToolbar } from './PrintToolbar';
 import { RemarkEditor } from './RemarkEditor';
 import '../../../print.css';
+import '../../../templates.css';
 
 export const dynamic = 'force-dynamic';
 

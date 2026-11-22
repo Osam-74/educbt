@@ -7,6 +7,9 @@ import { reportPositions, reportAverage } from '@/lib/reports/summary';
 import { PrintTrigger } from './PrintTrigger';
 import './BroadsheetControls.css';
 import '../../print.css';
+import '../../templates.css';
+import { getDocumentTemplates } from '@/lib/templates/service';
+import { templateClass } from '@/lib/templates/registry';
 
 export const dynamic = 'force-dynamic';
 
@@ -70,7 +73,7 @@ export default async function BroadsheetPage({
 
     if (!chosenId || !term) {
       return {
-        classes, school, session, term, chosen: chosen ?? null,
+        classes, school, session, term, chosen: chosen ?? null, templates: await getDocumentTemplates(tx, actor.schoolId),
         students: [] as Array<{ id: number; admissionNumber: string; firstName: string; lastName: string }>,
         subjects: [] as Array<{ id: number; name: string; code: string }>,
         cells: new Map<string, { total: number; grade: string; complete: boolean }>(),
@@ -147,8 +150,9 @@ export default async function BroadsheetPage({
     // The plugin orders subjects by name (BroadsheetService::build).
     const subjects = [...subjectMap.values()].sort((a, b) => a.name.localeCompare(b.name));
 
+    const templates = await getDocumentTemplates(tx, actor.schoolId);
     return {
-      classes, school, session, term, chosen,
+      classes, school, session, term, chosen, templates,
       students, subjects, cells,
       rows: resultRows.map((r) => ({
         studentId: Number(r.studentId), subjectId: Number(r.subjectId),
@@ -257,7 +261,7 @@ export default async function BroadsheetPage({
       </div>
 
       {students.length > 0 && chosen && (
-        <div className="doc doc--broadsheet">
+        <div className={`doc doc--broadsheet ${templateClass(data.templates.broadsheet)}`.trim()}>
           <div className="doc__sheet">
             <header className="doc__head">
               {school?.logoUrl ? <img className="doc__crest" src={school.logoUrl} alt="" /> : null}

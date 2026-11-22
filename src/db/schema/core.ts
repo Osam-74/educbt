@@ -211,5 +211,10 @@ export const subjects = pgTable('subjects', {
 export const platformSettings = pgTable('platform_settings', {
   id: integer('id').primaryKey().default(1),
   logoUrl: text('logo_url'),
+  // Platform-wide default print template per document type (src/lib/templates/registry.ts). A school with no assignment of
+  // its own prints with these. 'classic' is the original sheet.
+  defaultReportTemplate: varchar('default_report_template', { length: 40 }).default('classic').notNull(),
+  defaultTranscriptTemplate: varchar('default_transcript_template', { length: 40 }).default('classic').notNull(),
+  defaultBroadsheetTemplate: varchar('default_broadsheet_template', { length: 40 }).default('classic').notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 });

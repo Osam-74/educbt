@@ -5,6 +5,7 @@ import { isVisibleToFamily } from '@/domain/academic';
 import type { Actor } from '@/lib/session';
 import { reportAudience } from '@/lib/results/report-access';
 import { reportExtras } from '@/lib/settings/remarks';
+import { getDocumentTemplates } from '@/lib/templates/service';
 
 /**
  * Everything one student's terminal report sheet needs, loaded inside the caller's school-scoped transaction.
@@ -191,7 +192,8 @@ export async function loadReportSheet(tx: Tx, actor: Actor, studentId: number, t
 
     const extras = term && enrolment?.classId ? await reportExtras(tx, actor.schoolId, studentId, Number(term.sessionId), Number(term.id), enrolment.classId) : null;
     const scaleSnapshots = await tx.select({ snapshot: schema.gradingScaleVersions.snapshot }).from(schema.gradingScaleVersions);
-    return { student, school, enrolment, term, results, registered, cohort, cohortRows, cohortRegistrations, extras, scaleSnapshots,
+    const templates = await getDocumentTemplates(tx, actor.schoolId);
+    return { student, school, enrolment, term, results, registered, cohort, cohortRows, cohortRegistrations, extras, scaleSnapshots, templates,
       classTeacher: classTeacher ?? null };
 }
 

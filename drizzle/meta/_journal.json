@@ -277,6 +277,13 @@
       "when": 1791206400000,
       "tag": "0038_theory_choice",
       "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "7",
+      "when": 1791292800000,
+      "tag": "0039_document_templates",
+      "breakpoints": true
     }
   ]
 }
