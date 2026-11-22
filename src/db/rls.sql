@@ -568,7 +568,11 @@ CREATE POLICY branding_public_read ON platform_settings
 DROP POLICY IF EXISTS branding_platform_admin_write ON platform_settings;
 CREATE POLICY branding_platform_admin_write ON platform_settings
   FOR ALL
+  USING (is_platform_admin())
   WITH CHECK (is_platform_admin());
+-- USING matters: without it an UPDATE (and the update half of an upsert) has no rule for which EXISTING rows the writer may
+-- touch, so the platform default document templates could not be saved. Same condition as WITH CHECK; only an elevated
+-- platform admin can write, as before.
 
 -- ── School restore uploads (no school_id; platform-admin only) ───────────────
 -- school_backup_jobs / school_backup_chunks hold an uploaded backup, which is an entire school's

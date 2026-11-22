@@ -21,6 +21,7 @@ import {
 } from '@/lib/platform/schools';
 import { normalizeImage } from '@/lib/settings/images';
 import { SettingsError } from '@/lib/settings/service';
+import { TemplateError } from '@/lib/templates/service';
 
 export type OnboardingState =
   | { status: 'idle' }
@@ -58,7 +59,12 @@ export async function createSchoolAction(
     const crestFile = formData.get('crest');
     const crest = crestFile instanceof File && crestFile.size ? await normalizeImage(crestFile) : undefined;
 
-    const result = await createSchoolWithPrincipal(actor, input, crest);
+    const templates = {
+      report: String(formData.get('report') ?? 'classic'),
+      transcript: String(formData.get('transcript') ?? 'classic'),
+      broadsheet: String(formData.get('broadsheet') ?? 'classic'),
+    };
+    const result = await createSchoolWithPrincipal(actor, input, crest, templates);
 
     revalidatePath('/platform');
     revalidatePath('/platform/schools');
@@ -67,6 +73,9 @@ export async function createSchoolAction(
   } catch (error) {
     if (error instanceof SettingsError) {
       return { status: 'error', message: error.message, fieldErrors: { crest: error.message } };
+    }
+    if (error instanceof TemplateError) {
+      return { status: 'error', message: error.message, fieldErrors: { templates: error.message } };
     }
     if (error instanceof OnboardingValidationError) {
       return { status: 'error', message: error.message, fieldErrors: error.fieldErrors };

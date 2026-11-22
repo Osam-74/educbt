@@ -14,6 +14,7 @@ import { useActionState, useState } from 'react';
 import { createSchoolAction, type OnboardingState } from './actions';
 import { PaIcon } from '../../icons';
 import { CopyButton } from '../../CopyButton';
+import { TemplateSelectors } from '../../templates/TemplateSelectors';
 
 function FieldError({ field, state }: { field: string; state: OnboardingState }) {
   if (state.status !== 'error') return null;
@@ -214,6 +215,16 @@ export function NewSchoolForm({ loginUrlHint }: { loginUrlHint: string | null })
           <p className="pa-field-hint">Generated automatically from the principal&rsquo;s staff number (e.g. PRN-0001). Enter one only if the school uses its own convention.</p>
           <FieldError field="principalLoginId" state={state} />
         </div>
+      </div>
+
+      <div className="pa-field" data-testid="new-school-templates" style={{ marginTop: 8 }}>
+        <h3 style={{ margin: '0 0 4px', fontWeight: 750, color: 'var(--pa-forest)' }}>Document templates</h3>
+        <p className="pa-field-hint" style={{ marginBottom: 12 }}>
+          How this school&rsquo;s report cards, transcripts and broadsheets look when printed. Classic is today&rsquo;s look, so leave it
+          alone unless the school asked for another. Only platform administrators can change this, now or later; the school itself never sees it.
+        </p>
+        <TemplateSelectors current={{ report: 'classic', transcript: 'classic', broadsheet: 'classic' }} />
+        <FieldError field="templates" state={state} />
       </div>
 
       <button type="submit" id="submit-create-school-btn" disabled={pending} className="pa-btn pa-btn--primary">

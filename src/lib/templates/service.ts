@@ -39,6 +39,30 @@ export async function getDocumentTemplates(
   };
 }
 
+/** Stored (not resolved) choices for one school, plus the platform defaults. Platform admin only. null = inherits. */
+export async function viewTemplateAssignments(actor: PlatformActor, schoolId: number | null) {
+  assertPlatformAdmin(actor);
+  return asPlatformAdmin(actor.userId, schoolId ? `View document templates for school #${schoolId}` : 'View default document templates', async (tx) => {
+    const [platform] = await tx.select().from(schema.platformSettings).where(eq(schema.platformSettings.id, 1)).limit(1);
+    const defaults: Record<DocKind, TemplateKey> = {
+      report: resolveTemplate(platform?.defaultReportTemplate, null),
+      transcript: resolveTemplate(platform?.defaultTranscriptTemplate, null),
+      broadsheet: resolveTemplate(platform?.defaultBroadsheetTemplate, null),
+    };
+    if (!schoolId) return { defaults, own: null, school: null };
+    const [school] = await tx.select({ id: schema.schools.id, name: schema.schools.name }).from(schema.schools)
+      .where(eq(schema.schools.id, schoolId)).limit(1);
+    if (!school) return { defaults, own: null, school: null };
+    const [row] = await tx.select().from(schema.schoolDocumentTemplates)
+      .where(eq(schema.schoolDocumentTemplates.schoolId, schoolId)).limit(1);
+    const keep = (v: unknown) => (isTemplateKey(v) ? v : null);
+    const own: Record<DocKind, TemplateKey | null> = {
+      report: keep(row?.reportTemplate), transcript: keep(row?.transcriptTemplate), broadsheet: keep(row?.broadsheetTemplate),
+    };
+    return { defaults, own, school };
+  });
+}
+
 function clean(input: AssignmentInput, allowInherit: boolean) {
   const out: Partial<Record<DocKind, string | null>> = {};
   for (const kind of DOC_KINDS) {
@@ -51,6 +75,16 @@ function clean(input: AssignmentInput, allowInherit: boolean) {
     else throw new TemplateError(`Unknown template "${v}".`);
   }
   return out;
+}
+
+/**
+ * The three explicit choices made when a school is registered. Every document needs a real design (there is nothing yet to
+ * "inherit" from at that moment), and an unknown key rejects the whole registration.
+ */
+export function cleanTemplateChoice(input: AssignmentInput): Record<DocKind, TemplateKey> {
+  const out = clean(input, false);
+  for (const kind of DOC_KINDS) if (!out[kind]) throw new TemplateError('Choose a template for every document type.');
+  return out as Record<DocKind, TemplateKey>;
 }
 
 /** Set (or clear → inherit) a school's templates. Platform admin only. */
