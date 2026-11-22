@@ -52,7 +52,10 @@ export function ClassRow({ scope, stage, principal, configured, enrolled }: {
       )}
 
       {stage !== '' && (
+        <>
         <Link className="btn-link" href={`/portal/broadsheet?class=${scope.classId}`}>Broadsheet</Link>
+        <Link className="btn-link" href={`/portal/reports/class?class=${scope.classId}&term=${scope.termId}`} data-testid={`class-reports-${scope.classId}`}>Report sheets</Link>
+        </>
       )}
 
       {principal && backward[stage] && (

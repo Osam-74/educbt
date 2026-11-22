@@ -39,6 +39,7 @@
     "test:theory-rules": "tsx src/lib/exam/theory-delivery.test.ts",
     "test:theory-delivery": "tsx src/db/test-theory-delivery.ts",
     "test:theory-browser": "tsx src/db/test-theory-browser.ts",
+    "test:class-reports": "tsx src/db/test-class-reports.ts",
     "test:theory-choice-rules": "tsx src/lib/exam/theory-choice.test.ts",
     "test:theory-choice": "tsx src/db/test-theory-choice.ts",
     "test:theory-on-paper": "tsx src/db/test-theory-on-paper.ts",

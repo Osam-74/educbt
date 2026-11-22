@@ -92,6 +92,14 @@ export const results: HelpArticle[] = [
         'In the print window, choose **Save as PDF** to keep a file, or print it.',
       ] },
       { type: 'note', text: 'Students and parents can only open a report sheet once the term\'s results are **Published** or **Locked**. Staff can open any term.' },
+      { type: 'h', text: 'Print a whole class at once' },
+      { type: 'steps', title: 'Print every report sheet in a class', items: [
+        'Open **Results** and find the class.',
+        'Select **Report sheets** on the class row.',
+        'Check the count at the top, then select **Download / Print**. Each student starts on a new page, in order of last name.',
+        'In the print window, choose **Save as PDF** to keep one file for the whole class.',
+      ] },
+      { type: 'note', text: 'Only students whose results are **Published** are included. If some are left out, a line at the top tells you how many. School staff can print any class. A class teacher can print only the class they hold.' },
       { type: 'h', text: 'Class teachers: remarks and signature' },
       { type: 'list', items: [
         '**Remarks** and **Signature** appear in your menu only if you are assigned as a class teacher.',
