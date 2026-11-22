@@ -6,6 +6,7 @@ import { classReportSheets } from '@/lib/reports/class-print';
 import { ReportSheet } from '@/components/reports/ReportSheet';
 import { PrintToolbar } from '../[studentId]/PrintToolbar';
 import '../../../print.css';
+import '../../../templates.css';
 
 export const dynamic = 'force-dynamic';
 

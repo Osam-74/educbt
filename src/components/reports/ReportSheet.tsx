@@ -1,4 +1,5 @@
 import { ordinal } from '@/domain/academic';
+import { templateClass } from '@/lib/templates/registry';
 import type { computeReportSheet } from '@/lib/reports/sheet-compute';
 
 /** Legacy num(): integers print without decimals, everything else to 1 place. */
@@ -13,7 +14,7 @@ function num(value: number): string {
  */
 export function ReportSheet({ sheet, breakBefore = false }: { sheet: ReturnType<typeof computeReportSheet>; breakBefore?: boolean }) {
   const { student, school, enrolment, term, results, cohort, rows, ranked, totalMarks, average, classPosition, density, hasCrest,
-    contact, classTeacherName, gradingKey, signatures, extras } = sheet;
+    contact, classTeacherName, gradingKey, signatures, extras, templateKey } = sheet;
   const data = { extras };
   const signature = (role: 'principal' | 'class_teacher') => {
     const saved = signatures[role];
@@ -23,7 +24,7 @@ export function ReportSheet({ sheet, breakBefore = false }: { sheet: ReturnType<
   };
 
   return (
-      <div className="doc" style={breakBefore ? { breakBefore: 'page', pageBreakBefore: 'always' } : undefined}>
+      <div className={`doc ${templateClass(templateKey)}`.trim()} style={breakBefore ? { breakBefore: 'page', pageBreakBefore: 'always' } : undefined}>
         <div
           className={`doc__sheet ${density}`}
         >

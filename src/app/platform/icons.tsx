@@ -41,6 +41,7 @@ const PATHS: Record<string, string> = {
   filter: 'M4 4h16l-6 8v6l-4 2v-8z',
   refresh: 'M21 12a9 9 0 1 1-3-6.7 M21 3v6h-6',
   spark: 'M12 2l1.8 5.4L19 9l-5.2 1.6L12 16l-1.8-5.4L5 9l5.2-1.6z',
+  file: 'M6 3h8l5 5v13H6z M14 3v5h5 M9 13h7 M9 17h7',
   lock: 'M5 11h14v10H5z M8 11V7a4 4 0 1 1 8 0v4',
   edit: 'M14 5l5 5 M4 20l4-1L21 6l-4-4L4 15z',
   activity: 'M2 12h5l3-8 4 16 3-8h5',

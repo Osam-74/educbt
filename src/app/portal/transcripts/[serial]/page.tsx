@@ -5,6 +5,10 @@ import { transcriptBySerial, verificationCode, verificationAvailable } from '@/l
 import { ordinal } from '@/domain/academic';
 import { PrintToolbar } from '../../reports/[studentId]/PrintToolbar';
 import '../../../print.css';
+import '../../../templates.css';
+import { forSchool } from '@/db';
+import { getDocumentTemplates } from '@/lib/templates/service';
+import { templateClass } from '@/lib/templates/registry';
 
 export const dynamic = 'force-dynamic';
 
@@ -33,6 +37,7 @@ export default async function TranscriptDocument({
 
   const data = await transcriptBySerial(actor, decodeURIComponent(raw)).catch(() => null);
   if (!data || !data.compiled.found || !data.compiled.student) notFound();
+  const templates = await forSchool(actor.schoolId, (tx) => getDocumentTemplates(tx, actor.schoolId));
 
   const { transcript, compiled, school } = data;
   const student = compiled.student!;
@@ -48,7 +53,7 @@ export default async function TranscriptDocument({
     <>
       <PrintToolbar warn={transcript.status === 'revoked' ? 'This transcript is REVOKED — printed here for the record only.' : undefined} />
 
-      <div className="doc">
+      <div className={`doc ${templateClass(templates.transcript)}`.trim()}>
         <div className="doc__sheet">
           {/* Crest watermark: a position:fixed layer so it repeats on EVERY
               printed page — the same fix the terminal report sheet needed. */}

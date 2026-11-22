@@ -78,6 +78,9 @@ export default async function SchoolDetailPage({
               </div>
             </div>
           </div>
+          <Link href={`/platform/schools/${school.id}/templates`} className="pa-btn pa-btn--outline pa-btn--sm" style={{ flexShrink: 0, background: 'rgba(255,255,255,0.9)' }} id="school-templates-link">
+            Document templates
+          </Link>
           <Link href={`/platform/schools/${school.id}/edit`} className="pa-btn pa-btn--outline pa-btn--sm" style={{ flexShrink: 0, background: 'rgba(255,255,255,0.9)' }}>
             <PaIcon name="edit" width={13} height={13} /> Edit
           </Link>

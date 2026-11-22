@@ -17,6 +17,7 @@ export const PLATFORM_NAV_HREFS = [
   '/platform/schools',
   '/platform/schools/new',
   '/platform/branding',
+  '/platform/templates',
   '/platform/managers',
   '/platform/account',
 ] as const;
@@ -32,11 +33,14 @@ export function isNavItemActive(href: PlatformNavHref, pathname: string): boolea
     case '/platform/schools':
       // The directory itself, or a specific school's detail/edit page —
       // but NOT /platform/schools/new (that is its own nav item).
-      return pathname === '/platform/schools' || pathname === '/platform/schools/restore' || /^\/platform\/schools\/\d+(\/edit)?$/.test(pathname);
+      return pathname === '/platform/schools' || pathname === '/platform/schools/restore' || /^\/platform\/schools\/\d+(\/edit|\/templates)?$/.test(pathname);
     case '/platform/schools/new':
       return pathname === '/platform/schools/new';
     case '/platform/branding':
       return pathname === '/platform/branding';
+    case '/platform/templates':
+      // The platform defaults and the live preview of any design.
+      return pathname === '/platform/templates' || pathname === '/platform/templates/preview';
     case '/platform/managers':
       return pathname === '/platform/managers';
     case '/platform/account':
@@ -56,8 +60,11 @@ export function pageNameFor(pathname: string): string {
   if (pathname === '/platform/schools/new') return 'New school';
   if (pathname === '/platform/schools/restore') return 'Restore a school';
   if (pathname === '/platform/branding') return 'Branding';
+  if (pathname === '/platform/templates') return 'Document templates';
+  if (pathname === '/platform/templates/preview') return 'Template preview';
   if (pathname === '/platform/managers') return 'Managers';
   if (/^\/platform\/schools\/\d+\/edit$/.test(pathname)) return 'Edit school';
+  if (/^\/platform\/schools\/\d+\/templates$/.test(pathname)) return 'School document templates';
   if (/^\/platform\/schools\/\d+$/.test(pathname)) return 'School details';
   if (pathname.startsWith('/platform/account')) return 'Account';
   return 'Platform';

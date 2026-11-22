@@ -88,5 +88,5 @@ export function computeReportSheet(data: ReportSheetData, studentId: number) {
   // The saved signatures are plain data here; the sheet component decides how to draw them.
   const signatures: Partial<NonNullable<typeof data.extras>['signatures']> = data.extras?.signatures ?? {};
   return { student, school, enrolment, term, results, cohort, rows, ranked, totalMarks, average, classPosition,
-    anyUnpublished, density, hasCrest, contact, classTeacherName, gradingKey, editableRemarks, signatures, extras: data.extras, classTeacher };
+    anyUnpublished, density, hasCrest, contact, classTeacherName, gradingKey, editableRemarks, signatures, extras: data.extras, classTeacher, templateKey: data.templates.report };
 }

@@ -30,6 +30,7 @@ function navItemsFor(schoolsCount: number): (NavItem & { href: PlatformNavHref }
     { href: '/platform/schools', label: 'Schools', icon: 'schools', badge: schoolsCount },
     { href: '/platform/schools/new', label: 'New school', icon: 'plus' },
     { href: '/platform/branding', label: 'Branding', icon: 'spark' },
+    { href: '/platform/templates', label: 'Document templates', icon: 'file' },
     { href: '/platform/managers', label: 'Managers', icon: 'shield' },
     { href: '/platform/account', label: 'Account', icon: 'userCheck' },
   ];

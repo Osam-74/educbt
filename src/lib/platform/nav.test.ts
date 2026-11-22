@@ -21,6 +21,7 @@ const activeSet = (pathname: string) => ({
   account: isNavItemActive('/platform/account', pathname),
   branding: isNavItemActive('/platform/branding', pathname),
   managers: isNavItemActive('/platform/managers', pathname),
+  templates: isNavItemActive('/platform/templates', pathname),
 });
 
 // ── Restore a school (/platform/schools/restore) ────────────────────────────
@@ -94,6 +95,23 @@ check('pageNameFor: school detail', pageNameFor('/platform/schools/7') === 'Scho
 check('pageNameFor: edit school', pageNameFor('/platform/schools/7/edit') === 'Edit school');
 check('pageNameFor: forced password-change page', pageNameFor('/platform/account/password') === 'Account');
 check('pageNameFor: security page', pageNameFor('/platform/account/security') === 'Account');
+
+// ── Document templates ───────────────────────────────────────────────────
+{
+  const a = activeSet('/platform/templates');
+  check('Document templates active, and only it, on /platform/templates', a.templates && !a.dashboard && !a.schools && !a.newSchool && !a.account && !a.branding && !a.managers);
+}
+{
+  const a = activeSet('/platform/templates/preview');
+  check('Document templates stays active on its preview page', a.templates && !a.schools && !a.branding);
+}
+{
+  const a = activeSet('/platform/schools/12/templates');
+  check("a school's templates page highlights Schools, and not Document templates or New school", a.schools && !a.templates && !a.newSchool && !a.branding);
+}
+check('pageNameFor: platform defaults', pageNameFor('/platform/templates') === 'Document templates');
+check('pageNameFor: preview', pageNameFor('/platform/templates/preview') === 'Template preview');
+check("pageNameFor: a school's templates", pageNameFor('/platform/schools/12/templates') === 'School document templates');
 
 if (failures) {
   console.log(`\n${failures} FAILED`);

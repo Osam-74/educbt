@@ -150,6 +150,7 @@ export const EXCLUDED_TABLES: Record<string, string> = {
   password_reset_tokens: 'Unused password-reset links are credentials.',
   totp_recovery_codes: 'Two-factor recovery codes are credentials.',
   email_events: 'The outgoing email queue is transient; restoring it could re-send old emails to real parents.',
+  school_document_templates: 'Print templates are assigned by the platform administrator, not by the school. A restore creates a NEW school, so it must not carry a platform-assigned design over from a file (a tampered backup could otherwise set one). A restored school prints with the platform default until the administrator assigns one.',
   transcripts: 'Each transcript has a globally unique public verification serial. Copying one would create a second "genuine" transcript with the same serial. Reissue them from the restored results.',
 };
 

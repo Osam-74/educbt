@@ -28,7 +28,8 @@ export default async function EditSchoolPage({ params }: { params: Promise<{ id:
       <div className="pa-page-head" style={{ marginBottom: 20 }}>
         <div>
           <h1>Edit {school.name}</h1>
-          <p>Update the school&apos;s profile, contact details and crest. Code, status and the principal are managed elsewhere.</p>
+          <p>Update the school&apos;s profile, contact details and crest. Code, status and the principal are managed elsewhere.
+            Its print designs are set under <a href={`/platform/schools/${school.id}/templates`} id="edit-templates-link">Document templates</a>.</p>
         </div>
       </div>
       <EditSchoolForm

@@ -28,6 +28,8 @@
  * stored, logged, or written into any audit JSON.
  */
 
+import { cleanTemplateChoice } from '@/lib/templates/service';
+import type { DocKind } from '@/lib/templates/registry';
 import { and, desc, eq, ilike, inArray, or, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { asPlatformAdmin, schema, type Tx } from '@/db';
@@ -295,7 +297,7 @@ const statusChangeSchema = z.object({
  * touched. The check is not a duplicate: the route guard can be forgotten
  * when a new page is added; this one cannot.
  */
-function assertPlatformAdmin(actor: PlatformActor): void {
+export function assertPlatformAdmin(actor: PlatformActor): void {
   if (actor.role !== 'platform_admin') throw new PlatformPermissionError();
 }
 
@@ -494,8 +496,12 @@ export async function createSchoolWithPrincipal(
    * crest, or undefined/null for none. Same bound enforced as the school
    * portal's own branding upload (see settings/service.ts's saveProfile). */
   logo?: string | null,
+  /** Document designs chosen on the New school form (report / transcript / broadsheet). Omitted = the school follows the
+   * platform default. Validated BEFORE anything is created, so an unknown key creates nothing. */
+  templates?: Partial<Record<DocKind, string | null>>,
 ): Promise<OnboardedSchool> {
   assertPlatformAdmin(actor);
+  const chosenTemplates = templates ? cleanTemplateChoice(templates) : null;
   const parsed = onboardingSchema.safeParse(rawInput);
   if (!parsed.success) {
     throw new OnboardingValidationError(
@@ -544,6 +550,16 @@ export async function createSchoolWithPrincipal(
 
       await seedDefaultAcademicPeriod(tx, Number(school!.id));
 
+      // The designs picked on the form, in the SAME transaction as the school: all of it or none of it.
+      if (chosenTemplates) {
+        await tx.insert(schema.schoolDocumentTemplates).values({
+          schoolId: Number(school!.id),
+          reportTemplate: chosenTemplates.report,
+          transcriptTemplate: chosenTemplates.transcript,
+          broadsheetTemplate: chosenTemplates.broadsheet,
+        });
+      }
+
       // Departments and class levels BEFORE subjects — see
       // seedDefaultClassStructure's docblock for why the order matters.
       await seedDefaultClassStructure(tx, Number(school!.id));
@@ -576,6 +592,7 @@ export async function createSchoolWithPrincipal(
           status: input.status,
           email: input.email ?? null,
           phone: input.phone ?? null,
+          ...(chosenTemplates ? { templates: chosenTemplates } : {}),
         },
       });
 
